@@ -48,12 +48,13 @@ export const DataPreview = ({ preview, isLoading, fileId, onSheetChange }: DataP
           <div className="flex items-center space-x-2">
             <label className="text-xs text-gray-600 font-medium">Sheet:</label>
             <select
-              value={preview.current_sheet || ''}
+              key={`sheet-select-${preview.current_sheet || ''}`}
+              value={String(preview.current_sheet || (preview.sheets && preview.sheets.length > 0 ? preview.sheets[0] : ''))}
               onChange={(e) => handleSheetChange(e.target.value)}
               className="px-3 py-1 text-sm border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
             >
               {preview.sheets.map((sheet) => (
-                <option key={sheet} value={sheet}>
+                <option key={sheet} value={String(sheet)}>
                   {sheet}
                 </option>
               ))}

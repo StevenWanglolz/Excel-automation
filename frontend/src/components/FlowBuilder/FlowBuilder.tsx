@@ -121,7 +121,8 @@ export const FlowBuilder = () => {
     const flowIdParam = searchParams.get('flow');
     if (flowIdParam) {
       const flowId = parseInt(flowIdParam, 10);
-      if (!isNaN(flowId)) {
+      if (!isNaN(flowId) && flowId !== selectedFlowId) {
+        // Only load if it's a different flow than currently selected
         handleLoadFlowById(flowId);
       }
     }
@@ -178,16 +179,16 @@ export const FlowBuilder = () => {
         showModal('success', 'Success', 'Flow updated successfully!');
       } else {
         // Create new flow
-        await flowsApi.create({
-          name: flowName,
-          description: '',
-          flow_data: flowData,
-        });
+      await flowsApi.create({
+        name: flowName,
+        description: '',
+        flow_data: flowData,
+      });
         savedFlowDataRef.current = JSON.stringify(flowData);
         hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
         showModal('success', 'Success', 'Flow saved successfully!');
-        setFlowName('');
+      setFlowName('');
         setSelectedFlowId(null);
       }
       
@@ -264,6 +265,10 @@ export const FlowBuilder = () => {
     setShowFlowList(false);
     savedFlowDataRef.current = '';
     hasUnsavedChangesRef.current = false;
+    // Clear the flow parameter from URL to prevent auto-reloading
+    if (searchParams.get('flow')) {
+      navigate('/flow-builder', { replace: true });
+    }
   };
 
   const handleDeleteFlow = async (flowId: number, e: React.MouseEvent) => {
@@ -526,7 +531,6 @@ export const FlowBuilder = () => {
           title={confirmModalConfig.title}
           message={confirmModalConfig.message}
           type={confirmModalConfig.type}
-          confirmText={confirmModalConfig.confirmText}
           onDiscard={confirmModalConfig.onDiscard}
           discardText={confirmModalConfig.discardText}
           showCancel={confirmModalConfig.type !== 'alert' && confirmModalConfig.type !== 'success'}

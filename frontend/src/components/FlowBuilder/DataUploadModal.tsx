@@ -100,12 +100,17 @@ export const DataUploadModal = ({
         originalName: f.original_filename,
       }));
 
-      setUploadedFiles(prev => [...prev, ...newFiles]);
-      
-      if (onFileUploaded) {
-        const allFileIds = [...uploadedFiles.map(f => f.id), ...newFiles.map(f => f.id)];
-        onFileUploaded(allFileIds);
-      }
+      setUploadedFiles(prev => {
+        const updatedFiles = [...prev, ...newFiles];
+        
+        // Call callback with fresh file IDs from updated state
+        if (onFileUploaded) {
+          const allFileIds = updatedFiles.map(f => f.id);
+          onFileUploaded(allFileIds);
+        }
+        
+        return updatedFiles;
+      });
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to upload file(s)');
     } finally {
@@ -145,9 +150,13 @@ export const DataUploadModal = ({
         const remainingFileIds = uploadedFiles.filter(f => f.id !== fileId).map(f => f.id);
         onFileUploaded(remainingFileIds);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to delete file:', error);
-      setAlertMessage('Failed to delete file');
+      setAlertMessage(
+        error.response?.data?.detail?.message || 
+        error.response?.data?.detail || 
+        'Failed to delete file'
+      );
       setShowAlertModal(true);
     }
   };
@@ -322,11 +331,11 @@ export const DataUploadModal = ({
                         }
                       }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-                      value={previewFileId || ''}
+                      value={previewFileId ? String(previewFileId) : ''}
                     >
                       <option value="">Select a file to preview</option>
                       {uploadedFiles.map((file) => (
-                        <option key={file.id} value={file.id}>
+                        <option key={file.id} value={String(file.id)}>
                           {file.originalName}
                         </option>
                       ))}

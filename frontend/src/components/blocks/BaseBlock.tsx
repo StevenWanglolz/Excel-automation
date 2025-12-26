@@ -39,7 +39,7 @@ export const BaseBlock = ({ id, data, selected, type, children, onDelete }: Base
               ×
             </button>
           )}
-          <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
         </div>
       </div>
       {children && <div className="mt-2">{children}</div>}

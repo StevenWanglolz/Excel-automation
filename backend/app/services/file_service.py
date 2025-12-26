@@ -19,22 +19,22 @@ class FileService:
         # Validate file type
         if not file.filename:
             raise HTTPException(status_code=400, detail="Filename is required")
-
+        
         allowed_extensions = {".xlsx", ".xls", ".csv"}
         file_ext = Path(file.filename).suffix.lower()
-
+        
         if file_ext not in allowed_extensions:
             raise HTTPException(
                 status_code=400,
                 detail=f"File type not supported. Allowed: {', '.join(allowed_extensions)}"
             )
-
+        
         # Save file
         file_path, filename = await storage.save_file(file, user_id)
-
+        
         # Get file size
         file_size = Path(file_path).stat().st_size
-
+        
         # Determine MIME type
         mime_type_map = {
             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -42,7 +42,7 @@ class FileService:
             ".csv": "text/csv"
         }
         mime_type = mime_type_map.get(file_ext, "application/octet-stream")
-
+        
         # Create database record
         db_file = File(
             user_id=user_id,
@@ -55,17 +55,17 @@ class FileService:
         db.add(db_file)
         db.commit()
         db.refresh(db_file)
-
+        
         return db_file
 
     @staticmethod
     def parse_file(file_path: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
         """Parse Excel or CSV file into pandas DataFrame"""
         path = Path(file_path)
-
+        
         if not path.exists():
             raise HTTPException(status_code=404, detail="File not found")
-
+        
         try:
             if path.suffix.lower() == ".csv":
                 df = pd.read_csv(file_path)
@@ -84,7 +84,7 @@ class FileService:
                         df = result[first_sheet_name]
                 else:
                     df = result
-
+            
             return df
         except Exception as e:
             raise HTTPException(
@@ -157,7 +157,7 @@ class FileService:
                     else:
                         row_dict[col] = val
                 preview_rows.append(row_dict)
-
+        
         return {
             "columns": list(df.columns),
             "row_count": len(df),

@@ -104,11 +104,11 @@ export const Dashboard = () => {
               <div
                 className="bg-white rounded-lg border-2 border-gray-200 hover:border-indigo-500 transition-colors cursor-pointer p-6 min-h-[136px] flex flex-col justify-center items-center shadow-sm hover:shadow-md"
                 onClick={() => handleAutomationClick('excel')}
-              >
+                    >
                 <div className="text-4xl mb-2">📊</div>
                 <h3 className="text-lg font-semibold text-gray-900">Excel</h3>
                 <p className="text-sm text-gray-500 mt-1">Excel automation</p>
-              </div>
+                        </div>
 
               {/* Placeholder cards for future automations */}
               {[1, 2, 3, 4, 5].map((i) => (
