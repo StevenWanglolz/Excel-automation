@@ -18,12 +18,6 @@ import { UploadBlock } from '../blocks/UploadBlock';
 import { FilterBlock } from '../blocks/FilterBlock';
 import { TransformBlock } from '../blocks/TransformBlock';
 
-const nodeTypes: NodeTypes = {
-  upload: UploadBlock,
-  filter: FilterBlock,
-  transform: TransformBlock,
-};
-
 interface FlowCanvasProps {
   onNodeClick?: (nodeId: string, nodeType: string) => void;
 }
@@ -37,6 +31,7 @@ export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
     setEdges,
     addEdge: addStoreEdge,
     addNode,
+    deleteNode,
   } = useFlowStore();
 
   const [nodes, setNodesState, onNodesChange] = useNodesState(storeNodes);
@@ -50,6 +45,21 @@ export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
   useMemo(() => {
     setEdgesState(storeEdges);
   }, [storeEdges, setEdgesState]);
+
+  // Handle node deletion
+  const handleDeleteNode = useCallback((nodeId: string) => {
+    deleteNode(nodeId);
+    const updatedNodes = nodes.filter(n => n.id !== nodeId);
+    setNodesState(updatedNodes);
+    setNodes(updatedNodes);
+  }, [nodes, deleteNode, setNodesState, setNodes]);
+
+  // Create node types with delete handler
+  const nodeTypes: NodeTypes = useMemo(() => ({
+    upload: (props: any) => <UploadBlock {...props} onDelete={handleDeleteNode} />,
+    filter: (props: any) => <FilterBlock {...props} onDelete={handleDeleteNode} />,
+    transform: (props: any) => <TransformBlock {...props} onDelete={handleDeleteNode} />,
+  }), [handleDeleteNode]);
 
   // Sync changes back to store
   const handleNodesChange = useCallback(
@@ -163,4 +173,3 @@ export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
     </div>
   );
 };
-

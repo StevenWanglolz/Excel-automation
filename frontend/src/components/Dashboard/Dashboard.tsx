@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import { ConfirmationModal } from '../Common/ConfirmationModal';
 import { flowsApi, type Flow } from '../../api/flows';
 
 export const Dashboard = () => {
@@ -8,6 +9,10 @@ export const Dashboard = () => {
   const navigate = useNavigate();
   const [flows, setFlows] = useState<Flow[]>([]);
   const [selectedAutomation, setSelectedAutomation] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+  const [flowToDelete, setFlowToDelete] = useState<number | null>(null);
+  const [alertMessage, setAlertMessage] = useState('');
 
   useEffect(() => {
     if (selectedAutomation) {
@@ -42,15 +47,24 @@ export const Dashboard = () => {
 
   const handleDeleteFlow = async (flowId: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this flow?')) {
-      return;
-    }
+    setFlowToDelete(flowId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteFlow = async () => {
+    if (!flowToDelete) return;
+    
     try {
-      await flowsApi.delete(flowId);
+      await flowsApi.delete(flowToDelete);
       loadFlows();
+      setShowDeleteModal(false);
+      setFlowToDelete(null);
     } catch (error) {
       console.error('Failed to delete flow:', error);
-      alert('Failed to delete flow');
+      setShowDeleteModal(false);
+      setAlertMessage('Failed to delete flow');
+      setShowAlertModal(true);
+      setFlowToDelete(null);
     }
   };
 
@@ -172,6 +186,30 @@ export const Dashboard = () => {
           </div>
         )}
       </main>
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setFlowToDelete(null);
+        }}
+        onConfirm={confirmDeleteFlow}
+        title="Delete Flow"
+        message="Are you sure you want to delete this flow? This action cannot be undone."
+        type="confirm"
+        confirmText="Delete"
+      />
+
+      {/* Alert Modal */}
+      <ConfirmationModal
+        isOpen={showAlertModal}
+        onClose={() => setShowAlertModal(false)}
+        title="Error"
+        message={alertMessage}
+        type="error"
+        showCancel={false}
+      />
     </div>
   );
 };

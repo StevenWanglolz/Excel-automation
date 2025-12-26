@@ -59,7 +59,7 @@ class FileService:
         return db_file
 
     @staticmethod
-    def parse_file(file_path: str) -> pd.DataFrame:
+    def parse_file(file_path: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
         """Parse Excel or CSV file into pandas DataFrame"""
         path = Path(file_path)
 
@@ -70,13 +70,47 @@ class FileService:
             if path.suffix.lower() == ".csv":
                 df = pd.read_csv(file_path)
             else:
-                df = pd.read_excel(file_path, engine="openpyxl")
+                # If sheet_name is None, read first sheet by default
+                # pd.read_excel with sheet_name=None returns a dict of all sheets
+                result = pd.read_excel(file_path, engine="openpyxl", sheet_name=sheet_name)
+                
+                # If result is a dict (multiple sheets), get the first sheet
+                if isinstance(result, dict):
+                    if sheet_name and sheet_name in result:
+                        df = result[sheet_name]
+                    else:
+                        # Get first sheet if sheet_name not specified or not found
+                        first_sheet_name = list(result.keys())[0]
+                        df = result[first_sheet_name]
+                else:
+                    df = result
 
             return df
         except Exception as e:
             raise HTTPException(
                 status_code=400,
                 detail=f"Error parsing file: {str(e)}"
+            )
+
+    @staticmethod
+    def get_excel_sheets(file_path: str) -> list[str]:
+        """Get list of sheet names from Excel file"""
+        path = Path(file_path)
+        
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        if path.suffix.lower() not in {".xlsx", ".xls"}:
+            return []  # CSV files don't have sheets
+        
+        try:
+            import openpyxl
+            workbook = openpyxl.load_workbook(file_path, read_only=True)
+            return workbook.sheetnames
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error reading Excel sheets: {str(e)}"
             )
 
     @staticmethod

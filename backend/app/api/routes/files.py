@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile, Query, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_serializer
 from datetime import datetime
 from app.core.database import get_db
+from app.core.config import settings
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.models.file import File
@@ -32,6 +34,8 @@ class FilePreviewResponse(BaseModel):
     row_count: int
     preview_rows: List[dict]
     dtypes: dict
+    sheets: List[str] = []  # List of sheet names (empty for CSV)
+    current_sheet: Optional[str] = None  # Current sheet being previewed
 
 
 @router.post("/upload", response_model=FileResponse, status_code=201)
@@ -58,6 +62,7 @@ async def list_files(
 @router.get("/{file_id}/preview", response_model=FilePreviewResponse)
 async def preview_file(
     file_id: int,
+    sheet_name: Optional[str] = Query(None, description="Sheet name to preview (for Excel files)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -70,10 +75,103 @@ async def preview_file(
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
 
-    df = file_service.parse_file(db_file.file_path)
+    # Get list of sheets if Excel file
+    sheets = []
+    if db_file.mime_type in [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel"
+    ]:
+        sheets = file_service.get_excel_sheets(db_file.file_path)
+    
+    # Parse the file (with optional sheet selection)
+    df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
     preview = file_service.get_file_preview(df)
+    
+    # Add sheet information to preview
+    preview["sheets"] = sheets
+    preview["current_sheet"] = sheet_name if sheet_name else (sheets[0] if sheets else None)
 
     return preview
+
+
+@router.options("/{file_id}/download")
+async def download_file_options(file_id: int):
+    """Handle OPTIONS preflight request for file download"""
+    cors_origins = settings.get_cors_origins()
+    origin_header = cors_origins[0] if cors_origins else "*"
+    
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": origin_header,
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+
+@router.get("/{file_id}/download")
+async def download_file(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Download a file"""
+    db_file = db.query(File).filter(
+        File.id == file_id,
+        File.user_id == current_user.id
+    ).first()
+
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    from pathlib import Path
+    file_path = Path(db_file.file_path)
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    cors_origins = settings.get_cors_origins()
+    # Use the first origin or allow all if none specified
+    origin_header = cors_origins[0] if cors_origins else "*"
+    
+    # Read file content
+    with open(file_path, "rb") as f:
+        file_content = f.read()
+    
+    # Create response with CORS headers
+    headers = {
+        "Content-Disposition": f"attachment; filename={db_file.original_filename}",
+        "Access-Control-Allow-Origin": origin_header,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    }
+    
+    return Response(
+        content=file_content,
+        media_type=db_file.mime_type,
+        headers=headers
+    )
+
+
+@router.get("/{file_id}", response_model=FileResponse)
+async def get_file(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get a single file by ID"""
+    db_file = db.query(File).filter(
+        File.id == file_id,
+        File.user_id == current_user.id
+    ).first()
+
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return db_file
 
 
 @router.delete("/{file_id}")

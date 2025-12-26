@@ -55,5 +55,7 @@ export interface FilePreview {
   row_count: number;
   preview_rows: Record<string, any>[];
   dtypes: Record<string, string>;
+  sheets?: string[];  // List of sheet names (for Excel files)
+  current_sheet?: string | null;  // Current sheet being previewed
 }
 

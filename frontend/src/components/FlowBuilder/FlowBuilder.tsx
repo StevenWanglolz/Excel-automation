@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FlowCanvas } from './FlowCanvas';
 import { BlockPalette } from './BlockPalette';
 import { DataUploadModal } from './DataUploadModal';
+import { ConfirmationModal, type ModalType } from '../Common/ConfirmationModal';
 import { useFlowStore } from '../../store/flowStore';
 import { flowsApi, type Flow } from '../../api/flows';
 
 export const FlowBuilder = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { nodes, edges, getFlowData, clearFlow, loadFlowData } = useFlowStore();
+  const { nodes, edges, getFlowData, clearFlow, loadFlowData, updateNode } = useFlowStore();
   const [flowName, setFlowName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlows, setSavedFlows] = useState<Flow[]>([]);
@@ -18,6 +19,26 @@ export const FlowBuilder = () => {
   const [showFlowList, setShowFlowList] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalConfig, setConfirmModalConfig] = useState<{
+    type: ModalType;
+    title: string;
+    message: string;
+    onConfirm?: () => void;
+    onDiscard?: () => void;
+    confirmText?: string;
+    discardText?: string;
+  } | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isFileUploading, setIsFileUploading] = useState(false);
+  const savedFlowDataRef = useRef<string>('');
+  const hasUnsavedChangesRef = useRef(false);
+
+  const showModal = (type: ModalType, title: string, message: string, onConfirm?: () => void, confirmText?: string) => {
+    setConfirmModalConfig({ type, title, message, onConfirm, confirmText });
+    setShowConfirmModal(true);
+  };
 
   const handleLoadFlowById = async (flowId: number) => {
     try {
@@ -25,15 +46,75 @@ export const FlowBuilder = () => {
       loadFlowData(fullFlow.flow_data);
       setFlowName(fullFlow.name);
       setSelectedFlowId(fullFlow.id);
+      savedFlowDataRef.current = JSON.stringify(fullFlow.flow_data);
+      hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to load flow:', error);
-      alert('Failed to load flow');
+      showModal('error', 'Error', 'Failed to load flow');
     }
   };
 
   useEffect(() => {
     loadFlows();
+    // Initialize saved flow data reference on mount
+    savedFlowDataRef.current = JSON.stringify(getFlowData());
+    hasUnsavedChangesRef.current = false;
+    setHasUnsavedChanges(false);
   }, []);
+
+  // Track unsaved changes
+  useEffect(() => {
+    const currentFlowData = JSON.stringify(getFlowData());
+    // Only mark as unsaved if there's a meaningful difference from saved state
+    // Don't mark as unsaved just because there are nodes - wait for actual changes
+    const hasChanges = currentFlowData !== savedFlowDataRef.current;
+    hasUnsavedChangesRef.current = hasChanges;
+    setHasUnsavedChanges(hasChanges);
+  }, [nodes, edges, flowName, selectedFlowId, getFlowData]);
+
+  // Update saved flow data reference after save/load
+  useEffect(() => {
+    if (selectedFlowId && nodes.length > 0) {
+      savedFlowDataRef.current = JSON.stringify(getFlowData());
+      hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
+    }
+  }, [selectedFlowId]);
+
+  // Handle browser back/forward and page unload
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Always suppress warning when modal is open or file is uploading
+      // This prevents the dialog from appearing during file operations
+      if (isModalOpen || isFileUploading) {
+        return; // Don't prevent default, just return early
+      }
+      
+      // Only show warning if there are unsaved changes and modal is closed
+      if (hasUnsavedChangesRef.current) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isFileUploading, isModalOpen]);
+
+  const handleCancelNavigation = () => {
+    setShowConfirmModal(false);
+    setPendingNavigation(null);
+  };
+
+  const handleDiscardAndLeave = () => {
+    hasUnsavedChangesRef.current = false;
+    if (pendingNavigation) {
+      navigate(pendingNavigation);
+    }
+    setShowConfirmModal(false);
+    setPendingNavigation(null);
+  };
 
   useEffect(() => {
     // Load flow from URL parameter if present
@@ -76,7 +157,7 @@ export const FlowBuilder = () => {
 
   const handleSave = async () => {
     if (!flowName.trim()) {
-      alert('Please enter a flow name');
+      showModal('alert', 'Validation Error', 'Please enter a flow name');
       return;
     }
 
@@ -91,65 +172,122 @@ export const FlowBuilder = () => {
           description: '',
           flow_data: flowData,
         });
-        alert('Flow updated successfully!');
+        savedFlowDataRef.current = JSON.stringify(flowData);
+        hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
+        showModal('success', 'Success', 'Flow updated successfully!');
       } else {
         // Create new flow
-      await flowsApi.create({
-        name: flowName,
-        description: '',
-        flow_data: flowData,
-      });
-      alert('Flow saved successfully!');
-      setFlowName('');
+        await flowsApi.create({
+          name: flowName,
+          description: '',
+          flow_data: flowData,
+        });
+        savedFlowDataRef.current = JSON.stringify(flowData);
+        hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
+        showModal('success', 'Success', 'Flow saved successfully!');
+        setFlowName('');
         setSelectedFlowId(null);
       }
       
       await loadFlows();
     } catch (error) {
       console.error('Failed to save flow:', error);
-      alert('Failed to save flow');
+      showModal('error', 'Error', 'Failed to save flow');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleLoadFlow = async (flow: Flow) => {
+    // Check for unsaved changes before loading
+    if (hasUnsavedChangesRef.current) {
+      setShowConfirmModal(true);
+      setConfirmModalConfig({
+        type: 'confirm',
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Do you want to save before loading a different flow?',
+        confirmText: 'Save & Load',
+        onConfirm: async () => {
+          if (flowName.trim()) {
+            await handleSave();
+          }
+          await loadFlowInternal(flow);
+        },
+      });
+      return;
+    }
+    await loadFlowInternal(flow);
+  };
+
+  const loadFlowInternal = async (flow: Flow) => {
     try {
       const fullFlow = await flowsApi.get(flow.id);
       loadFlowData(fullFlow.flow_data);
       setFlowName(fullFlow.name);
       setSelectedFlowId(fullFlow.id);
       setShowFlowList(false);
+      savedFlowDataRef.current = JSON.stringify(fullFlow.flow_data);
+      hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
     } catch (error) {
       console.error('Failed to load flow:', error);
-      alert('Failed to load flow');
+      showModal('error', 'Error', 'Failed to load flow');
     }
   };
 
   const handleNewFlow = () => {
+    if (hasUnsavedChangesRef.current) {
+      setShowConfirmModal(true);
+      setConfirmModalConfig({
+        type: 'confirm',
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes. Do you want to save before creating a new flow?',
+        confirmText: 'Save & New',
+        onConfirm: async () => {
+          if (flowName.trim()) {
+            await handleSave();
+          }
+          clearFlowInternal();
+        },
+      });
+      return;
+    }
+    clearFlowInternal();
+  };
+
+  const clearFlowInternal = () => {
     clearFlow();
     setFlowName('');
     setSelectedFlowId(null);
     setShowFlowList(false);
+    savedFlowDataRef.current = '';
+    hasUnsavedChangesRef.current = false;
   };
 
   const handleDeleteFlow = async (flowId: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this flow?')) {
-      return;
-    }
-
-    try {
-      await flowsApi.delete(flowId);
-      if (selectedFlowId === flowId) {
-        handleNewFlow();
-      }
-      await loadFlows();
-      alert('Flow deleted successfully!');
-    } catch (error) {
-      console.error('Failed to delete flow:', error);
-      alert('Failed to delete flow');
-    }
+    setShowConfirmModal(true);
+    setConfirmModalConfig({
+      type: 'confirm',
+      title: 'Delete Flow',
+      message: 'Are you sure you want to delete this flow? This action cannot be undone.',
+      confirmText: 'Delete',
+      onConfirm: async () => {
+        try {
+          await flowsApi.delete(flowId);
+          if (selectedFlowId === flowId) {
+            clearFlowInternal();
+          }
+          await loadFlows();
+          showModal('success', 'Success', 'Flow deleted successfully!');
+        } catch (error) {
+          console.error('Failed to delete flow:', error);
+          showModal('error', 'Error', 'Failed to delete flow');
+        }
+      },
+    });
   };
 
   const handleNodeClick = (nodeId: string, nodeType: string) => {
@@ -160,16 +298,37 @@ export const FlowBuilder = () => {
     }
   };
 
-  const handleFileUploaded = (fileId: number) => {
-    // Update the node data with the file ID
+  const handleFileUploaded = (fileIds: number[]) => {
+    // Update the node data with the file IDs array
+    // Note: Don't mark as unsaved changes here - wait until modal closes
+    // This prevents beforeunload from triggering during file operations
     if (selectedNodeId) {
       const node = nodes.find((n) => n.id === selectedNodeId);
       if (node) {
-        // Store file ID in node data for later use
-        // This could be used when executing the flow
-        console.log(`File ${fileId} uploaded for node ${selectedNodeId}`);
+        // Store file IDs array in node data so it persists when flow is saved
+        updateNode(selectedNodeId, {
+          data: {
+            ...node.data,
+            fileIds: fileIds
+          }
+        });
+        // Mark as unsaved changes only after upload completes and modal is still open
+        // This will be handled when the modal closes
+        console.log(`Files ${fileIds.join(', ')} uploaded for node ${selectedNodeId}`);
       }
     }
+  };
+
+  const getNodeFileIds = (nodeId: string): number[] => {
+    const node = nodes.find((n) => n.id === nodeId);
+    if (node?.data?.fileIds && Array.isArray(node.data.fileIds)) {
+      return node.data.fileIds;
+    }
+    // Backward compatibility: check for single fileId
+    if (node?.data?.fileId) {
+      return [node.data.fileId];
+    }
+    return [];
   };
 
   return (
@@ -180,7 +339,34 @@ export const FlowBuilder = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => navigate('/')}
+                onClick={() => {
+                  if (hasUnsavedChangesRef.current) {
+                    setPendingNavigation('/');
+                    setShowConfirmModal(true);
+                    setConfirmModalConfig({
+                      type: 'confirm',
+                      title: 'Unsaved Changes',
+                      message: 'You have unsaved changes. Do you want to save before leaving?',
+                      confirmText: 'Save & Leave',
+                      onConfirm: async () => {
+                        if (flowName.trim()) {
+                          await handleSave();
+                        }
+                        hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
+                        navigate('/');
+                      },
+                      onDiscard: () => {
+                        hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
+                        navigate('/');
+                      },
+                      discardText: 'Discard',
+                    });
+                  } else {
+                    navigate('/');
+                  }
+                }}
                 className="px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                 title="Back to Dashboard"
               >
@@ -259,13 +445,29 @@ export const FlowBuilder = () => {
               />
               <button
                 onClick={handleSave}
-                disabled={isSaving || !flowName.trim()}
+                disabled={isSaving || !flowName.trim() || (selectedFlowId && !hasUnsavedChanges)}
                 className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={selectedFlowId && !hasUnsavedChangesRef.current ? 'No changes to save' : ''}
               >
                 {isSaving ? 'Saving...' : selectedFlowId ? 'Update Flow' : 'Save Flow'}
               </button>
               <button
-                onClick={clearFlow}
+                onClick={() => {
+                  if (hasUnsavedChangesRef.current) {
+                    setShowConfirmModal(true);
+                    setConfirmModalConfig({
+                      type: 'confirm',
+                      title: 'Clear Flow',
+                      message: 'Are you sure you want to clear the current flow? All unsaved changes will be lost.',
+                      confirmText: 'Clear',
+                      onConfirm: () => {
+                        clearFlowInternal();
+                      },
+                    });
+                  } else {
+                    clearFlowInternal();
+                  }
+                }}
                 className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
               >
                 Clear
@@ -282,13 +484,58 @@ export const FlowBuilder = () => {
       <DataUploadModal
         isOpen={isModalOpen}
         onClose={() => {
+          // Mark as unsaved changes when modal closes if files were uploaded
+          if (selectedNodeId) {
+            const node = nodes.find((n) => n.id === selectedNodeId);
+            if (node?.data?.fileIds && Array.isArray(node.data.fileIds) && node.data.fileIds.length > 0) {
+              hasUnsavedChangesRef.current = true;
+              setHasUnsavedChanges(true);
+            }
+          }
           setIsModalOpen(false);
           setSelectedNodeId(null);
+          setIsFileUploading(false);
         }}
         nodeId={selectedNodeId || ''}
         onFileUploaded={handleFileUploaded}
+        initialFileIds={selectedNodeId ? getNodeFileIds(selectedNodeId) : []}
+        onUploadStart={() => setIsFileUploading(true)}
+        onUploadEnd={() => setIsFileUploading(false)}
       />
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && confirmModalConfig && (
+        <ConfirmationModal
+          isOpen={showConfirmModal}
+          onClose={() => {
+            if (pendingNavigation) {
+              handleCancelNavigation();
+            } else {
+              setShowConfirmModal(false);
+            }
+          }}
+          onConfirm={() => {
+            if (confirmModalConfig.onConfirm) {
+              confirmModalConfig.onConfirm();
+            } else if (pendingNavigation) {
+              handleDiscardAndLeave();
+            } else {
+              setShowConfirmModal(false);
+            }
+          }}
+          title={confirmModalConfig.title}
+          message={confirmModalConfig.message}
+          type={confirmModalConfig.type}
+          confirmText={confirmModalConfig.confirmText}
+          onDiscard={confirmModalConfig.onDiscard}
+          discardText={confirmModalConfig.discardText}
+          showCancel={confirmModalConfig.type !== 'alert' && confirmModalConfig.type !== 'success'}
+          cancelText="Cancel"
+          confirmText={confirmModalConfig.type === 'success' ? 'OK' : confirmModalConfig.confirmText}
+        />
+      )}
     </div>
   );
 };
+
 

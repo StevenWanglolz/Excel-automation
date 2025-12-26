@@ -5,13 +5,14 @@ interface FilterBlockProps {
   data: any;
   selected: boolean;
   type?: string;
+  onDelete?: (nodeId: string) => void;
 }
 
-export const FilterBlock = ({ id, data, selected, type }: FilterBlockProps) => {
+export const FilterBlock = ({ id, data, selected, type, onDelete }: FilterBlockProps) => {
   const config = data?.config || {};
 
   return (
-    <BaseBlock id={id} data={data} selected={selected} type={type}>
+    <BaseBlock id={id} data={data} selected={selected} type={type} onDelete={onDelete}>
       <div className="text-sm text-gray-600">
         <p>Filter: {config.column || 'Select column'}</p>
         <p className="text-xs mt-1">
