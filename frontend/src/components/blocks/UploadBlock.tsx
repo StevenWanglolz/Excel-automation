@@ -9,9 +9,14 @@ interface UploadBlockProps {
 
 export const UploadBlock = ({ id, data, selected, type }: UploadBlockProps) => {
   return (
-    <BaseBlock id={id} data={data} selected={selected} type={type}>
+    <BaseBlock 
+      id={id} 
+      data={{ ...data, label: data?.label || 'Data' }} 
+      selected={selected} 
+      type={type}
+    >
       <div className="text-sm text-gray-600">
-        <p>Upload file to start</p>
+        <p>Click to upload file</p>
       </div>
     </BaseBlock>
   );

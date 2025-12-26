@@ -6,11 +6,8 @@ export const filesApi = {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await apiClient.post('/files/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    // Content-Type will be set automatically by axios for FormData
+    const response = await apiClient.post('/files/upload', formData);
     return response.data;
   },
 

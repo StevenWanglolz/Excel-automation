@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FlowCanvas } from './FlowCanvas';
 import { BlockPalette } from './BlockPalette';
+import { DataUploadModal } from './DataUploadModal';
 import { useFlowStore } from '../../store/flowStore';
 import { flowsApi, type Flow } from '../../api/flows';
 
 export const FlowBuilder = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { nodes, edges, getFlowData, clearFlow, loadFlowData } = useFlowStore();
   const [flowName, setFlowName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -14,10 +16,36 @@ export const FlowBuilder = () => {
   const [selectedFlowId, setSelectedFlowId] = useState<number | null>(null);
   const [isLoadingFlows, setIsLoadingFlows] = useState(false);
   const [showFlowList, setShowFlowList] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const handleLoadFlowById = async (flowId: number) => {
+    try {
+      const fullFlow = await flowsApi.get(flowId);
+      loadFlowData(fullFlow.flow_data);
+      setFlowName(fullFlow.name);
+      setSelectedFlowId(fullFlow.id);
+    } catch (error) {
+      console.error('Failed to load flow:', error);
+      alert('Failed to load flow');
+    }
+  };
 
   useEffect(() => {
     loadFlows();
   }, []);
+
+  useEffect(() => {
+    // Load flow from URL parameter if present
+    const flowIdParam = searchParams.get('flow');
+    if (flowIdParam) {
+      const flowId = parseInt(flowIdParam, 10);
+      if (!isNaN(flowId)) {
+        handleLoadFlowById(flowId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   useEffect(() => {
     // Close dropdown when clicking outside
@@ -124,6 +152,26 @@ export const FlowBuilder = () => {
     }
   };
 
+  const handleNodeClick = (nodeId: string, nodeType: string) => {
+    // Open modal for upload/data nodes
+    if (nodeType === 'upload' || nodeType === 'data') {
+      setSelectedNodeId(nodeId);
+      setIsModalOpen(true);
+    }
+  };
+
+  const handleFileUploaded = (fileId: number) => {
+    // Update the node data with the file ID
+    if (selectedNodeId) {
+      const node = nodes.find((n) => n.id === selectedNodeId);
+      if (node) {
+        // Store file ID in node data for later use
+        // This could be used when executing the flow
+        console.log(`File ${fileId} uploaded for node ${selectedNodeId}`);
+      }
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
       <BlockPalette />
@@ -226,9 +274,20 @@ export const FlowBuilder = () => {
           </div>
         </div>
         <div className="flex-1 relative">
-          <FlowCanvas />
+          <FlowCanvas onNodeClick={handleNodeClick} />
         </div>
       </div>
+      
+      {/* Data Upload Modal */}
+      <DataUploadModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedNodeId(null);
+        }}
+        nodeId={selectedNodeId || ''}
+        onFileUploaded={handleFileUploaded}
+      />
     </div>
   );
 };

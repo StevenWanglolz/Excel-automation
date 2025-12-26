@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile
 from sqlalchemy.orm import Session
 from typing import List
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, field_serializer
+from datetime import datetime
 from app.core.database import get_db
 from app.api.dependencies import get_current_user
 from app.models.user import User
@@ -17,10 +18,13 @@ class FileResponse(BaseModel):
     original_filename: str
     file_size: int
     mime_type: str
-    created_at: str
+    created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer('created_at')
+    def serialize_created_at(self, value: datetime, _info):
+        return value.isoformat() if value else None
 
 
 class FilePreviewResponse(BaseModel):

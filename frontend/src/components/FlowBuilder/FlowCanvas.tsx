@@ -10,6 +10,7 @@ import {
   Connection,
   NodeTypes,
   Node,
+  NodeMouseHandler,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useFlowStore } from '../../store/flowStore';
@@ -23,7 +24,11 @@ const nodeTypes: NodeTypes = {
   transform: TransformBlock,
 };
 
-export const FlowCanvas = () => {
+interface FlowCanvasProps {
+  onNodeClick?: (nodeId: string, nodeType: string) => void;
+}
+
+export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const {
     nodes: storeNodes,
@@ -128,6 +133,15 @@ export const FlowCanvas = () => {
     [edges, setEdgesState, setEdges, addStoreEdge]
   );
 
+  const handleNodeClick: NodeMouseHandler = useCallback(
+    (event, node) => {
+      if (onNodeClick) {
+        onNodeClick(node.id, node.type || '');
+      }
+    },
+    [onNodeClick]
+  );
+
   return (
     <div className="w-full h-full" ref={reactFlowWrapper}>
       <ReactFlow
@@ -138,6 +152,7 @@ export const FlowCanvas = () => {
         onConnect={onConnect}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onNodeClick={handleNodeClick}
         nodeTypes={nodeTypes}
         fitView
       >
