@@ -63,16 +63,21 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
   return (
     <>
       {/* Overlay */}
-      <div
-        className="fixed inset-0 bg-black bg-opacity-50 z-50"
+      <button
+        type="button"
+        className="fixed inset-0 bg-black bg-opacity-50 z-50 border-0 p-0 cursor-pointer"
         onClick={onClose}
+        aria-label="Close modal"
       />
       
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div
-          className="bg-white rounded-lg shadow-xl w-[1181px] h-[601px] pointer-events-auto relative"
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */}
+        <dialog
+          open
+          className="bg-white rounded-lg shadow-xl w-[1181px] h-[601px] pointer-events-auto relative border-0 p-0 m-0"
           onClick={(e) => e.stopPropagation()}
+          onCancel={onClose}
         >
           {/* Header */}
           <div className="flex items-center justify-between p-4 border-b border-gray-200">
@@ -146,7 +151,7 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
               </div>
             </div>
           </div>
-        </div>
+        </dialog>
       </div>
     </>
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FlowCanvas } from './FlowCanvas';
 import { DataUploadModal } from './DataUploadModal';
@@ -6,13 +6,15 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { OperationSelectionModal } from './OperationSelectionModal';
 import { ConfirmationModal, type ModalType } from '../Common/ConfirmationModal';
 import { useFlowStore } from '../../store/flowStore';
-import { flowsApi, type Flow } from '../../api/flows';
+import { flowsApi } from '../../api/flows';
+import type { Flow } from '../../types';
 import { Node } from '@xyflow/react';
+import { useUndoRedo } from '../../hooks/useUndoRedo';
 
 export const FlowBuilder = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { nodes, edges, getFlowData, clearFlow, loadFlowData, updateNode, addNode, setNodes, setEdges, addEdge } = useFlowStore();
+  const { nodes, edges, getFlowData, loadFlowData, updateNode, addNode, setNodes, setEdges, addEdge } = useFlowStore();
   const [flowName, setFlowName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlows, setSavedFlows] = useState<Flow[]>([]);
@@ -38,6 +40,15 @@ export const FlowBuilder = () => {
   const [isFileUploading, setIsFileUploading] = useState(false);
   const savedFlowDataRef = useRef<string>('');
   const hasUnsavedChangesRef = useRef(false);
+  const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUndoRedoInProgressRef = useRef(false);
+  const hasInitializedRef = useRef(false);
+
+  // Undo/Redo system
+  const { addToHistory, undo, redo, canUndo, canRedo, reset } = useUndoRedo({
+    nodes: getFlowData().nodes,
+    edges: getFlowData().edges,
+  });
 
   const showModal = (type: ModalType, title: string, message: string, onConfirm?: () => void, confirmText?: string) => {
     setConfirmModalConfig({ type, title, message, onConfirm, confirmText });
@@ -60,22 +71,102 @@ export const FlowBuilder = () => {
     }
   };
 
+  // Track changes for undo/redo (debounced to avoid too many history entries)
+  useEffect(() => {
+    // Don't track history if we're in the middle of an undo/redo operation
+    if (isUndoRedoInProgressRef.current) {
+      return;
+    }
+    
+    // Clear existing timeout
+    if (historyTimeoutRef.current) {
+      clearTimeout(historyTimeoutRef.current);
+    }
+    
+    // Debounce history updates to avoid excessive entries
+    historyTimeoutRef.current = setTimeout(() => {
+      // Double-check flag in case it was set during the timeout
+      if (!isUndoRedoInProgressRef.current) {
+        const flowData = getFlowData();
+        addToHistory({
+          nodes: flowData.nodes,
+          edges: flowData.edges,
+        });
+      }
+    }, 300);
+
+    return () => {
+      if (historyTimeoutRef.current) {
+        clearTimeout(historyTimeoutRef.current);
+      }
+    };
+  }, [nodes, edges, addToHistory, getFlowData]);
+
+  const handleUndo = useCallback(() => {
+    if (!canUndo) {
+      return;
+    }
+    const previousState = undo();
+    if (previousState?.nodes && previousState?.edges) {
+      // Set flag to prevent history tracking during undo
+      isUndoRedoInProgressRef.current = true;
+      // Use loadFlowData to ensure proper formatting
+      loadFlowData({
+        nodes: previousState.nodes,
+        edges: previousState.edges,
+      });
+      hasUnsavedChangesRef.current = true;
+      setHasUnsavedChanges(true);
+      // Reset flag after a delay to allow state to settle
+      setTimeout(() => {
+        isUndoRedoInProgressRef.current = false;
+      }, 500);
+    }
+  }, [canUndo, undo, loadFlowData]);
+
+  const handleRedo = useCallback(() => {
+    if (!canRedo) {
+      return;
+    }
+    const nextState = redo();
+    if (nextState?.nodes && nextState?.edges) {
+      // Set flag to prevent history tracking during redo
+      isUndoRedoInProgressRef.current = true;
+      // Use loadFlowData to ensure proper formatting
+      loadFlowData({
+        nodes: nextState.nodes,
+        edges: nextState.edges,
+      });
+      hasUnsavedChangesRef.current = true;
+      setHasUnsavedChanges(true);
+      // Reset flag after a delay to allow state to settle
+      setTimeout(() => {
+        isUndoRedoInProgressRef.current = false;
+      }, 500);
+    }
+  }, [canRedo, redo, loadFlowData]);
+
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl+Z (Windows/Linux) or Cmd+Z (Mac) for undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      // Check for Ctrl+Shift+Z or Cmd+Shift+Z for redo
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    globalThis.addEventListener('keydown', handleKeyDown);
+    return () => globalThis.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
   useEffect(() => {
     loadFlows();
-    
-    // Initialize with source node if no nodes exist
-    if (nodes.length === 0) {
-      const sourceNode: Node = {
-        id: 'source-0',
-        type: 'source',
-        position: { x: 250, y: 250 },
-        data: {
-          label: 'Data',
-          blockType: 'source',
-        },
-      };
-      addNode(sourceNode);
-    }
     
     // Initialize saved flow data reference on mount
     savedFlowDataRef.current = JSON.stringify(getFlowData());
@@ -107,13 +198,19 @@ export const FlowBuilder = () => {
     
     // Compare flow data excluding positions (position changes don't count as unsaved changes)
     const currentForComparison = {
-      nodes: currentFlowData.nodes.map(({ position, ...node }) => node),
+      nodes: currentFlowData.nodes.map((node: { position: { x: number; y: number }; [key: string]: any }) => {
+        const { position: _position, ...rest } = node;
+        return rest;
+      }),
       edges: currentFlowData.edges,
       flowName: flowName
     };
     
     const savedForComparison = {
-      nodes: savedFlowData.nodes.map(({ position, ...node }) => node),
+      nodes: (savedFlowData.nodes || []).map((node: { position: { x: number; y: number }; [key: string]: any }) => {
+        const { position: _position, ...rest } = node;
+        return rest;
+      }),
       edges: savedFlowData.edges || [],
       flowName: savedFlowData.flowName || ''
     };
@@ -136,7 +233,6 @@ export const FlowBuilder = () => {
       // Only show warning if there are unsaved changes and modal is closed
       if (hasUnsavedChangesRef.current) {
         e.preventDefault();
-        e.returnValue = '';
       }
     };
 
@@ -162,14 +258,22 @@ export const FlowBuilder = () => {
     // Load flow from URL parameter if present
     const flowIdParam = searchParams.get('flow');
     if (flowIdParam) {
-      const flowId = parseInt(flowIdParam, 10);
-      if (!isNaN(flowId) && flowId !== selectedFlowId) {
+      const flowId = Number.parseInt(flowIdParam, 10);
+      if (!Number.isNaN(flowId) && flowId !== selectedFlowId) {
         // Only load if it's a different flow than currently selected
         handleLoadFlowById(flowId);
+        hasInitializedRef.current = true;
       }
+      return;
+    }
+    // No flow parameter - initialize with source node if no nodes exist and not already initialized
+    // This handles the case when navigating to /flow-builder without a flow ID
+    if (!hasInitializedRef.current && nodes.length === 0 && !selectedFlowId) {
+      hasInitializedRef.current = true;
+      clearFlowInternal();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, selectedFlowId]);
 
   useEffect(() => {
     // Close dropdown when clicking outside
@@ -237,6 +341,12 @@ export const FlowBuilder = () => {
       }
       
       await loadFlows();
+      
+              // Reset undo/redo history after save
+              reset({
+                nodes: flowData.nodes,
+                edges: flowData.edges,
+              });
     } catch (error) {
       console.error('Failed to save flow:', error);
       showModal('error', 'Error', 'Failed to save flow');
@@ -254,11 +364,13 @@ export const FlowBuilder = () => {
         title: 'Unsaved Changes',
         message: 'You have unsaved changes. Do you want to save before loading a different flow?',
         confirmText: 'Save & Load',
-        onConfirm: async () => {
-          if (flowName.trim()) {
-            await handleSave();
-          }
-          await loadFlowInternal(flow);
+        onConfirm: () => {
+          (async () => {
+            if (flowName.trim()) {
+              await handleSave();
+            }
+            await loadFlowInternal(flow);
+          })();
         },
       });
       return;
@@ -277,6 +389,12 @@ export const FlowBuilder = () => {
       savedFlowDataRef.current = JSON.stringify({ ...fullFlow.flow_data, flowName: fullFlow.name });
       hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
+      
+      // Reset undo/redo history when loading a flow
+      reset({
+        nodes: fullFlow.flow_data.nodes,
+        edges: fullFlow.flow_data.edges,
+      });
     } catch (error) {
       console.error('Failed to load flow:', error);
       showModal('error', 'Error', 'Failed to load flow');
@@ -291,11 +409,13 @@ export const FlowBuilder = () => {
         title: 'Unsaved Changes',
         message: 'You have unsaved changes. Do you want to save before creating a new flow?',
         confirmText: 'Save & New',
-        onConfirm: async () => {
-          if (flowName.trim()) {
-            await handleSave();
-          }
-          clearFlowInternal();
+        onConfirm: () => {
+          (async () => {
+            if (flowName.trim()) {
+              await handleSave();
+            }
+            clearFlowInternal();
+          })();
         },
       });
       return;
@@ -304,24 +424,55 @@ export const FlowBuilder = () => {
   };
 
   const clearFlowInternal = () => {
-    clearFlow();
-    setFlowName('');
-    setSelectedFlowId(null);
-    setShowFlowList(false);
-    savedFlowDataRef.current = '';
-    hasUnsavedChangesRef.current = false;
-    
-    // Initialize with source node
+    // Initialize with source node (required for the flow design)
     const sourceNode: Node = {
       id: 'source-0',
       type: 'source',
       position: { x: 250, y: 250 },
       data: {
-        label: 'Data',
         blockType: 'source',
+        config: {},
+        label: 'Data',
       },
     };
-    addNode(sourceNode);
+    
+    // Use setNodes for atomic state update - this prevents duplicate nodes
+    // Clear edges and set nodes in one atomic operation
+    // Filter out any existing source nodes first to prevent duplicates
+    const existingNodes = getFlowData().nodes;
+    const hasSourceNode = existingNodes.some(n => n.id === 'source-0' && n.type === 'source');
+    
+    if (hasSourceNode) {
+      // If source node already exists, just ensure it's the only one
+      const otherNodes = existingNodes.filter(n => !(n.id === 'source-0' && n.type === 'source'));
+      setNodes([sourceNode, ...otherNodes] as Node[]);
+    } else {
+      setNodes([sourceNode]);
+    }
+    setEdges([]);
+    
+    // Reset other state
+    setFlowName('');
+    setSelectedFlowId(null);
+    setShowFlowList(false);
+    savedFlowDataRef.current = '';
+    hasUnsavedChangesRef.current = false;
+    hasInitializedRef.current = true;
+    
+    // Reset undo/redo history
+    reset({
+      nodes: [{
+        id: sourceNode.id,
+        type: sourceNode.type || 'source',
+        position: sourceNode.position,
+        data: {
+          blockType: 'source',
+          config: {},
+          label: 'Data',
+        },
+      }],
+      edges: [],
+    });
     
     // Clear the flow parameter from URL to prevent auto-reloading
     if (searchParams.get('flow')) {
@@ -337,18 +488,20 @@ export const FlowBuilder = () => {
       title: 'Delete Flow',
       message: 'Are you sure you want to delete this flow? This action cannot be undone.',
       confirmText: 'Delete',
-      onConfirm: async () => {
-        try {
-          await flowsApi.delete(flowId);
-          if (selectedFlowId === flowId) {
-            clearFlowInternal();
+      onConfirm: () => {
+        (async () => {
+          try {
+            await flowsApi.delete(flowId);
+            if (selectedFlowId === flowId) {
+              clearFlowInternal();
+            }
+            await loadFlows();
+            showModal('success', 'Success', 'Flow deleted successfully!');
+          } catch (error) {
+            console.error('Failed to delete flow:', error);
+            showModal('error', 'Error', 'Failed to delete flow');
           }
-          await loadFlows();
-          showModal('success', 'Success', 'Flow deleted successfully!');
-        } catch (error) {
-          console.error('Failed to delete flow:', error);
-          showModal('error', 'Error', 'Failed to delete flow');
-        }
+        })();
       },
     });
   };
@@ -368,10 +521,10 @@ export const FlowBuilder = () => {
   };
 
   // Handle add operation button click
-  const handleAddOperation = (nodeId: string) => {
+  const handleAddOperation = useCallback((nodeId: string) => {
     setOperationAfterNodeId(nodeId);
     setIsOperationModalOpen(true);
-  };
+  }, []);
 
   // Map operation ID to node type and blockType
   const getNodeTypeFromOperation = (operationId: string): { type: string; blockType: string } => {
@@ -397,10 +550,81 @@ export const FlowBuilder = () => {
 
     const { type, blockType } = getNodeTypeFromOperation(operation.id);
     
-    // Calculate position for new node (to the right of the after node)
+    // Node dimensions for collision detection
+    const NODE_WIDTH = 200;
+    const NODE_HEIGHT = 150;
+    const HORIZONTAL_SPACING = 80; // Spacing between nodes horizontally
+    const PADDING = 20; // Minimum padding between nodes
+    
+    // Helper function to check if two rectangles overlap
+    const checkOverlap = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): boolean => {
+      return !(
+        pos1.x + NODE_WIDTH + PADDING < pos2.x ||
+        pos2.x + NODE_WIDTH + PADDING < pos1.x ||
+        pos1.y + NODE_HEIGHT + PADDING < pos2.y ||
+        pos2.y + NODE_HEIGHT + PADDING < pos1.y
+      );
+    };
+    
+    // Find all child nodes of the afterNode (nodes connected from afterNode)
+    const childNodeIds = new Set(
+      edges
+        .filter(edge => edge.source === afterNode.id)
+        .map(edge => edge.target)
+    );
+    
+    const childNodes = nodes.filter(node => childNodeIds.has(node.id));
+    
+    // Find the rightmost child node (node with maximum x + width)
+    const rightmostChildNode = childNodes.length > 0
+      ? childNodes.reduce((rightmost, node) => {
+          const rightmostRight = rightmost.position.x + NODE_WIDTH;
+          const nodeRight = node.position.x + NODE_WIDTH;
+          return nodeRight > rightmostRight ? node : rightmost;
+        }, childNodes[0])
+      : null;
+    
+    // If there are no child nodes, position below the parent
+    // Otherwise, position at the same y level as the rightmost child, to the right of it
+    let candidateY: number;
+    let candidateX: number;
+    
+    if (rightmostChildNode) {
+      // Position at same y level as rightmost child, to the right of it
+      candidateY = rightmostChildNode.position.y;
+      candidateX = rightmostChildNode.position.x + NODE_WIDTH + HORIZONTAL_SPACING;
+    } else {
+      // No children yet, position below the parent
+      candidateY = afterNode.position.y + 200;
+      candidateX = afterNode.position.x;
+    }
+    
+    // Find a position that doesn't overlap with existing nodes
+    let foundPosition = false;
+    let maxAttempts = 20; // Prevent infinite loop
+    let attempts = 0;
+    
+    while (!foundPosition && attempts < maxAttempts) {
+      const candidatePosition = { x: candidateX, y: candidateY };
+      
+      // Check if this position overlaps with any existing node
+      const overlaps = nodes.some(node => {
+        if (node.id === afterNode.id) return false; // Skip the node we're adding after
+        return checkOverlap(candidatePosition, node.position);
+      });
+      
+      if (overlaps) {
+        // Move down and try again (fallback if horizontal position overlaps)
+        candidateY += NODE_HEIGHT + PADDING;
+        attempts++;
+      } else {
+        foundPosition = true;
+      }
+    }
+    
     const newNodePosition = {
-      x: afterNode.position.x + 300,
-      y: afterNode.position.y,
+      x: candidateX,
+      y: candidateY,
     };
 
     const newNode: Node = {
@@ -416,11 +640,13 @@ export const FlowBuilder = () => {
 
     addNode(newNode);
     
-    // Create edge from afterNode to newNode
+    // Create edge from afterNode to newNode with handle IDs
     const newEdge = {
       id: `edge-${afterNode.id}-${newNode.id}`,
       source: afterNode.id,
+      sourceHandle: 'source', // Use the source handle at the bottom
       target: newNode.id,
+      targetHandle: 'target', // Use the target handle at the top
     };
     
     // Add edge using store method
@@ -452,7 +678,6 @@ export const FlowBuilder = () => {
           hasUnsavedChangesRef.current = true;
           setHasUnsavedChanges(true);
         }
-        console.log(`Files ${fileIds.join(', ')} uploaded for node ${selectedNodeId}`);
       }
     }
   };
@@ -463,7 +688,7 @@ export const FlowBuilder = () => {
       return node.data.fileIds;
     }
     // Backward compatibility: check for single fileId
-    if (node?.data?.fileId) {
+    if (node?.data?.fileId && typeof node.data.fileId === 'number') {
       return [node.data.fileId];
     }
     return [];
@@ -487,13 +712,15 @@ export const FlowBuilder = () => {
                       title: 'Unsaved Changes',
                       message: 'You have unsaved changes. Do you want to save before leaving?',
                       confirmText: 'Save & Leave',
-                      onConfirm: async () => {
-                        if (flowName.trim()) {
-                          await handleSave();
-                        }
-                        hasUnsavedChangesRef.current = false;
-      setHasUnsavedChanges(false);
-                        navigate('/');
+                      onConfirm: () => {
+                        (async () => {
+                          if (flowName.trim()) {
+                            await handleSave();
+                          }
+                          hasUnsavedChangesRef.current = false;
+                          setHasUnsavedChanges(false);
+                          navigate('/');
+                        })();
                       },
                       onDiscard: () => {
                         hasUnsavedChangesRef.current = false;
@@ -536,20 +763,26 @@ export const FlowBuilder = () => {
                         + New Flow
                       </button>
                     </div>
-                    {isLoadingFlows ? (
-                      <div className="p-4 text-center text-sm text-gray-500">Loading...</div>
-                    ) : savedFlows.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-gray-500">No saved flows</div>
-                    ) : (
-                      <div className="divide-y divide-gray-200">
-                        {savedFlows.map((flow) => (
-                          <div
-                            key={flow.id}
-                            onClick={() => handleLoadFlow(flow)}
-                            className={`p-3 cursor-pointer hover:bg-gray-50 ${
-                              selectedFlowId === flow.id ? 'bg-indigo-50' : ''
-                            }`}
-                          >
+                    {(() => {
+                      if (isLoadingFlows) {
+                        return <div className="p-4 text-center text-sm text-gray-500">Loading...</div>;
+                      }
+                      if (savedFlows.length === 0) {
+                        return <div className="p-4 text-center text-sm text-gray-500">No saved flows</div>;
+                      }
+                      return (
+                        <div className="divide-y divide-gray-200">
+                          {savedFlows.map((flow) => {
+                            const isSelected = selectedFlowId === flow.id;
+                            return (
+                              <button
+                                key={flow.id}
+                                type="button"
+                                onClick={() => handleLoadFlow(flow)}
+                                className={`w-full text-left p-3 cursor-pointer hover:bg-gray-50 ${
+                                  isSelected ? 'bg-indigo-50' : ''
+                                }`}
+                              >
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
                                 <p className="text-sm font-medium text-gray-900">{flow.name}</p>
@@ -564,14 +797,17 @@ export const FlowBuilder = () => {
                                 onClick={(e) => handleDeleteFlow(flow.id, e)}
                                 className="ml-2 text-red-600 hover:text-red-800 text-sm"
                                 title="Delete flow"
+                                type="button"
                               >
                                 ×
                               </button>
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>
@@ -590,16 +826,49 @@ export const FlowBuilder = () => {
                   (selectedFlowId ? !hasUnsavedChanges : nodes.length === 0)
                 }
                 className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={
-                  selectedFlowId && !hasUnsavedChangesRef.current 
-                    ? 'No changes to save' 
-                    : !selectedFlowId && nodes.length === 0 
-                    ? 'Add at least one block to save'
-                    : ''
-                }
+                title={(() => {
+                  if (selectedFlowId && !hasUnsavedChangesRef.current) {
+                    return 'No changes to save';
+                  }
+                  if (!selectedFlowId && nodes.length === 0) {
+                    return 'Add at least one block to save';
+                  }
+                  return '';
+                })()}
               >
-                {isSaving ? 'Saving...' : selectedFlowId ? 'Update Flow' : 'Save Flow'}
+                {(() => {
+                  if (isSaving) return 'Saving...';
+                  if (selectedFlowId) return 'Update Flow';
+                  return 'Save Flow';
+                })()}
               </button>
+              {/* Previous and Next buttons with Figma icons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  className="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  title="Previous (Ctrl+Z / Cmd+Z)"
+                >
+                  <img 
+                    src="/assets/icons/back-icon.svg" 
+                    alt="Previous" 
+                    className="w-5 h-5 scale-y-[-1]"
+                  />
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  className="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  title="Next (Ctrl+Shift+Z / Cmd+Shift+Z)"
+                >
+                  <img 
+                    src="/assets/icons/return-icon.svg" 
+                    alt="Next" 
+                    className="w-5 h-5 rotate-180"
+                  />
+                </button>
+              </div>
               <button
                 onClick={() => {
                   if (hasUnsavedChangesRef.current) {

@@ -13,6 +13,10 @@ from app.storage.local_storage import storage
 
 router = APIRouter(prefix="/flows", tags=["flows"])
 
+# Constants
+# Constant is used in all 3 locations (lines 94, 113, 167) - linter warning is false positive
+FLOW_NOT_FOUND_MESSAGE = "Flow not found"  # noqa: S105, RUF001
+
 
 class FlowCreate(BaseModel):
     name: str
@@ -88,7 +92,7 @@ async def get_flow(
     ).first()
 
     if not flow:
-        raise HTTPException(status_code=404, detail="Flow not found")
+        raise HTTPException(status_code=404, detail=FLOW_NOT_FOUND_MESSAGE)
 
     return flow
 
@@ -107,7 +111,7 @@ async def update_flow(
     ).first()
 
     if not flow:
-        raise HTTPException(status_code=404, detail="Flow not found")
+        raise HTTPException(status_code=404, detail=FLOW_NOT_FOUND_MESSAGE)
 
     # If flow_data is being updated, check for orphaned files
     if flow_update.flow_data is not None:
@@ -161,7 +165,7 @@ async def delete_flow(
     ).first()
 
     if not flow:
-        raise HTTPException(status_code=404, detail="Flow not found")
+        raise HTTPException(status_code=404, detail=FLOW_NOT_FOUND_MESSAGE)
 
     # Get all file IDs referenced by this flow
     file_ids = file_reference_service.get_files_for_flow(flow)

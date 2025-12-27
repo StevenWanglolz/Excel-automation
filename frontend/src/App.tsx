@@ -6,6 +6,7 @@ import { Register } from './components/Auth/Register';
 import { ProtectedRoute } from './components/Auth/ProtectedRoute';
 import { Dashboard } from './components/Dashboard/Dashboard';
 import { FlowBuilder } from './components/FlowBuilder/FlowBuilder';
+import { AutomationTypeSelection } from './components/AutomationTypeSelection/AutomationTypeSelection';
 
 function App() {
   const { checkAuth, isAuthenticated } = useAuthStore();
@@ -15,7 +16,12 @@ function App() {
   }, [checkAuth]);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login />} />
         <Route path="/register" element={isAuthenticated ? <Navigate to="/" /> : <Register />} />
@@ -24,6 +30,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/new-automation"
+          element={
+            <ProtectedRoute>
+              <AutomationTypeSelection />
             </ProtectedRoute>
           }
         />

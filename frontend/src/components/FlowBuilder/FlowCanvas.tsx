@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -39,23 +39,30 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
 
   const [nodes, setNodesState, onNodesChange] = useNodesState(storeNodes);
   const [edges, setEdgesState, onEdgesChange] = useEdgesState(storeEdges);
+  const storeNodesRef = useRef(storeNodes);
+
+  // Keep ref in sync with store nodes
+  useEffect(() => {
+    storeNodesRef.current = storeNodes;
+  }, [storeNodes]);
 
   // Sync with store
-  useMemo(() => {
+  useEffect(() => {
     setNodesState(storeNodes);
   }, [storeNodes, setNodesState]);
 
-  useMemo(() => {
+  useEffect(() => {
     setEdgesState(storeEdges);
   }, [storeEdges, setEdgesState]);
 
-  // Handle node deletion
+  // Handle node deletion - use ref to avoid dependency on storeNodes
   const handleDeleteNode = useCallback((nodeId: string) => {
     deleteNode(nodeId);
-    const updatedNodes = nodes.filter(n => n.id !== nodeId);
+    // Use ref to get latest nodes without adding dependency
+    const updatedNodes = storeNodesRef.current.filter(n => n.id !== nodeId);
     setNodesState(updatedNodes);
     setNodes(updatedNodes);
-  }, [nodes, deleteNode, setNodesState, setNodes]);
+  }, [deleteNode, setNodesState, setNodes]);
 
   // Create node types with delete handler and add operation button
   const nodeTypes: NodeTypes = useMemo(() => ({
