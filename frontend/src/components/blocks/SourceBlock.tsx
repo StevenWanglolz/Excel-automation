@@ -1,6 +1,6 @@
 import { BaseBlock } from './BaseBlock';
 
-interface UploadBlockProps {
+interface SourceBlockProps {
   id: string;
   data: any;
   selected: boolean;
@@ -10,7 +10,10 @@ interface UploadBlockProps {
   showAddButton?: boolean;
 }
 
-export const UploadBlock = ({ id, data, selected, type, onDelete, onAddOperation, showAddButton }: UploadBlockProps) => {
+export const SourceBlock = ({ id, data, selected, type, onDelete, onAddOperation, showAddButton }: SourceBlockProps) => {
+  const fileIds = data?.fileIds || [];
+  const hasFiles = Array.isArray(fileIds) && fileIds.length > 0;
+
   return (
     <BaseBlock 
       id={id} 
@@ -22,7 +25,11 @@ export const UploadBlock = ({ id, data, selected, type, onDelete, onAddOperation
       showAddButton={showAddButton}
     >
       <div className="text-sm text-gray-600">
-        <p>Click to upload file</p>
+        {hasFiles ? (
+          <p>{fileIds.length} file(s) uploaded</p>
+        ) : (
+          <p>Click to upload file</p>
+        )}
       </div>
     </BaseBlock>
   );

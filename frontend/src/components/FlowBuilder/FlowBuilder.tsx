@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FlowCanvas } from './FlowCanvas';
-import { BlockPalette } from './BlockPalette';
 import { DataUploadModal } from './DataUploadModal';
+import { PropertiesPanel } from './PropertiesPanel';
+import { OperationSelectionModal } from './OperationSelectionModal';
 import { ConfirmationModal, type ModalType } from '../Common/ConfirmationModal';
 import { useFlowStore } from '../../store/flowStore';
 import { flowsApi, type Flow } from '../../api/flows';
+import { Node } from '@xyflow/react';
 
 export const FlowBuilder = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { nodes, edges, getFlowData, clearFlow, loadFlowData, updateNode } = useFlowStore();
+  const { nodes, edges, getFlowData, clearFlow, loadFlowData, updateNode, addNode, setNodes, setEdges, addEdge } = useFlowStore();
   const [flowName, setFlowName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlows, setSavedFlows] = useState<Flow[]>([]);
@@ -19,6 +21,8 @@ export const FlowBuilder = () => {
   const [showFlowList, setShowFlowList] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isOperationModalOpen, setIsOperationModalOpen] = useState(false);
+  const [operationAfterNodeId, setOperationAfterNodeId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmModalConfig, setConfirmModalConfig] = useState<{
     type: ModalType;
@@ -46,7 +50,8 @@ export const FlowBuilder = () => {
       loadFlowData(fullFlow.flow_data);
       setFlowName(fullFlow.name);
       setSelectedFlowId(fullFlow.id);
-      savedFlowDataRef.current = JSON.stringify(fullFlow.flow_data);
+      // Save state including flowName for comparison
+      savedFlowDataRef.current = JSON.stringify({ ...fullFlow.flow_data, flowName: fullFlow.name });
       hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
     } catch (error) {
@@ -57,6 +62,21 @@ export const FlowBuilder = () => {
 
   useEffect(() => {
     loadFlows();
+    
+    // Initialize with source node if no nodes exist
+    if (nodes.length === 0) {
+      const sourceNode: Node = {
+        id: 'source-0',
+        type: 'source',
+        position: { x: 250, y: 250 },
+        data: {
+          label: 'Data',
+          blockType: 'source',
+        },
+      };
+      addNode(sourceNode);
+    }
+    
     // Initialize saved flow data reference on mount
     savedFlowDataRef.current = JSON.stringify(getFlowData());
     hasUnsavedChangesRef.current = false;
@@ -65,22 +85,44 @@ export const FlowBuilder = () => {
 
   // Track unsaved changes
   useEffect(() => {
-    const currentFlowData = JSON.stringify(getFlowData());
-    // Only mark as unsaved if there's a meaningful difference from saved state
-    // Don't mark as unsaved just because there are nodes - wait for actual changes
-    const hasChanges = currentFlowData !== savedFlowDataRef.current;
+    // For new flows (no selectedFlowId), always allow saving if there are nodes
+    if (!selectedFlowId) {
+      // For new flows, mark as having changes if there are any nodes
+      const hasNodes = nodes.length > 0;
+      hasUnsavedChangesRef.current = hasNodes;
+      setHasUnsavedChanges(hasNodes);
+      return;
+    }
+    
+    // For existing flows, compare with saved state
+    // Skip change detection if we're loading a flow or if there's no saved state yet
+    if (!savedFlowDataRef.current) {
+      // Don't mark as unsaved if we haven't loaded the saved state yet
+      return;
+    }
+    
+    // Get current flow data and saved flow data
+    const currentFlowData = getFlowData();
+    const savedFlowData = JSON.parse(savedFlowDataRef.current);
+    
+    // Compare flow data excluding positions (position changes don't count as unsaved changes)
+    const currentForComparison = {
+      nodes: currentFlowData.nodes.map(({ position, ...node }) => node),
+      edges: currentFlowData.edges,
+      flowName: flowName
+    };
+    
+    const savedForComparison = {
+      nodes: savedFlowData.nodes.map(({ position, ...node }) => node),
+      edges: savedFlowData.edges || [],
+      flowName: savedFlowData.flowName || ''
+    };
+    
+    // Only mark as unsaved if there's a meaningful difference (excluding positions)
+    const hasChanges = JSON.stringify(currentForComparison) !== JSON.stringify(savedForComparison);
     hasUnsavedChangesRef.current = hasChanges;
     setHasUnsavedChanges(hasChanges);
   }, [nodes, edges, flowName, selectedFlowId, getFlowData]);
-
-  // Update saved flow data reference after save/load
-  useEffect(() => {
-    if (selectedFlowId && nodes.length > 0) {
-      savedFlowDataRef.current = JSON.stringify(getFlowData());
-      hasUnsavedChangesRef.current = false;
-      setHasUnsavedChanges(false);
-    }
-  }, [selectedFlowId]);
 
   // Handle browser back/forward and page unload
   useEffect(() => {
@@ -173,7 +215,8 @@ export const FlowBuilder = () => {
           description: '',
           flow_data: flowData,
         });
-        savedFlowDataRef.current = JSON.stringify(flowData);
+        // Save state including flowName for comparison
+        savedFlowDataRef.current = JSON.stringify({ ...flowData, flowName });
         hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
         showModal('success', 'Success', 'Flow updated successfully!');
@@ -184,7 +227,8 @@ export const FlowBuilder = () => {
         description: '',
         flow_data: flowData,
       });
-        savedFlowDataRef.current = JSON.stringify(flowData);
+        // Save state including flowName for comparison
+        savedFlowDataRef.current = JSON.stringify({ ...flowData, flowName });
         hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
         showModal('success', 'Success', 'Flow saved successfully!');
@@ -229,7 +273,8 @@ export const FlowBuilder = () => {
       setFlowName(fullFlow.name);
       setSelectedFlowId(fullFlow.id);
       setShowFlowList(false);
-      savedFlowDataRef.current = JSON.stringify(fullFlow.flow_data);
+      // Save state including flowName for comparison
+      savedFlowDataRef.current = JSON.stringify({ ...fullFlow.flow_data, flowName: fullFlow.name });
       hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
     } catch (error) {
@@ -265,6 +310,19 @@ export const FlowBuilder = () => {
     setShowFlowList(false);
     savedFlowDataRef.current = '';
     hasUnsavedChangesRef.current = false;
+    
+    // Initialize with source node
+    const sourceNode: Node = {
+      id: 'source-0',
+      type: 'source',
+      position: { x: 250, y: 250 },
+      data: {
+        label: 'Data',
+        blockType: 'source',
+      },
+    };
+    addNode(sourceNode);
+    
     // Clear the flow parameter from URL to prevent auto-reloading
     if (searchParams.get('flow')) {
       navigate('/flow-builder', { replace: true });
@@ -296,17 +354,88 @@ export const FlowBuilder = () => {
   };
 
   const handleNodeClick = (nodeId: string, nodeType: string) => {
-    // Open modal for upload/data nodes
-    if (nodeType === 'upload' || nodeType === 'data') {
-      setSelectedNodeId(nodeId);
+    // Set selected node for properties panel
+    setSelectedNodeId(nodeId);
+    
+    // Open modal for upload/data/source nodes (for file upload)
+    if (nodeType === 'upload' || nodeType === 'data' || nodeType === 'source') {
       setIsModalOpen(true);
     }
   };
 
+  const handleClosePropertiesPanel = () => {
+    setSelectedNodeId(null);
+  };
+
+  // Handle add operation button click
+  const handleAddOperation = (nodeId: string) => {
+    setOperationAfterNodeId(nodeId);
+    setIsOperationModalOpen(true);
+  };
+
+  // Map operation ID to node type and blockType
+  const getNodeTypeFromOperation = (operationId: string): { type: string; blockType: string } => {
+    const mapping: Record<string, { type: string; blockType: string }> = {
+      'remove-column': { type: 'transform', blockType: 'remove_column' },
+      'rename-column': { type: 'transform', blockType: 'rename_columns' },
+      'rearrange-column': { type: 'transform', blockType: 'rearrange_columns' },
+      'sort-rows': { type: 'transform', blockType: 'sort_rows' },
+      'remove-duplicates': { type: 'transform', blockType: 'remove_duplicates' },
+      'filter-rows': { type: 'filter', blockType: 'filter' },
+      'delete-rows': { type: 'filter', blockType: 'delete_rows' },
+      'join-lookup': { type: 'transform', blockType: 'join' },
+    };
+    return mapping[operationId] || { type: 'transform', blockType: operationId };
+  };
+
+  // Handle operation selection from modal
+  const handleOperationSelect = (operation: { id: string; label: string; type: string }) => {
+    if (!operationAfterNodeId) return;
+
+    const afterNode = nodes.find((n) => n.id === operationAfterNodeId);
+    if (!afterNode) return;
+
+    const { type, blockType } = getNodeTypeFromOperation(operation.id);
+    
+    // Calculate position for new node (to the right of the after node)
+    const newNodePosition = {
+      x: afterNode.position.x + 300,
+      y: afterNode.position.y,
+    };
+
+    const newNode: Node = {
+      id: `${type}-${Date.now()}`,
+      type: type,
+      position: newNodePosition,
+      data: {
+        blockType: blockType,
+        label: operation.label,
+        config: {},
+      },
+    };
+
+    addNode(newNode);
+    
+    // Create edge from afterNode to newNode
+    const newEdge = {
+      id: `edge-${afterNode.id}-${newNode.id}`,
+      source: afterNode.id,
+      target: newNode.id,
+    };
+    
+    // Add edge using store method
+    addEdge(newEdge);
+
+    setIsOperationModalOpen(false);
+    setOperationAfterNodeId(null);
+    
+    // Mark as unsaved changes
+    hasUnsavedChangesRef.current = true;
+    setHasUnsavedChanges(true);
+  };
+
   const handleFileUploaded = (fileIds: number[]) => {
     // Update the node data with the file IDs array
-    // Note: Don't mark as unsaved changes here - wait until modal closes
-    // This prevents beforeunload from triggering during file operations
     if (selectedNodeId) {
       const node = nodes.find((n) => n.id === selectedNodeId);
       if (node) {
@@ -317,8 +446,12 @@ export const FlowBuilder = () => {
             fileIds: fileIds
           }
         });
-        // Mark as unsaved changes only after upload completes and modal is still open
-        // This will be handled when the modal closes
+        // Mark as unsaved changes when files are uploaded
+        // This allows the user to save the flow after uploading files
+        if (fileIds.length > 0) {
+          hasUnsavedChangesRef.current = true;
+          setHasUnsavedChanges(true);
+        }
         console.log(`Files ${fileIds.join(', ')} uploaded for node ${selectedNodeId}`);
       }
     }
@@ -338,7 +471,8 @@ export const FlowBuilder = () => {
 
   return (
     <div className="flex h-screen bg-gray-100">
-      <BlockPalette />
+      
+      {/* Center - Canvas */}
       <div className="flex-1 flex flex-col">
         <div className="bg-white border-b border-gray-200 p-4">
           <div className="flex items-center justify-between">
@@ -450,9 +584,19 @@ export const FlowBuilder = () => {
               />
               <button
                 onClick={handleSave}
-                disabled={isSaving || !flowName.trim() || (selectedFlowId && !hasUnsavedChanges)}
+                disabled={
+                  isSaving || 
+                  !flowName.trim() || 
+                  (selectedFlowId ? !hasUnsavedChanges : nodes.length === 0)
+                }
                 className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={selectedFlowId && !hasUnsavedChangesRef.current ? 'No changes to save' : ''}
+                title={
+                  selectedFlowId && !hasUnsavedChangesRef.current 
+                    ? 'No changes to save' 
+                    : !selectedFlowId && nodes.length === 0 
+                    ? 'Add at least one block to save'
+                    : ''
+                }
               >
                 {isSaving ? 'Saving...' : selectedFlowId ? 'Update Flow' : 'Save Flow'}
               </button>
@@ -481,22 +625,22 @@ export const FlowBuilder = () => {
           </div>
         </div>
         <div className="flex-1 relative">
-          <FlowCanvas onNodeClick={handleNodeClick} />
+          <FlowCanvas onNodeClick={handleNodeClick} onAddOperation={handleAddOperation} />
         </div>
       </div>
+      
+      {/* Right Sidebar - Properties Panel */}
+      <PropertiesPanel 
+        selectedNodeId={selectedNodeId} 
+        onClose={handleClosePropertiesPanel}
+      />
       
       {/* Data Upload Modal */}
       <DataUploadModal
         isOpen={isModalOpen}
         onClose={() => {
-          // Mark as unsaved changes when modal closes if files were uploaded
-          if (selectedNodeId) {
-            const node = nodes.find((n) => n.id === selectedNodeId);
-            if (node?.data?.fileIds && Array.isArray(node.data.fileIds) && node.data.fileIds.length > 0) {
-              hasUnsavedChangesRef.current = true;
-              setHasUnsavedChanges(true);
-            }
-          }
+          // hasUnsavedChanges is already set in handleFileUploaded when files are uploaded
+          // No need to check again here - the useEffect will also detect changes
           setIsModalOpen(false);
           setSelectedNodeId(null);
           setIsFileUploading(false);
@@ -506,6 +650,16 @@ export const FlowBuilder = () => {
         initialFileIds={selectedNodeId ? getNodeFileIds(selectedNodeId) : []}
         onUploadStart={() => setIsFileUploading(true)}
         onUploadEnd={() => setIsFileUploading(false)}
+      />
+      
+      {/* Operation Selection Modal */}
+      <OperationSelectionModal
+        isOpen={isOperationModalOpen}
+        onClose={() => {
+          setIsOperationModalOpen(false);
+          setOperationAfterNodeId(null);
+        }}
+        onSelect={handleOperationSelect}
       />
 
       {/* Confirmation Modal */}

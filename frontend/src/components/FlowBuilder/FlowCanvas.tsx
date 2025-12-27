@@ -11,18 +11,21 @@ import {
   NodeTypes,
   Node,
   NodeMouseHandler,
+  ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useFlowStore } from '../../store/flowStore';
 import { UploadBlock } from '../blocks/UploadBlock';
 import { FilterBlock } from '../blocks/FilterBlock';
 import { TransformBlock } from '../blocks/TransformBlock';
+import { SourceBlock } from '../blocks/SourceBlock';
 
 interface FlowCanvasProps {
   onNodeClick?: (nodeId: string, nodeType: string) => void;
+  onAddOperation?: (afterNodeId: string) => void;
 }
 
-export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
+export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const {
     nodes: storeNodes,
@@ -54,22 +57,62 @@ export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
     setNodes(updatedNodes);
   }, [nodes, deleteNode, setNodesState, setNodes]);
 
-  // Create node types with delete handler
+  // Create node types with delete handler and add operation button
   const nodeTypes: NodeTypes = useMemo(() => ({
-    upload: (props: any) => <UploadBlock {...props} onDelete={handleDeleteNode} />,
-    filter: (props: any) => <FilterBlock {...props} onDelete={handleDeleteNode} />,
-    transform: (props: any) => <TransformBlock {...props} onDelete={handleDeleteNode} />,
-  }), [handleDeleteNode]);
+    source: (props: any) => (
+      <SourceBlock 
+        {...props} 
+        onDelete={undefined}
+        onAddOperation={onAddOperation}
+        showAddButton={true}
+      />
+    ),
+    upload: (props: any) => (
+      <UploadBlock 
+        {...props} 
+        onDelete={handleDeleteNode}
+        onAddOperation={onAddOperation}
+        showAddButton={true}
+      />
+    ),
+    filter: (props: any) => (
+      <FilterBlock 
+        {...props} 
+        onDelete={handleDeleteNode}
+        onAddOperation={onAddOperation}
+        showAddButton={true}
+      />
+    ),
+    transform: (props: any) => (
+      <TransformBlock 
+        {...props} 
+        onDelete={handleDeleteNode}
+        onAddOperation={onAddOperation}
+        showAddButton={true}
+      />
+    ),
+  }), [handleDeleteNode, onAddOperation]);
 
   // Sync changes back to store
   const handleNodesChange = useCallback(
     (changes: any) => {
-      onNodesChange(changes);
+      // Filter out position changes for source nodes (make them unmovable)
+      const filteredChanges = changes.filter((change: any) => {
+        if (change.type === 'position') {
+          const node = nodes.find((n) => n.id === change.id);
+          if (node?.type === 'source') {
+            return false; // Prevent position changes for source nodes
+          }
+        }
+        return true;
+      });
+      
+      onNodesChange(filteredChanges);
       // Update store after changes
       const updatedNodes = nodes.map((node) => {
-        const change = changes.find((c: any) => c.id === node.id);
+        const change = filteredChanges.find((c: any) => c.id === node.id);
         if (change) {
-          if (change.type === 'position' && change.position) {
+          if (change.type === 'position' && change.position && node.type !== 'source') {
             return { ...node, position: change.position };
           }
           if (change.type === 'select') {
@@ -152,6 +195,63 @@ export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
     [onNodeClick]
   );
 
+  // Store React Flow instance reference
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+
+  const onInit = useCallback((instance: ReactFlowInstance) => {
+    reactFlowInstanceRef.current = instance;
+  }, []);
+
+  // Custom wheel handler that checks for modifier keys (Cmd/Ctrl)
+  // When modifier is pressed: zoom
+  // When no modifier: manually pan the canvas
+  const onWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!reactFlowInstanceRef.current) return;
+    
+    const isModifierPressed = event.metaKey || event.ctrlKey;
+    
+    if (isModifierPressed) {
+      // Prevent default scroll behavior when zooming
+      event.preventDefault();
+      event.stopPropagation();
+      
+      // Calculate zoom delta from wheel event
+      // Negative deltaY = scroll up = zoom in
+      // Positive deltaY = scroll down = zoom out
+      const zoomSensitivity = 0.1;
+      const delta = event.deltaY > 0 ? -zoomSensitivity : zoomSensitivity;
+      const currentZoom = reactFlowInstanceRef.current.getZoom();
+      const newZoom = Math.max(0.1, Math.min(2, currentZoom + delta));
+      
+      // Get mouse position relative to the viewport
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      
+      // Convert screen coordinates to flow coordinates
+      const flowPosition = reactFlowInstanceRef.current.screenToFlowPosition({ x, y });
+      
+      // Zoom to the point under the cursor
+      reactFlowInstanceRef.current.zoomTo(newZoom, {
+        x: flowPosition.x,
+        y: flowPosition.y,
+        duration: 0,
+      });
+    } else {
+      // When no modifier, pan the canvas
+      event.preventDefault();
+      
+      // Get pan speed from scroll delta
+      // Negative values because we want to pan in the direction of scroll
+      const panSpeed = 1;
+      const deltaX = -event.deltaX * panSpeed;
+      const deltaY = -event.deltaY * panSpeed;
+      
+      // Pan the viewport
+      reactFlowInstanceRef.current.panBy({ x: deltaX, y: deltaY });
+    }
+  }, []);
+
   return (
     <div className="w-full h-full" ref={reactFlowWrapper}>
       <ReactFlow
@@ -163,8 +263,15 @@ export const FlowCanvas = ({ onNodeClick }: FlowCanvasProps) => {
         onDrop={onDrop}
         onDragOver={onDragOver}
         onNodeClick={handleNodeClick}
+        onInit={onInit}
+        onWheel={onWheel}
         nodeTypes={nodeTypes}
         fitView
+        zoomOnScroll={false}
+        zoomOnPinch={true}
+        panOnScroll={true}
+        panOnScrollMode="free"
+        panOnScrollSpeed={1}
       >
         <Background />
         <Controls />
