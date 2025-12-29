@@ -46,6 +46,8 @@ async def upload_file(
     db: Session = Depends(get_db)
 ):
     """Upload a file (Excel or CSV)"""
+    # Delegate to service layer - keeps route thin and business logic testable
+    # Service handles validation, file storage, and database record creation
     db_file = await file_service.upload_file(db, current_user.id, file)
     return db_file
 
@@ -71,6 +73,8 @@ async def cleanup_orphaned_files(
     This is useful for cleaning up files that may have been orphaned
     before reference tracking was implemented.
     """
+    # Find files that aren't referenced by any flow
+    # These accumulate when flows are deleted or files are removed from flows
     orphaned_files = file_reference_service.get_orphaned_files(
         current_user.id, db)
 
@@ -84,11 +88,13 @@ async def cleanup_orphaned_files(
     deleted_files = []
     from app.storage.local_storage import storage
 
+    # Delete each orphaned file from both disk and database
+    # Use try/except to continue even if one file fails (prevents partial cleanup)
     for file in orphaned_files:
         try:
-            # Delete from disk
+            # Delete from disk first - if this fails, we don't want orphaned DB records
             storage.delete_file(current_user.id, file.filename)
-            # Delete from database
+            # Delete from database - removes the record
             db.delete(file)
             deleted_files.append({
                 "id": file.id,
@@ -96,8 +102,10 @@ async def cleanup_orphaned_files(
             })
         except Exception as e:
             # Log error but continue with other files
+            # Prevents one bad file from blocking cleanup of others
             print(f"Error deleting orphaned file {file.id}: {str(e)}")
 
+    # Commit all deletions at once - more efficient than committing per file
     db.commit()
 
     return {

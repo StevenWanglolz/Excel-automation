@@ -6,6 +6,7 @@ from fastapi import UploadFile, HTTPException
 from sqlalchemy.orm import Session
 from app.models.file import File
 from app.storage.local_storage import storage
+from app.core.config import settings
 
 
 class FileService:
@@ -16,7 +17,8 @@ class FileService:
         file: UploadFile
     ) -> File:
         """Upload and parse a file"""
-        # Validate file type
+        # Validate file type - prevents malicious file uploads and ensures we can process the file
+        # Without this check, users could upload arbitrary files that break our parsing logic
         if not file.filename:
             raise HTTPException(status_code=400, detail="Filename is required")
         
@@ -29,13 +31,29 @@ class FileService:
                 detail=f"File type not supported. Allowed: {', '.join(allowed_extensions)}"
             )
         
-        # Save file
+        # Save file to disk with user-specific directory structure
+        # Returns both the full path and the generated filename (for uniqueness)
+        # Note: save_file() already validates file size before saving
         file_path, filename = await storage.save_file(file, user_id)
         
-        # Get file size
+        # Get file size after saving - needed for database record
+        # Double-check size as safety net (though save_file already validated)
         file_size = Path(file_path).stat().st_size
         
-        # Determine MIME type
+        # Additional validation check (safety net in case size check was bypassed)
+        # If file somehow exceeds limit, delete it and raise error
+        if file_size > settings.MAX_FILE_SIZE:
+            # Clean up: delete the file we just saved
+            storage.delete_file(user_id, filename)
+            max_size_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+            file_size_mb = file_size / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,  # 413 = Payload Too Large
+                detail=f"File size ({file_size_mb:.2f}MB) exceeds maximum allowed size ({max_size_mb:.0f}MB)"
+            )
+        
+        # Map file extension to MIME type for proper HTTP headers
+        # Used when serving files back to clients
         mime_type_map = {
             ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             ".xls": "application/vnd.ms-excel",
@@ -43,7 +61,8 @@ class FileService:
         }
         mime_type = mime_type_map.get(file_ext, "application/octet-stream")
         
-        # Create database record
+        # Create database record linking file to user
+        # Stores both generated filename (for disk lookup) and original filename (for user display)
         db_file = File(
             user_id=user_id,
             filename=filename,
@@ -54,6 +73,7 @@ class FileService:
         )
         db.add(db_file)
         db.commit()
+        # Refresh to load auto-generated fields (id, created_at) from database
         db.refresh(db_file)
         
         return db_file
@@ -70,23 +90,29 @@ class FileService:
             if path.suffix.lower() == ".csv":
                 df = pd.read_csv(file_path)
             else:
-                # If sheet_name is None, read first sheet by default
-                # pd.read_excel with sheet_name=None returns a dict of all sheets
+                # Excel files can have multiple sheets - handle both single sheet and multi-sheet cases
+                # If sheet_name is None, pd.read_excel returns a dict of all sheets
+                # If sheet_name is specified, returns DataFrame directly (single sheet)
                 result = pd.read_excel(file_path, engine="openpyxl", sheet_name=sheet_name)
                 
-                # If result is a dict (multiple sheets), get the first sheet
+                # Handle case where Excel file has multiple sheets
+                # pd.read_excel returns dict when sheet_name=None or when reading all sheets
                 if isinstance(result, dict):
                     if sheet_name and sheet_name in result:
                         df = result[sheet_name]
                     else:
-                        # Get first sheet if sheet_name not specified or not found
+                        # Fallback to first sheet if requested sheet not found or not specified
+                        # This prevents errors when user requests non-existent sheet
                         first_sheet_name = list(result.keys())[0]
                         df = result[first_sheet_name]
                 else:
+                    # Single sheet case - result is already a DataFrame
                     df = result
             
             return df
         except Exception as e:
+            # Wrap parsing errors to provide user-friendly messages
+            # Original pandas errors can be cryptic (e.g., "UnicodeDecodeError")
             raise HTTPException(
                 status_code=400,
                 detail=f"Error parsing file: {str(e)}"
@@ -118,28 +144,32 @@ class FileService:
         """Get preview of DataFrame"""
         preview_df = df.head(rows).copy()
 
-        # Replace NaN, infinity, and very large values with None for JSON compliance
+        # Clean data for JSON serialization - pandas DataFrames contain values that JSON can't handle
+        # Without this cleaning, API responses would fail with serialization errors
         for col in preview_df.columns:
-            # Replace NaN with None
+            # Replace NaN with None - JSON doesn't support NaN, only null
             preview_df[col] = preview_df[col].replace([np.nan], None)
 
-            # Replace infinity values with None
+            # Replace infinity values with None - JSON doesn't support infinity
             preview_df[col] = preview_df[col].replace([np.inf, -np.inf], None)
 
-            # For numeric columns, check for very large values that might cause JSON issues
+            # Handle very large numbers that exceed JSON's safe integer range
+            # JavaScript's Number.MAX_SAFE_INTEGER is 2^53 - 1
+            # Values beyond this can lose precision when sent to frontend
             if preview_df[col].dtype in [np.float64, np.float32]:
-                # Replace values that are too large for JSON (max safe integer is 2^53 - 1)
                 max_safe = 2**53 - 1
                 min_safe = -(2**53 - 1)
                 mask = (preview_df[col] > max_safe) | (
                     preview_df[col] < min_safe)
                 preview_df.loc[mask, col] = None
 
-        # Convert to dict, handling any remaining issues
+        # Convert to dict format for JSON response
+        # Use try/except because some edge cases (e.g., complex objects) can still fail
         try:
             preview_rows = preview_df.to_dict(orient="records")
         except (ValueError, OverflowError):
-            # Fallback: convert each row manually
+            # Fallback: manually convert each row to handle edge cases
+            # This ensures we can always return preview data even with problematic values
             preview_rows = []
             for _, row in preview_df.iterrows():
                 row_dict = {}
@@ -148,7 +178,8 @@ class FileService:
                     if pd.isna(val) or val in [np.inf, -np.inf]:
                         row_dict[col] = None
                     elif isinstance(val, (np.integer, np.floating)):
-                        # Convert numpy types to Python native types
+                        # Convert numpy types to Python native types for JSON serialization
+                        # numpy types aren't directly JSON serializable
                         if np.isnan(val) or np.isinf(val):
                             row_dict[col] = None
                         else:

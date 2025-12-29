@@ -78,24 +78,24 @@ export const BlockPalette = () => {
                   {category.label}
                 </h3>
               </div>
-      <div className="space-y-2">
+              <div className="space-y-2">
                 {categoryBlocks.map((block) => (
-          <div
-            key={block.id}
-            draggable
-            onDragStart={(e) => onDragStart(e, block)}
-            onClick={() => handleAddBlock(block)}
-            className="p-3 border border-gray-300 rounded-lg cursor-move hover:bg-gray-50 hover:border-indigo-500 transition-colors"
-          >
+                  <button
+                    key={block.id}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, block)}
+                    onClick={() => handleAddBlock(block)}
+                    className="w-full text-left p-3 border border-gray-300 rounded-lg cursor-move hover:bg-gray-50 hover:border-indigo-500 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 bg-white"
+                  >
                     <div className="flex items-center space-x-2">
                       {block.icon && <span className="text-base">{block.icon}</span>}
                       <div className="flex-1">
-            <div className="font-medium text-sm">{block.label}</div>
+                        <div className="font-medium text-sm">{block.label}</div>
                         <div className="text-xs text-gray-500 mt-0.5">{block.category}</div>
                       </div>
                     </div>
-          </div>
-        ))}
+                  </button>
+                ))}
               </div>
             </div>
           );

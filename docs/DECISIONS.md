@@ -1,0 +1,157 @@
+# Architectural Decisions
+
+This document records important architectural decisions and their rationale. Each entry explains why a choice was made and when to revisit it.
+
+## Technology Choices
+
+### 2024-12-27 – Chose FastAPI over Flask/Django
+
+**Reason:** Automatic API docs, built-in async, type hints with Pydantic, less boilerplate than Flask, lighter than Django for API-only app.
+
+**Revisit if:** Need Django admin panel or complex ORM features.
+
+### 2024-12-27 – Chose Zustand over Redux/Context
+
+**Reason:** Minimal boilerplate, small bundle size, simple API, TypeScript support. Redux has too much boilerplate, Context API has performance issues.
+
+**Revisit if:** Need time-travel debugging or complex middleware requirements.
+
+### 2024-12-27 – Chose React Flow for flow builder
+
+**Reason:** Built for node-based editors, handles drag/connect/pan/zoom, well-maintained, TypeScript support. Building custom would be too much work.
+
+**Revisit if:** Need features React Flow doesn't support or performance becomes an issue.
+
+### 2024-12-27 – Chose PostgreSQL over SQLite/MySQL
+
+**Reason:** Production-ready, better concurrency, rich features (JSON columns), Docker setup easy. SQLite not suitable for production, MySQL has weaker JSON support.
+
+**Revisit if:** Need embedded database or specific MySQL features.
+
+## Architecture Decisions
+
+### 2024-12-27 – Registry pattern for transforms
+
+**Reason:** Allows adding new transforms without modifying core code, dynamic lookup, easy to test. Hardcoded if/else would require core changes for each transform.
+
+**Revisit if:** Need compile-time type checking or transform dependencies.
+
+### 2024-12-27 – Service layer pattern
+
+**Reason:** Routes handle HTTP, services handle business logic. Services testable independently, reusable. Business logic in routes would be harder to test.
+
+**Revisit if:** App becomes very small (might be overkill) or need different abstraction.
+
+### 2024-12-27 – File storage on disk, not in database
+
+**Reason:** Database would bloat with binary data, files can be large (50MB), easier to manage separately, can move to cloud storage later.
+
+**Revisit if:** Need multi-server deployment (requires shared storage like S3) or want automatic database backups to include files.
+
+### 2024-12-27 – File size validation enforced (50MB limit)
+
+**Reason:** Prevents disk space issues, ensures reasonable processing times, protects against accidental large uploads. Validation happens before saving to disk (efficient) with a secondary check after saving (safety net).
+
+**Implementation:** File size checked in `local_storage.py` before saving, and again in `file_service.py` after saving. Files exceeding limit return HTTP 413 error and are not saved.
+
+**Revisit if:** Need to support larger files (would require chunked processing, streaming, or background jobs).
+
+### 2024-12-27 – Periodic cleanup of orphaned files
+
+**Reason:** Automatically free up disk space, prevent orphaned files from accumulating, improve storage efficiency. APScheduler runs cleanup every 6 hours.
+
+**Implementation:** `app/core/scheduler.py` manages background jobs. Cleanup job queries all users, finds files not referenced by flows, and deletes them from disk and database. Starts on app launch, shuts down gracefully on app stop.
+
+**Revisit if:** Cleanup interval needs adjustment (change `hours=6` in scheduler.py) or need to move cleanup to external job queue (Celery).
+
+### 2024-12-27 – JWT token authentication
+
+**Reason:** Stateless, scalable across servers, standard for REST APIs, token contains user ID. Session-based would require shared storage.
+
+**Revisit if:** Need token revocation (would need token blacklist) or refresh tokens for better UX.
+
+### 2024-12-27 – Sequential transform execution
+
+**Reason:** Each transform depends on previous output, simpler to understand/debug, matches user's mental model. Parallel execution would be faster but more complex.
+
+**Revisit if:** Need to optimize for large files or have independent transforms that could run in parallel.
+
+### 2024-12-27 – Pandas for data processing
+
+**Reason:** Industry standard, handles Excel/CSV natively, rich API, well-documented. Custom parsing would be too much work.
+
+**Revisit if:** Need better performance for simple operations or lower memory usage for very large files.
+
+## Code Organization Decisions
+
+### 2024-12-27 – Separate API client from components
+
+**Reason:** Reusable, centralized error handling, type-safe, easy to mock. Structure: Component → API Function → apiClient → Backend.
+
+**Revisit if:** App becomes very small (might be overkill).
+
+### 2024-12-27 – Store pattern for global state
+
+**Reason:** Avoid prop drilling, single source of truth, easy access from any component. Use stores for shared state (auth, flow), useState for local state (forms, modals).
+
+**Revisit if:** Need more complex state management features.
+
+### 2024-12-27 – TypeScript for frontend
+
+**Reason:** Catch errors at compile time, better IDE support, self-documenting, easier to maintain. Slightly more verbose but worth it.
+
+**Revisit if:** Team doesn't know TypeScript (but should learn it).
+
+## Security Decisions
+
+### 2024-12-27 – bcrypt for password hashing
+
+**Reason:** Industry standard, slow by design (prevents brute force), handles salting automatically. SHA-256 too fast, Argon2 newer but less established.
+
+**Revisit if:** Need even stronger hashing (Argon2) or performance becomes issue.
+
+### 2024-12-27 – Token expiration: 30 minutes
+
+**Reason:** Balance security and UX, limits damage if compromised. Users login more frequently but it's acceptable.
+
+**Revisit if:** Users complain about frequent logins (could add refresh tokens).
+
+### 2024-12-27 – Per-user file directories
+
+**Reason:** Prevents cross-user access, easy cleanup, clear organization. Backend validates ownership before serving.
+
+**Revisit if:** Need different access patterns (shared files, etc.).
+
+## Performance Decisions
+
+### 2024-12-27 – No caching layer initially
+
+**Reason:** Keep architecture simple, not needed for MVP. Can add Redis later for file previews, flow results, user data.
+
+**Revisit if:** Performance becomes bottleneck or need to scale.
+
+### 2024-12-27 – In-memory DataFrame processing
+
+**Reason:** Simpler implementation, pandas works best with full DataFrames, files limited to 50MB (enforced by validation). Higher memory usage but acceptable.
+
+**Revisit if:** Need to handle files larger than 50MB (would need chunking, streaming, or background processing).
+
+## Future Considerations
+
+### Decisions to Revisit
+
+- **File Storage:** Move to S3/cloud storage for multi-server deployments
+- **Caching:** Add Redis for frequently accessed data
+- **Background Jobs:** Use Celery for long-running transformations
+- **Database Migrations:** Switch from `create_all` to Alembic migrations
+- **Rate Limiting:** Add to prevent abuse
+- **Refresh Tokens:** Improve UX for long sessions
+
+### Scalability Path
+
+1. **Phase 1 (Current):** Single server, local file storage
+2. **Phase 2:** Add cloud file storage (S3)
+3. **Phase 3:** Add caching layer (Redis)
+4. **Phase 4:** Horizontal scaling with load balancer
+5. **Phase 5:** Background job queue for heavy processing
+

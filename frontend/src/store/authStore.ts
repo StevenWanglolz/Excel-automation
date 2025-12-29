@@ -15,15 +15,22 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
+  // Load token from localStorage on store initialization
+  // This allows app to remember login state across page refreshes
   token: localStorage.getItem('access_token'),
   isLoading: false,
+  // Check if token exists to determine auth state
+  // !! converts truthy/falsy to boolean
   isAuthenticated: !!localStorage.getItem('access_token'),
 
   login: async (credentials: LoginCredentials) => {
     set({ isLoading: true });
     try {
       const response = await authApi.login(credentials);
+      // Store token in localStorage for persistence across page refreshes
+      // Token is used by API client interceptor to authenticate requests
       localStorage.setItem('access_token', response.access_token);
+      // Fetch user data after login to populate user info in store
       const user = await authApi.getCurrentUser();
       set({
         user,
@@ -33,6 +40,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
     } catch (error) {
       set({ isLoading: false });
+      // Re-throw error so component can handle it (show error message)
       throw error;
     }
   },
@@ -41,7 +49,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     try {
       await authApi.register(data);
-      // Auto-login after registration
+      // Auto-login after registration - better UX than forcing user to login again
+      // Uses same credentials they just registered with
       const response = await authApi.login({
         username: data.email,
         password: data.password,
@@ -61,7 +70,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: () => {
+    // Remove token from localStorage - prevents automatic re-authentication
     localStorage.removeItem('access_token');
+    // Clear all auth state - user must login again to access protected routes
     set({
       user: null,
       token: null,
@@ -70,6 +81,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   checkAuth: async () => {
+    // Verify if stored token is still valid by calling API
+    // Called on app startup to restore auth state
     const token = localStorage.getItem('access_token');
     if (!token) {
       set({ isAuthenticated: false, user: null });
@@ -77,6 +90,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
 
     try {
+      // If API call succeeds, token is valid and user is authenticated
       const user = await authApi.getCurrentUser();
       set({
         user,
@@ -84,6 +98,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         isAuthenticated: true,
       });
     } catch (error) {
+      // Token is invalid (expired, tampered, etc.) - clear it and log user out
+      // Prevents app from thinking user is logged in when they're not
       localStorage.removeItem('access_token');
       set({
         user: null,

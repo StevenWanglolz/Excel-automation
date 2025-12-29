@@ -11,20 +11,26 @@ import { AutomationTypeSelection } from './components/AutomationTypeSelection/Au
 function App() {
   const { checkAuth, isAuthenticated } = useAuthStore();
 
+  // Check authentication status on app mount
+  // Verifies if stored token is still valid and restores user session
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
   return (
     <BrowserRouter
+      // Enable React Router v7 features for better performance
       future={{
-        v7_startTransition: true,
-        v7_relativeSplatPath: true,
+        v7_startTransition: true,  // Use startTransition for route changes
+        v7_relativeSplatPath: true,  // Improved relative path handling
       }}
     >
       <Routes>
+        {/* Public routes - redirect to dashboard if already logged in */}
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login />} />
         <Route path="/register" element={isAuthenticated ? <Navigate to="/" /> : <Register />} />
+        
+        {/* Protected routes - require authentication */}
         <Route
           path="/"
           element={

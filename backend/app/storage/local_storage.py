@@ -2,7 +2,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import Optional
-from fastapi import UploadFile
+from fastapi import UploadFile, HTTPException
 from app.core.config import settings
 
 
@@ -18,14 +18,28 @@ class LocalStorage:
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         user_dir = self.upload_dir / str(user_id)
         user_dir.mkdir(parents=True, exist_ok=True)
-        
+
         file_path = user_dir / unique_filename
-        
-        # Save file
+
+        # Read file content and check size before saving
+        # This prevents saving large files that exceed the limit
+        content = await file.read()
+        file_size = len(content)
+
+        # Validate file size - prevents disk space issues and ensures reasonable processing times
+        # MAX_FILE_SIZE is defined in config.py (default: 10MB)
+        if file_size > settings.MAX_FILE_SIZE:
+            max_size_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+            file_size_mb = file_size / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,  # 413 = Payload Too Large
+                detail=f"File size ({file_size_mb:.2f}MB) exceeds maximum allowed size ({max_size_mb:.0f}MB)"
+            )
+
+        # Save file to disk
         with open(file_path, "wb") as f:
-            content = await file.read()
             f.write(content)
-        
+
         return str(file_path), unique_filename
 
     def get_file_path(self, user_id: int, filename: str) -> Path:
@@ -46,4 +60,3 @@ class LocalStorage:
 
 
 storage = LocalStorage()
-

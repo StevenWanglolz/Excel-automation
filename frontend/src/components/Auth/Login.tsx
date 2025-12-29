@@ -14,9 +14,14 @@ export const Login = () => {
     setError(null);
 
     try {
+      // OAuth2PasswordRequestForm expects 'username' field, but we use email
+      // This mapping allows compatibility with backend OAuth2 endpoint
       await login({ username: email, password });
+      // Navigate to dashboard on successful login
       navigate('/');
     } catch (err: unknown) {
+      // Extract error message from API response
+      // Backend returns errors in format: { response: { data: { detail: string } } }
       const error = err as { response?: { data?: { detail?: string } } };
       setError(error.response?.data?.detail || 'Login failed');
     }
