@@ -517,6 +517,8 @@ const loadInitialFiles = async () => {
 };
 ```
 
+**Note:** File previews are opened from the pipeline step preview icon, not from the upload modal.
+
 ## Flow Execution Flow
 
 ```
@@ -710,8 +712,51 @@ previewUpdateTimeoutRef.current = setTimeout(() => {
 
 ```typescript
 // frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 430-437)
-const preview = await filesApi.preview(fileIdSnapshot, sheetSnapshot);
+const preview = await fetchFilePreview(fileIdSnapshot, sheetSnapshot);
 setStepPreviews((prev) => ({ ...prev, [node.id]: preview }));
+```
+
+**Step 3a: Cache + prefetch sheet previews**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 520-560)
+const fetchFilePreview = async (fileId: number, sheetName?: string) => {
+  const cacheKey = `${fileId}:${sheetName ?? '__default__'}`;
+  const cached = previewCacheRef.current.get(cacheKey);
+  if (cached) return cached;
+  const preview = await filesApi.preview(fileId, sheetName);
+  previewCacheRef.current.set(cacheKey, preview);
+  return preview;
+};
+
+// After fetching the active sheet, warm the cache for the rest.
+if (preview.sheets?.length) {
+  prefetchSheetPreviews(fileIdSnapshot, preview.sheets, preview.current_sheet ?? sheetSnapshot);
+}
+```
+
+**Step 3b: Apply cached sheet immediately on switch**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 580-610)
+const cached = getCachedPreview(primaryFileId, sourceSheetName || undefined);
+if (cached) {
+  setStepPreviews((prev) => ({ ...prev, [fileSourceNode.id]: cached }));
+  setPreviewErrors((prev) => ({ ...prev, [fileSourceNode.id]: null }));
+  setPreviewLoading((prev) => ({ ...prev, [fileSourceNode.id]: false }));
+}
+```
+
+**Step 3c: In-flight preview requests are deduped**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 540-570)
+const inFlight = previewInFlightRef.current.get(cacheKey);
+if (inFlight) {
+  return inFlight;
+}
+// Store the promise so rapid tab clicks reuse the same request.
+previewInFlightRef.current.set(cacheKey, request);
 ```
 
 **Step 4: Step preview executes flow up to the node**

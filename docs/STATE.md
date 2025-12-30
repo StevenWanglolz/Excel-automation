@@ -98,6 +98,12 @@ const { nodes, edges, updateNode } = useFlowStore();
 - Node order or config changes → recompute previews from the changed step onward.
 - Source file change → invalidates all previews.
 
+**Preview caching (frontend-only):**
+- File previews are cached by `fileId + sheetName` in-memory to speed up sheet switching.
+- In-flight preview requests are deduped so rapid tab clicks reuse the same promise.
+- After loading the active sheet, remaining sheets are prefetched in the background.
+- Cached previews are applied immediately when the user switches sheets; the backend is only hit if the cache misses.
+
 ## State Flow Patterns
 
 ### Reading State

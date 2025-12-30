@@ -40,8 +40,8 @@ export const PipelineNodeCard = ({
   return (
     <div className="flex flex-col">
       <div
-        className={`pipeline-block w-full rounded-lg border bg-white px-3 py-2 transition ${
-          isSelected ? 'border-indigo-500 shadow-md' : 'border-gray-200'
+        className={`pipeline-block w-full rounded-lg border bg-white px-3 py-2 shadow-sm transition ${
+          isSelected ? 'border-indigo-500 shadow-md' : 'border-gray-200 hover:shadow-md'
         }`}
         onClick={() => onNodeClick(node.id, node.type || '')}
       >
@@ -114,7 +114,7 @@ export const PipelineNodeCard = ({
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 py-1.5">
-        <div className="h-1.5 w-px bg-gray-200" />
+        <div className="h-3 w-0.5 rounded-full bg-gray-300" />
         <button
           type="button"
           className="group flex h-6 w-6 items-center justify-center rounded-full border border-indigo-200 bg-white text-indigo-600 shadow-sm transition-all hover:scale-110 hover:bg-indigo-50 hover:text-indigo-700"
@@ -125,7 +125,7 @@ export const PipelineNodeCard = ({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
         </button>
-        <div className="h-1.5 w-px bg-gray-200" />
+        <div className="h-3 w-0.5 rounded-full bg-gray-300" />
       </div>
     </div>
   );

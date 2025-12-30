@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { filesApi } from '../../api/files';
-import { DataPreview } from '../Preview/DataPreview';
 import { ConfirmationModal } from '../Common/ConfirmationModal';
-import type { FilePreview } from '../../types';
 
 interface DataUploadModalProps {
   isOpen: boolean;
@@ -26,13 +24,9 @@ export const DataUploadModal = ({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ id: number; name: string; originalName: string }>>([]);
-  const [preview, setPreview] = useState<FilePreview | null>(null);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
-  const [previewFileId, setPreviewFileId] = useState<number | null>(null);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [isFullScreenPreview, setIsFullScreenPreview] = useState(false);
 
   const lastLoadedNodeIdRef = useRef<string | null>(null);
 
@@ -139,30 +133,11 @@ export const DataUploadModal = ({
     }
   };
 
-  const handlePreview = async (fileId: number, sheetName?: string) => {
-    setIsLoadingPreview(true);
-    setPreviewFileId(fileId);
-    try {
-      const filePreview = await filesApi.preview(fileId, sheetName);
-      setPreview(filePreview);
-    } catch (error) {
-      console.error('Failed to load preview:', error);
-      setAlertMessage('Failed to load preview');
-      setShowAlertModal(true);
-    } finally {
-      setIsLoadingPreview(false);
-    }
-  };
-
   const handleRemoveFile = async (fileId: number) => {
     try {
       await filesApi.delete(fileId);
       const remainingFiles = uploadedFiles.filter(file => file.id !== fileId);
       setUploadedFiles(remainingFiles);
-      if (previewFileId === fileId) {
-        setPreview(null);
-        setPreviewFileId(null);
-      }
       if (onFileUploaded) {
         onFileUploaded(remainingFiles.map(file => file.id));
       }
@@ -187,16 +162,8 @@ export const DataUploadModal = ({
     }
   };
 
-  const handleSheetChange = async (sheetName: string) => {
-    if (previewFileId) {
-      await handlePreview(previewFileId, sheetName);
-    }
-  };
-
   const handleClose = () => {
     setError(null);
-    setPreview(null);
-    setPreviewFileId(null);
     // Save current file IDs before closing
     if (onFileUploaded && uploadedFiles.length > 0) {
       onFileUploaded(uploadedFiles.map(f => f.id));
@@ -246,7 +213,8 @@ export const DataUploadModal = ({
 
           {/* Modal Content */}
           <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {/* Previews are handled from the pipeline icon, not inside this modal. */}
+            <div className="grid grid-cols-1 gap-6 mb-6">
               {/* Upload File Section */}
               <div className="flex flex-col">
                 <label className="flex-1 flex flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-indigo-400 hover:from-indigo-50 hover:to-indigo-100 transition-all duration-200 min-h-[280px] p-8 group">
@@ -334,103 +302,7 @@ export const DataUploadModal = ({
                 )}
               </div>
 
-              {/* Preview Section */}
-              <div className="flex flex-col">
-                {uploadedFiles.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium text-gray-700 mb-2">Preview File:</p>
-                    <select
-                      onChange={(e) => {
-                        const fileId = parseInt(e.target.value);
-                        if (fileId) {
-                          handlePreview(fileId);
-                        }
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
-                      value={previewFileId ? String(previewFileId) : ''}
-                    >
-                      <option value="">Select a file to preview</option>
-                      {uploadedFiles.map((file) => (
-                        <option key={file.id} value={String(file.id)}>
-                          {file.originalName}
-                        </option>
-                      ))}
-                    </select>
-                    {previewFileId && (
-                      <button
-                        onClick={() => handlePreview(previewFileId)}
-                        disabled={isLoadingPreview}
-                        className="w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors shadow-sm hover:shadow-md flex items-center justify-center space-x-2"
-                      >
-                        {isLoadingPreview ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                            <span>Loading...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                              />
-                            </svg>
-                            <span>Preview Data</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col justify-center">
-                    <p className="text-sm text-gray-500 text-center">
-                      Upload files to enable preview
-                    </p>
-                  </div>
-                )}
-              </div>
             </div>
-
-            {/* Preview Data */}
-            {preview && (
-              <div className="mt-6 border-t border-gray-200 pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-semibold text-gray-900">Data Preview</h3>
-                  <button
-                    onClick={() => setIsFullScreenPreview(true)}
-                    className="px-3 py-1.5 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors flex items-center space-x-2"
-                    title="View full screen"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                    </svg>
-                    <span>Full Screen</span>
-                  </button>
-                </div>
-                {/* Let DataPreview handle its own scrollbars - parent just provides height constraint and padding */}
-                <div className="max-h-[300px] overflow-hidden border border-gray-200 rounded-lg p-4">
-                  <DataPreview 
-                    preview={preview} 
-                    isLoading={isLoadingPreview}
-                    fileId={previewFileId || undefined}
-                    onSheetChange={handleSheetChange}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -445,59 +317,6 @@ export const DataUploadModal = ({
         showCancel={false}
       />
 
-      {/* Full Screen Preview Modal */}
-      {isFullScreenPreview && preview && (
-        <>
-          {/* Overlay */}
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm z-50"
-            onClick={() => setIsFullScreenPreview(false)}
-          />
-          
-          {/* Full Screen Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="bg-white rounded-xl shadow-2xl w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col relative"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <h2 className="text-xl font-semibold text-gray-900">Data Preview - Full Screen</h2>
-                <button
-                  onClick={() => setIsFullScreenPreview(false)}
-                  className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                  aria-label="Close"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              </div>
-
-              {/* Preview Content */}
-              {/* Let DataPreview handle its own scrollbars - parent just provides padding */}
-              <div className="flex-1 overflow-hidden p-6">
-                <DataPreview 
-                  preview={preview} 
-                  isLoading={isLoadingPreview}
-                  fileId={previewFileId || undefined}
-                  onSheetChange={handleSheetChange}
-                />
-              </div>
-            </div>
-          </div>
-        </>
-      )}
     </>
   );
 };

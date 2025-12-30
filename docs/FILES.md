@@ -211,7 +211,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
 - **BlockPalette.tsx** 🟢 - Sidebar with available blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
-- **DataUploadModal.tsx** 🟡 - Modal for selecting files
+- **DataUploadModal.tsx** 🟡 - Modal for selecting files (previews only via pipeline icon)
 - **OperationSelectionModal.tsx** 🟡 - Modal for selecting transforms
 
 #### blocks/

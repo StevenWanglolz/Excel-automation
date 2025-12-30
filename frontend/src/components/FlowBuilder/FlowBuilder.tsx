@@ -69,6 +69,10 @@ export const FlowBuilder = () => {
   const previewSignatureRef = useRef<Record<string, string>>({});
   const previewUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRunIdRef = useRef(0);
+  // Cache raw file previews by file+sheet to avoid re-fetching when users switch tabs.
+  const previewCacheRef = useRef<Map<string, FilePreview>>(new Map());
+  // Track in-flight preview requests so rapid sheet clicks share the same promise.
+  const previewInFlightRef = useRef<Map<string, Promise<FilePreview>>>(new Map());
 
   // Undo/Redo system
   const { addToHistory, undo, redo, canUndo, canRedo, reset } = useUndoRedo({
@@ -716,6 +720,103 @@ export const FlowBuilder = () => {
     });
   }, [nodes]);
 
+  const makePreviewCacheKey = useCallback((fileId: number, sheetName?: string) => {
+    return `${fileId}:${sheetName ?? '__default__'}`;
+  }, []);
+
+  const getCachedPreview = useCallback(
+    (fileId: number, sheetName?: string) => {
+      const cacheKey = makePreviewCacheKey(fileId, sheetName);
+      return previewCacheRef.current.get(cacheKey) ?? null;
+    },
+    [makePreviewCacheKey]
+  );
+
+  const fetchFilePreview = useCallback(
+    async (fileId: number, sheetName?: string) => {
+      const cacheKey = makePreviewCacheKey(fileId, sheetName);
+      const cached = previewCacheRef.current.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      const inFlight = previewInFlightRef.current.get(cacheKey);
+      if (inFlight) {
+        return inFlight;
+      }
+
+      // Fetch + cache so subsequent clicks are instant.
+      const request = filesApi.preview(fileId, sheetName).then((preview) => {
+        previewCacheRef.current.set(cacheKey, preview);
+        return preview;
+      });
+
+      previewInFlightRef.current.set(cacheKey, request);
+      try {
+        return await request;
+      } finally {
+        previewInFlightRef.current.delete(cacheKey);
+      }
+    },
+    [makePreviewCacheKey]
+  );
+
+  const prefetchSheetPreviews = useCallback(
+    (fileId: number, sheetNames: string[], currentSheet?: string | null) => {
+      const remainingSheets = sheetNames.filter((sheet) => sheet !== (currentSheet ?? null));
+      remainingSheets.forEach((sheet) => {
+        const cacheKey = makePreviewCacheKey(fileId, sheet);
+        if (previewCacheRef.current.has(cacheKey) || previewInFlightRef.current.has(cacheKey)) {
+          return;
+        }
+        // Prefetch runs in the background; failures shouldn't block UI.
+        const request = filesApi.preview(fileId, sheet).then((preview) => {
+          previewCacheRef.current.set(cacheKey, preview);
+          return preview;
+        });
+        previewInFlightRef.current.set(cacheKey, request);
+        request.finally(() => previewInFlightRef.current.delete(cacheKey));
+      });
+    },
+    [makePreviewCacheKey]
+  );
+
+  useEffect(() => {
+    if (!primaryFileId || !fileSourceNode) {
+      return;
+    }
+    if (!activePreviewNodeIds.has(fileSourceNode.id)) {
+      return;
+    }
+
+    const cached = getCachedPreview(primaryFileId, sourceSheetName || undefined);
+    if (!cached) {
+      return;
+    }
+
+    // Apply cached source previews immediately so sheet switches feel instant.
+    setStepPreviews((prev) => ({ ...prev, [fileSourceNode.id]: cached }));
+    setPreviewErrors((prev) => ({ ...prev, [fileSourceNode.id]: null }));
+    setPreviewLoading((prev) => ({ ...prev, [fileSourceNode.id]: false }));
+
+    // Align the signature so the main effect doesn't re-fetch the cached sheet.
+    const sourceIndex = nodes.findIndex((node) => node.id === fileSourceNode.id);
+    if (sourceIndex === -1) {
+      return;
+    }
+    const signature = JSON.stringify({
+      fileId: primaryFileId,
+      sheetName: sourceSheetName || undefined,
+      nodes: nodes.slice(0, sourceIndex + 1).map((node) => ({
+        id: node.id,
+        type: node.type,
+        blockType: node.data?.blockType,
+        config: node.data?.config || {},
+      })),
+    });
+    previewSignatureRef.current = { ...previewSignatureRef.current, [fileSourceNode.id]: signature };
+  }, [activePreviewNodeIds, fileSourceNode, getCachedPreview, nodes, primaryFileId, sourceSheetName]);
+
   useEffect(() => {
     normalizePreviewState();
   }, [normalizePreviewState]);
@@ -828,12 +929,16 @@ export const FlowBuilder = () => {
           try {
             if (index === 0) {
               // Source preview reads the file directly, no transforms applied yet.
-              const preview = await filesApi.preview(fileIdSnapshot, sheetSnapshot);
+              const preview = await fetchFilePreview(fileIdSnapshot, sheetSnapshot);
               if (previewRunIdRef.current !== runId) {
                 return;
               }
               setStepPreviews((prev) => ({ ...prev, [node.id]: preview }));
               setPreviewErrors((prev) => ({ ...prev, [node.id]: null }));
+              if (preview.sheets && preview.sheets.length > 1) {
+                // Warm the cache so sheet switches feel instant.
+                prefetchSheetPreviews(fileIdSnapshot, preview.sheets, preview.current_sheet ?? sheetSnapshot);
+              }
             } else {
               // Downstream previews execute the pipeline up to this step.
               const flowData = buildFlowData(nodesSnapshot.slice(0, index + 1));
@@ -870,7 +975,16 @@ export const FlowBuilder = () => {
         clearTimeout(previewUpdateTimeoutRef.current);
       }
     };
-  }, [nodes, primaryFileId, sourceSheetName, activePreviewNodeIds, buildFlowData, fileSourceNode]);
+  }, [
+    nodes,
+    primaryFileId,
+    sourceSheetName,
+    activePreviewNodeIds,
+    buildFlowData,
+    fileSourceNode,
+    fetchFilePreview,
+    prefetchSheetPreviews,
+  ]);
 
   const handleTogglePreview = (nodeId: string) => {
     setActivePreviewNodeIds((prev) => {
