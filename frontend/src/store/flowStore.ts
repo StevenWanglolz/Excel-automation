@@ -2,6 +2,41 @@ import { create } from 'zustand';
 import type { FlowNode, FlowEdge, FlowData } from '../types';
 import { Node, Edge } from '@xyflow/react';
 
+const normalizeNodes = (nodes: Node[]): Node[] => {
+  const seen = new Set<string>();
+  const unique: Node[] = [];
+
+  for (let i = nodes.length - 1; i >= 0; i -= 1) {
+    const node = nodes[i];
+    if (!node?.id || seen.has(node.id)) {
+      continue;
+    }
+    seen.add(node.id);
+    unique.unshift(node);
+  }
+
+  return unique;
+};
+
+const normalizeEdges = (edges: Edge[], nodeIds: Set<string>): Edge[] => {
+  const seen = new Set<string>();
+  const unique: Edge[] = [];
+
+  for (let i = edges.length - 1; i >= 0; i -= 1) {
+    const edge = edges[i];
+    if (!edge?.id || seen.has(edge.id)) {
+      continue;
+    }
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      continue;
+    }
+    seen.add(edge.id);
+    unique.unshift(edge);
+  }
+
+  return unique;
+};
+
 interface FlowState {
   nodes: Node[];
   edges: Edge[];
@@ -25,9 +60,15 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   selectedNode: null,
 
   addNode: (node: Node) => {
-    set((state) => ({
-      nodes: [...state.nodes, node],
-    }));
+    set((state) => {
+      const existingIndex = state.nodes.findIndex((existing) => existing.id === node.id);
+      if (existingIndex === -1) {
+        return { nodes: [...state.nodes, node] };
+      }
+      const updatedNodes = [...state.nodes];
+      updatedNodes[existingIndex] = node;
+      return { nodes: updatedNodes };
+    });
   },
 
   updateNode: (nodeId: string, updates: Partial<Node>) => {
@@ -60,7 +101,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
   },
 
   setNodes: (nodes: Node[]) => {
-    set({ nodes });
+    set({ nodes: normalizeNodes(nodes) });
   },
 
   setEdges: (edges: Edge[]) => {
@@ -110,7 +151,10 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       targetHandle: edge.targetHandle,
     }));
 
-    set({ nodes, edges });
+    const normalizedNodes = normalizeNodes(nodes);
+    const nodeIds = new Set(normalizedNodes.map((node) => node.id));
+    const normalizedEdges = normalizeEdges(edges, nodeIds);
+
+    set({ nodes: normalizedNodes, edges: normalizedEdges });
   },
 }));
-

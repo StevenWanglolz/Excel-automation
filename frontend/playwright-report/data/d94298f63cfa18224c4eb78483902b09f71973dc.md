@@ -1,0 +1,45 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e4]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - button "Back to Dashboard" [ref=e8] [cursor=pointer]:
+        - img [ref=e9]
+      - heading "Flow Builder" [level=1] [ref=e11]
+    - generic [ref=e12]:
+      - button "📋 Saved Flows 1" [ref=e14] [cursor=pointer]:
+        - generic [ref=e15]: 📋 Saved Flows
+        - generic [ref=e16]: "1"
+      - textbox "Flow name" [ref=e17]
+      - button "Save Flow" [disabled] [ref=e18]
+      - generic [ref=e19]:
+        - button "Previous" [ref=e20] [cursor=pointer]:
+          - img "Previous" [ref=e21]
+        - button "Next" [disabled] [ref=e22]:
+          - img "Next" [ref=e23]
+      - button "Clear" [ref=e24] [cursor=pointer]
+  - application [ref=e27]:
+    - group [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e33]:
+          - heading "Data" [level=3] [ref=e35]
+          - paragraph [ref=e40]: Click to upload file
+          - generic [ref=e41]: source
+        - button "Add operation" [ref=e46] [cursor=pointer]:
+          - img [ref=e47]
+    - img
+    - generic "Control Panel" [ref=e49]:
+      - button "Zoom In" [disabled]:
+        - img
+      - button "Zoom Out" [ref=e50] [cursor=pointer]:
+        - img [ref=e51]
+      - button "Fit View" [ref=e53] [cursor=pointer]:
+        - img [ref=e54]
+      - button "Toggle Interactivity" [ref=e56] [cursor=pointer]:
+        - img [ref=e57]
+    - img "Mini Map" [ref=e60]
+    - link "React Flow attribution" [ref=e62] [cursor=pointer]:
+      - /url: https://reactflow.dev
+      - text: React Flow
+```

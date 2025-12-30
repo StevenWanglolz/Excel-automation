@@ -115,11 +115,18 @@ export const Dashboard = () => {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {flows.map((flow) => (
-                <button
+                <div
                   key={flow.id}
-                  type="button"
                   className="bg-white rounded-lg border-2 border-gray-200 hover:border-indigo-500 transition-all cursor-pointer p-6 min-h-[136px] shadow-sm hover:shadow-md group relative text-left w-full"
                   onClick={() => handleFlowClick(flow.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      handleFlowClick(flow.id);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                 >
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">{flow.name}</h3>
@@ -140,7 +147,7 @@ export const Dashboard = () => {
                     </p>
                     <span className="text-xs text-indigo-600 font-medium">View →</span>
                   </div>
-                </button>
+                </div>
               ))}
             </div>
           )}

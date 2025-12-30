@@ -14,12 +14,18 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - Defines all services (database, backend, frontend)
 - Configuration for local development
+- Uses Docker Compose v2+ format (no version key)
 - Changes here affect how the app runs
 
 ### start.sh / stop.sh / restart.sh 🟢
 
 - Convenience scripts for Docker operations
 - Safe to modify for your workflow
+
+### .vscode/tasks.json 🟢
+
+- VS Code tasks to run start/restart/stop scripts
+- Safe to adjust task labels or add new tasks
 
 ## backend/
 

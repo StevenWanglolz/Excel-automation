@@ -40,11 +40,17 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
   const [nodes, setNodesState, onNodesChange] = useNodesState(storeNodes);
   const [edges, setEdgesState, onEdgesChange] = useEdgesState(storeEdges);
   const storeNodesRef = useRef(storeNodes);
+  const onAddOperationRef = useRef(onAddOperation);
+  const handleDeleteNodeRef = useRef<(nodeId: string) => void>(() => {});
 
   // Keep ref in sync with store nodes
   useEffect(() => {
     storeNodesRef.current = storeNodes;
   }, [storeNodes]);
+
+  useEffect(() => {
+    onAddOperationRef.current = onAddOperation;
+  }, [onAddOperation]);
 
   // Sync with store
   useEffect(() => {
@@ -64,41 +70,45 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
     setNodes(updatedNodes);
   }, [deleteNode, setNodesState, setNodes]);
 
+  useEffect(() => {
+    handleDeleteNodeRef.current = handleDeleteNode;
+  }, [handleDeleteNode]);
+
   // Create node types with delete handler and add operation button
   const nodeTypes: NodeTypes = useMemo(() => ({
     source: (props: any) => (
       <SourceBlock 
         {...props} 
         onDelete={undefined}
-        onAddOperation={onAddOperation}
+        onAddOperation={onAddOperationRef.current}
         showAddButton={true}
       />
     ),
     upload: (props: any) => (
       <UploadBlock 
         {...props} 
-        onDelete={handleDeleteNode}
-        onAddOperation={onAddOperation}
+        onDelete={(nodeId: string) => handleDeleteNodeRef.current(nodeId)}
+        onAddOperation={onAddOperationRef.current}
         showAddButton={true}
       />
     ),
     filter: (props: any) => (
       <FilterBlock 
         {...props} 
-        onDelete={handleDeleteNode}
-        onAddOperation={onAddOperation}
+        onDelete={(nodeId: string) => handleDeleteNodeRef.current(nodeId)}
+        onAddOperation={onAddOperationRef.current}
         showAddButton={true}
       />
     ),
     transform: (props: any) => (
       <TransformBlock 
         {...props} 
-        onDelete={handleDeleteNode}
-        onAddOperation={onAddOperation}
+        onDelete={(nodeId: string) => handleDeleteNodeRef.current(nodeId)}
+        onAddOperation={onAddOperationRef.current}
         showAddButton={true}
       />
     ),
-  }), [handleDeleteNode, onAddOperation]);
+  }), []);
 
   // Sync changes back to store
   const handleNodesChange = useCallback(

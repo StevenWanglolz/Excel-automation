@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { filesApi } from '../../api/files';
 import { DataPreview } from '../Preview/DataPreview';
 import { ConfirmationModal } from '../Common/ConfirmationModal';
@@ -34,27 +34,49 @@ export const DataUploadModal = ({
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isFullScreenPreview, setIsFullScreenPreview] = useState(false);
 
-  // Load initial files when modal opens
+  const lastLoadedNodeIdRef = useRef<string | null>(null);
+
+  // Load initial files once per modal open for the selected node
   useEffect(() => {
-    if (isOpen && initialFileIds.length > 0) {
+    if (!isOpen) {
+      lastLoadedNodeIdRef.current = null;
+      return;
+    }
+
+    if (lastLoadedNodeIdRef.current === nodeId) {
+      return;
+    }
+
+    lastLoadedNodeIdRef.current = nodeId;
+
+    if (initialFileIds.length > 0) {
       loadInitialFiles();
-    } else if (isOpen) {
+    } else {
       setUploadedFiles([]);
     }
-  }, [isOpen, initialFileIds]);
+  }, [isOpen, nodeId, initialFileIds]);
 
   const loadInitialFiles = async () => {
     setIsLoadingFiles(true);
     try {
-      const filePromises = initialFileIds.map(id => filesApi.get(id));
-      const files = await Promise.all(filePromises);
-      setUploadedFiles(files.map(f => ({
-        id: f.id,
-        name: f.filename,
-        originalName: f.original_filename,
-      })));
-    } catch (error) {
-      console.error('Failed to load files:', error);
+      const allFiles = await filesApi.list();
+      const filesById = new Map(allFiles.map((file) => [file.id, file]));
+      const resolvedFiles = initialFileIds
+        .map((id) => filesById.get(id))
+        .filter((file): file is NonNullable<typeof file> => Boolean(file));
+
+      setUploadedFiles(
+        resolvedFiles.map((file) => ({
+          id: file.id,
+          name: file.filename,
+          originalName: file.original_filename,
+        }))
+      );
+
+      if (onFileUploaded && resolvedFiles.length !== initialFileIds.length) {
+        onFileUploaded(resolvedFiles.map((file) => file.id));
+      }
+    } catch (_error) {
       setAlertMessage('Failed to load files');
       setShowAlertModal(true);
     } finally {
@@ -100,17 +122,11 @@ export const DataUploadModal = ({
         originalName: f.original_filename,
       }));
 
-      setUploadedFiles(prev => {
-        const updatedFiles = [...prev, ...newFiles];
-        
-        // Call callback with fresh file IDs from updated state
-        if (onFileUploaded) {
-          const allFileIds = updatedFiles.map(f => f.id);
-          onFileUploaded(allFileIds);
-        }
-        
-        return updatedFiles;
-      });
+      const updatedFiles = [...uploadedFiles, ...newFiles];
+      setUploadedFiles(updatedFiles);
+      if (onFileUploaded) {
+        onFileUploaded(updatedFiles.map(file => file.id));
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to upload file(s)');
     } finally {
@@ -141,14 +157,14 @@ export const DataUploadModal = ({
   const handleRemoveFile = async (fileId: number) => {
     try {
       await filesApi.delete(fileId);
-      setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+      const remainingFiles = uploadedFiles.filter(file => file.id !== fileId);
+      setUploadedFiles(remainingFiles);
       if (previewFileId === fileId) {
         setPreview(null);
         setPreviewFileId(null);
       }
       if (onFileUploaded) {
-        const remainingFileIds = uploadedFiles.filter(f => f.id !== fileId).map(f => f.id);
-        onFileUploaded(remainingFileIds);
+        onFileUploaded(remainingFiles.map(file => file.id));
       }
     } catch (error: any) {
       console.error('Failed to delete file:', error);
@@ -404,7 +420,8 @@ export const DataUploadModal = ({
                     <span>Full Screen</span>
                   </button>
                 </div>
-                <div className="max-h-[300px] overflow-y-auto border border-gray-200 rounded-lg p-4">
+                {/* Let DataPreview handle its own scrollbars - parent just provides height constraint and padding */}
+                <div className="max-h-[300px] overflow-hidden border border-gray-200 rounded-lg p-4">
                   <DataPreview 
                     preview={preview} 
                     isLoading={isLoadingPreview}
@@ -468,7 +485,8 @@ export const DataUploadModal = ({
               </div>
 
               {/* Preview Content */}
-              <div className="flex-1 overflow-auto p-6">
+              {/* Let DataPreview handle its own scrollbars - parent just provides padding */}
+              <div className="flex-1 overflow-hidden p-6">
                 <DataPreview 
                   preview={preview} 
                   isLoading={isLoadingPreview}
@@ -483,4 +501,3 @@ export const DataUploadModal = ({
     </>
   );
 };
-

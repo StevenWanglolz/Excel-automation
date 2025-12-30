@@ -9,7 +9,7 @@ SheetPilot is a low-code Excel automation platform that lets users upload Excel/
 - **Frontend:** React, TypeScript, Zustand, React Flow, Tailwind CSS
 - **Backend:** FastAPI (Python), SQLAlchemy, Pandas
 - **Database:** PostgreSQL
-- **Deployment:** Docker Compose
+- **Deployment:** Docker Compose (v2+)
 
 ## Run locally
 
@@ -17,6 +17,8 @@ SheetPilot is a low-code Excel automation platform that lets users upload Excel/
 ```bash
 ./start.sh
 ```
+
+VS Code tasks are available in `.vscode/tasks.json` for `start`, `restart`, and `stop`.
 
 **Without Docker:**
 ```bash
@@ -38,10 +40,15 @@ Access at:
 - Backend API: http://localhost:8000
 - API Docs: http://localhost:8000/docs
 
+## Test data
+
+- Account: `test@gmail.com` / `test`
+- Files: `Test Files/` (example: `Test Files/example data 1.xlsx`)
+
 ## Where to look
 
 - `docs/ARCHITECTURE.md` – how things fit together
-- `docs/DATA_FLOW.md` – where data comes from and goes
+- `docs/DATA_FLOW.md` – where data comes from and goes (including upload/file resolution)
 - `docs/FILES.md` – what each file does
 - `docs/STATE.md` – state management
 - `docs/API.md` – API endpoints

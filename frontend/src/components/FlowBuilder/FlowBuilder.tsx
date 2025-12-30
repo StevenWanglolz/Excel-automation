@@ -266,11 +266,19 @@ export const FlowBuilder = () => {
       }
       return;
     }
-    // No flow parameter - initialize with source node if no nodes exist and not already initialized
-    // This handles the case when navigating to /flow-builder without a flow ID
-    if (!hasInitializedRef.current && nodes.length === 0 && !selectedFlowId) {
-      hasInitializedRef.current = true;
-      clearFlowInternal();
+    // No flow parameter - ensure a clean, single-source starting state
+    // This prevents stale nodes from a previous flow from carrying over
+    if (!selectedFlowId) {
+      const hasSingleSource =
+        nodes.length === 1 &&
+        nodes[0]?.id === 'source-0' &&
+        nodes[0]?.type === 'source';
+
+      if (!hasSingleSource) {
+        clearFlowInternal();
+      } else {
+        hasInitializedRef.current = true;
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, selectedFlowId]);
@@ -436,19 +444,9 @@ export const FlowBuilder = () => {
       },
     };
     
-    // Use setNodes for atomic state update - this prevents duplicate nodes
-    // Clear edges and set nodes in one atomic operation
-    // Filter out any existing source nodes first to prevent duplicates
-    const existingNodes = getFlowData().nodes;
-    const hasSourceNode = existingNodes.some(n => n.id === 'source-0' && n.type === 'source');
-    
-    if (hasSourceNode) {
-      // If source node already exists, just ensure it's the only one
-      const otherNodes = existingNodes.filter(n => !(n.id === 'source-0' && n.type === 'source'));
-      setNodes([sourceNode, ...otherNodes] as Node[]);
-    } else {
-      setNodes([sourceNode]);
-    }
+    // Use setNodes for atomic state update
+    // Always reset to a single source node when starting a new flow
+    setNodes([sourceNode]);
     setEdges([]);
     
     // Reset other state
@@ -775,34 +773,40 @@ export const FlowBuilder = () => {
                           {savedFlows.map((flow) => {
                             const isSelected = selectedFlowId === flow.id;
                             return (
-                              <button
+                              <div
                                 key={flow.id}
-                                type="button"
                                 onClick={() => handleLoadFlow(flow)}
                                 className={`w-full text-left p-3 cursor-pointer hover:bg-gray-50 ${
                                   isSelected ? 'bg-indigo-50' : ''
                                 }`}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    handleLoadFlow(flow);
+                                  }
+                                }}
                               >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-gray-900">{flow.name}</p>
-                                {flow.description && (
-                                  <p className="text-xs text-gray-500 mt-1">{flow.description}</p>
-                                )}
-                                <p className="text-xs text-gray-400 mt-1">
-                                  {new Date(flow.created_at).toLocaleDateString()}
-                                </p>
-                              </div>
-                              <button
-                                onClick={(e) => handleDeleteFlow(flow.id, e)}
-                                className="ml-2 text-red-600 hover:text-red-800 text-sm"
-                                title="Delete flow"
-                                type="button"
+                                <div className="flex items-start justify-between">
+                                  <div className="flex-1">
+                                    <p className="text-sm font-medium text-gray-900">{flow.name}</p>
+                                    {flow.description && (
+                                      <p className="text-xs text-gray-500 mt-1">{flow.description}</p>
+                                    )}
+                                    <p className="text-xs text-gray-400 mt-1">
+                                      {new Date(flow.created_at).toLocaleDateString()}
+                                    </p>
+                                  </div>
+                                  <button
+                                    onClick={(e) => handleDeleteFlow(flow.id, e)}
+                                    className="ml-2 text-red-600 hover:text-red-800 text-sm"
+                                    title="Delete flow"
+                                    type="button"
                               >
                                 ×
                               </button>
                             </div>
-                              </button>
+                              </div>
                             );
                           })}
                         </div>
@@ -964,5 +968,3 @@ export const FlowBuilder = () => {
     </div>
   );
 };
-
-

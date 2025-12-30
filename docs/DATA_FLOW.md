@@ -1,6 +1,6 @@
 # Data Flow
 
-This document explains how data moves through the SheetPilot system.
+This document explains how data moves through the SheetPilot system. Local development runs the services via Docker Compose (v2+), which does not change the runtime data flow described below.
 
 ## Authentication Flow
 
@@ -467,6 +467,50 @@ async def save_file(self, file: UploadFile, user_id: int) -> tuple[str, str]:
     return str(file_path), unique_filename
 ```
 
+## Initial File Resolution (Flow Builder)
+
+```
+1. User opens Data Upload modal for a node with saved file IDs
+   ↓
+2. Modal fetches the current file list from the API (once per open)
+   ↓
+3. Modal filters to the saved file IDs
+   ↓
+4. Missing file IDs are removed from the node data (silent cleanup)
+   ↓
+5. Modal shows remaining files without 404s
+```
+
+**Step 2-4: Resolve file IDs and remove missing entries**
+
+```typescript
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 40-64)
+const loadInitialFiles = async () => {
+  setIsLoadingFiles(true);
+  try {
+    const allFiles = await filesApi.list();
+    const filesById = new Map(allFiles.map((file) => [file.id, file]));
+    const resolvedFiles = initialFileIds
+      .map((id) => filesById.get(id))
+      .filter((file): file is NonNullable<typeof file> => Boolean(file));
+
+    setUploadedFiles(
+      resolvedFiles.map((file) => ({
+        id: file.id,
+        name: file.filename,
+        originalName: file.original_filename,
+      }))
+    );
+
+    if (onFileUploaded && resolvedFiles.length !== initialFileIds.length) {
+      onFileUploaded(resolvedFiles.map((file) => file.id));
+    }
+  } finally {
+    setIsLoadingFiles(false);
+  }
+};
+```
+
 ## Flow Execution Flow
 
 ```
@@ -671,6 +715,39 @@ def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
 6. Flow ID returned to frontend
    ↓
 7. Component updates UI (shows in dashboard)
+```
+
+## New Flow Initialization
+
+```
+1. User navigates to /flow-builder without a flow ID
+   ↓
+2. FlowBuilder checks for a clean single-source state
+   ↓
+3. If stale nodes exist, the flow is reset to a single source node
+```
+
+**Step 2-3: Reset to a single source node**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 423-454)
+const clearFlowInternal = () => {
+  const sourceNode: Node = {
+    id: 'source-0',
+    type: 'source',
+    position: { x: 250, y: 250 },
+    data: {
+      blockType: 'source',
+      config: {},
+      label: 'Data',
+    },
+  };
+
+  // Always reset to a single source node when starting a new flow.
+  setNodes([sourceNode]);
+  setEdges([]);
+  // ...reset other state
+};
 ```
 
 **Step 2: Get flow data from store**

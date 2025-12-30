@@ -176,6 +176,7 @@ Resources for understanding and working with the SheetPilot codebase.
 - Add `console.log()` statements
 - Use React DevTools to inspect components
 - Check Network tab for API calls
+- Avoid calling parent state updates inside child state updaters; fire callbacks after state updates to prevent render warnings
 
 **Backend:**
 

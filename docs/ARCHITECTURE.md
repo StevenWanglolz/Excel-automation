@@ -18,6 +18,8 @@ SheetPilot follows a three-tier architecture:
                                      └─────────────┘
 ```
 
+Local development uses Docker Compose (v2+) to orchestrate the frontend, backend, and PostgreSQL services.
+
 ## Technology Stack
 
 ### Frontend

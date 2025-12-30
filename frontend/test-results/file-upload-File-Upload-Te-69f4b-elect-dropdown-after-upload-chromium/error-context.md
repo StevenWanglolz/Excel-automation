@@ -1,0 +1,78 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - button "Back to Dashboard" [ref=e8] [cursor=pointer]:
+          - img [ref=e9]
+        - heading "Flow Builder" [level=1] [ref=e11]
+      - generic [ref=e12]:
+        - button "📋 Saved Flows 1" [ref=e14] [cursor=pointer]:
+          - generic [ref=e15]: 📋 Saved Flows
+          - generic [ref=e16]: "1"
+        - textbox "Flow name" [ref=e17]
+        - button "Save Flow" [disabled] [ref=e18]
+        - generic [ref=e19]:
+          - button "Previous" [ref=e20] [cursor=pointer]:
+            - img "Previous" [ref=e21]
+          - button "Next" [disabled] [ref=e22]:
+            - img "Next" [ref=e23]
+        - button "Clear" [ref=e24] [cursor=pointer]
+    - application [ref=e27]:
+      - group [active] [ref=e30]:
+        - generic [ref=e31]:
+          - generic [ref=e33]:
+            - heading "Data" [level=3] [ref=e35]
+            - paragraph [ref=e40]: Click to upload file
+            - generic [ref=e41]: source
+          - button "Add operation" [ref=e46] [cursor=pointer]:
+            - img [ref=e47]
+      - img
+      - generic "Control Panel" [ref=e49]:
+        - button "Zoom In" [disabled]:
+          - img
+        - button "Zoom Out" [ref=e50] [cursor=pointer]:
+          - img [ref=e51]
+        - button "Fit View" [ref=e53] [cursor=pointer]:
+          - img [ref=e54]
+        - button "Toggle Interactivity" [ref=e56] [cursor=pointer]:
+          - img [ref=e57]
+      - img "Mini Map" [ref=e60]
+      - link "React Flow attribution" [ref=e62] [cursor=pointer]:
+        - /url: https://reactflow.dev
+        - text: React Flow
+  - generic [ref=e64]:
+    - generic [ref=e65]:
+      - heading "Properties" [level=2] [ref=e66]
+      - button "Close" [ref=e67] [cursor=pointer]:
+        - img [ref=e68]
+    - generic [ref=e70]:
+      - generic [ref=e71]:
+        - generic [ref=e72]: Block Type
+        - generic [ref=e73]: Data
+      - generic [ref=e75]:
+        - heading "Configuration" [level=3] [ref=e76]
+        - generic [ref=e77]:
+          - generic [ref=e78]:
+            - generic [ref=e80]: Option 1
+            - generic [ref=e82]: Option 2
+            - generic [ref=e84]: Option 3
+          - generic [ref=e85]:
+            - generic [ref=e87]: Option 4
+            - generic [ref=e89]: Option 5
+            - generic [ref=e91]: Option 6
+  - generic [ref=e94]:
+    - generic [ref=e95]:
+      - heading "Upload Data File" [level=2] [ref=e96]
+      - button "Close" [ref=e97] [cursor=pointer]:
+        - img [ref=e98]
+    - generic [ref=e101]:
+      - generic [ref=e104] [cursor=pointer]:
+        - img [ref=e106]
+        - paragraph [ref=e108]: Upload files
+        - paragraph [ref=e109]: Click to browse or drag and drop
+        - paragraph [ref=e110]: Excel (.xlsx, .xls) or CSV (multiple files)
+      - paragraph [ref=e113]: Upload files to enable preview
+```
