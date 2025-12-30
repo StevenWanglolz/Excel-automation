@@ -9,7 +9,7 @@ import { FlowBuilder } from './components/FlowBuilder/FlowBuilder';
 import { AutomationTypeSelection } from './components/AutomationTypeSelection/AutomationTypeSelection';
 
 function App() {
-  const { checkAuth, isAuthenticated } = useAuthStore();
+  const { checkAuth, isAuthenticated, isAuthBypass } = useAuthStore();
 
   // Check authentication status on app mount
   // Verifies if stored token is still valid and restores user session
@@ -25,6 +25,11 @@ function App() {
         v7_relativeSplatPath: true,  // Improved relative path handling
       }}
     >
+      {isAuthBypass && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm">
+          Auth bypass enabled
+        </div>
+      )}
       <Routes>
         {/* Public routes - redirect to dashboard if already logged in */}
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Login />} />
@@ -61,4 +66,3 @@ function App() {
 }
 
 export default App;
-

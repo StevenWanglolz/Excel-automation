@@ -1,20 +1,37 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+/**
+ * Responsible for:
+ * - Orchestrating the flow builder state and lifecycle (load/save/reset).
+ * - Managing per-step previews and undo/redo history.
+ * - Coordinating modal interactions and pipeline events.
+ *
+ * Key assumptions:
+ * - Flow nodes are stored in execution order (sequential pipeline).
+ * - The first node is a source node that anchors file input.
+ *
+ * Be careful:
+ * - Reordering or config changes should trigger preview updates from the changed step onward.
+ * - Source file changes invalidate all downstream previews.
+ */
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { FlowCanvas } from './FlowCanvas';
+import { FlowPipeline } from './FlowPipeline';
 import { DataUploadModal } from './DataUploadModal';
 import { PropertiesPanel } from './PropertiesPanel';
 import { OperationSelectionModal } from './OperationSelectionModal';
 import { ConfirmationModal, type ModalType } from '../Common/ConfirmationModal';
 import { useFlowStore } from '../../store/flowStore';
 import { flowsApi } from '../../api/flows';
+import { filesApi } from '../../api/files';
+import { transformApi } from '../../api/transform';
 import type { Flow } from '../../types';
+import type { FilePreview, FlowData } from '../../types';
 import { Node } from '@xyflow/react';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
 
 export const FlowBuilder = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { nodes, edges, getFlowData, loadFlowData, updateNode, addNode, setNodes, setEdges, addEdge } = useFlowStore();
+  const { nodes, edges, getFlowData, loadFlowData, updateNode, deleteNode, setNodes, setEdges } = useFlowStore();
   const [flowName, setFlowName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlows, setSavedFlows] = useState<Flow[]>([]);
@@ -38,11 +55,20 @@ export const FlowBuilder = () => {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isFileUploading, setIsFileUploading] = useState(false);
+  const [stepPreviews, setStepPreviews] = useState<Record<string, FilePreview | null>>({});
+  const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
+  const [previewErrors, setPreviewErrors] = useState<Record<string, string | null>>({});
+  const [sourceSheetName, setSourceSheetName] = useState<string | null>(null);
+  const [activePreviewNodeIds, setActivePreviewNodeIds] = useState<Set<string>>(new Set());
+  const [viewAction, setViewAction] = useState<{ type: 'fit' | 'reset'; id: number } | null>(null);
   const savedFlowDataRef = useRef<string>('');
   const hasUnsavedChangesRef = useRef(false);
   const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUndoRedoInProgressRef = useRef(false);
   const hasInitializedRef = useRef(false);
+  const previewSignatureRef = useRef<Record<string, string>>({});
+  const previewUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRunIdRef = useRef(0);
 
   // Undo/Redo system
   const { addToHistory, undo, redo, canUndo, canRedo, reset } = useUndoRedo({
@@ -61,6 +87,7 @@ export const FlowBuilder = () => {
       loadFlowData(fullFlow.flow_data);
       setFlowName(fullFlow.name);
       setSelectedFlowId(fullFlow.id);
+      setActivePreviewNodeIds(new Set());
       // Save state including flowName for comparison
       savedFlowDataRef.current = JSON.stringify({ ...fullFlow.flow_data, flowName: fullFlow.name });
       hasUnsavedChangesRef.current = false;
@@ -165,6 +192,18 @@ export const FlowBuilder = () => {
     return () => globalThis.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo]);
 
+  const loadFlows = useCallback(async () => {
+    setIsLoadingFlows(true);
+    try {
+      const flows = await flowsApi.list();
+      setSavedFlows(flows);
+    } catch (error) {
+      console.error('Failed to load flows:', error);
+    } finally {
+      setIsLoadingFlows(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadFlows();
     
@@ -172,7 +211,7 @@ export const FlowBuilder = () => {
     savedFlowDataRef.current = JSON.stringify(getFlowData());
     hasUnsavedChangesRef.current = false;
     setHasUnsavedChanges(false);
-  }, []);
+  }, [loadFlows, getFlowData]);
 
   // Track unsaved changes
   useEffect(() => {
@@ -321,18 +360,6 @@ export const FlowBuilder = () => {
     }
   }, [showFlowList]);
 
-  const loadFlows = async () => {
-    setIsLoadingFlows(true);
-    try {
-      const flows = await flowsApi.list();
-      setSavedFlows(flows);
-    } catch (error) {
-      console.error('Failed to load flows:', error);
-    } finally {
-      setIsLoadingFlows(false);
-    }
-  };
-
   const handleSave = async () => {
     if (!flowName.trim()) {
       showModal('alert', 'Validation Error', 'Please enter a flow name');
@@ -416,6 +443,7 @@ export const FlowBuilder = () => {
       setFlowName(fullFlow.name);
       setSelectedFlowId(fullFlow.id);
       setShowFlowList(false);
+      setActivePreviewNodeIds(new Set());
       // Save state including flowName for comparison
       savedFlowDataRef.current = JSON.stringify({ ...fullFlow.flow_data, flowName: fullFlow.name });
       hasUnsavedChangesRef.current = false;
@@ -476,6 +504,7 @@ export const FlowBuilder = () => {
     setFlowName('');
     setSelectedFlowId(null);
     setShowFlowList(false);
+    setActivePreviewNodeIds(new Set());
     savedFlowDataRef.current = '';
     hasUnsavedChangesRef.current = false;
     hasInitializedRef.current = true;
@@ -570,88 +599,11 @@ export const FlowBuilder = () => {
     if (!afterNode) return;
 
     const { type, blockType } = getNodeTypeFromOperation(operation.id);
-    
-    // Node dimensions for collision detection
-    const NODE_WIDTH = 200;
-    const NODE_HEIGHT = 150;
-    const HORIZONTAL_SPACING = 80; // Spacing between nodes horizontally
-    const PADDING = 20; // Minimum padding between nodes
-    
-    // Helper function to check if two rectangles overlap
-    const checkOverlap = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): boolean => {
-      return !(
-        pos1.x + NODE_WIDTH + PADDING < pos2.x ||
-        pos2.x + NODE_WIDTH + PADDING < pos1.x ||
-        pos1.y + NODE_HEIGHT + PADDING < pos2.y ||
-        pos2.y + NODE_HEIGHT + PADDING < pos1.y
-      );
-    };
-    
-    // Find all child nodes of the afterNode (nodes connected from afterNode)
-    const childNodeIds = new Set(
-      edges
-        .filter(edge => edge.source === afterNode.id)
-        .map(edge => edge.target)
-    );
-    
-    const childNodes = nodes.filter(node => childNodeIds.has(node.id));
-    
-    // Find the rightmost child node (node with maximum x + width)
-    const rightmostChildNode = childNodes.length > 0
-      ? childNodes.reduce((rightmost, node) => {
-          const rightmostRight = rightmost.position.x + NODE_WIDTH;
-          const nodeRight = node.position.x + NODE_WIDTH;
-          return nodeRight > rightmostRight ? node : rightmost;
-        }, childNodes[0])
-      : null;
-    
-    // If there are no child nodes, position below the parent
-    // Otherwise, position at the same y level as the rightmost child, to the right of it
-    let candidateY: number;
-    let candidateX: number;
-    
-    if (rightmostChildNode) {
-      // Position at same y level as rightmost child, to the right of it
-      candidateY = rightmostChildNode.position.y;
-      candidateX = rightmostChildNode.position.x + NODE_WIDTH + HORIZONTAL_SPACING;
-    } else {
-      // No children yet, position below the parent
-      candidateY = afterNode.position.y + 200;
-      candidateX = afterNode.position.x;
-    }
-    
-    // Find a position that doesn't overlap with existing nodes
-    let foundPosition = false;
-    let maxAttempts = 20; // Prevent infinite loop
-    let attempts = 0;
-    
-    while (!foundPosition && attempts < maxAttempts) {
-      const candidatePosition = { x: candidateX, y: candidateY };
-      
-      // Check if this position overlaps with any existing node
-      const overlaps = nodes.some(node => {
-        if (node.id === afterNode.id) return false; // Skip the node we're adding after
-        return checkOverlap(candidatePosition, node.position);
-      });
-      
-      if (overlaps) {
-        // Move down and try again (fallback if horizontal position overlaps)
-        candidateY += NODE_HEIGHT + PADDING;
-        attempts++;
-      } else {
-        foundPosition = true;
-      }
-    }
-    
-    const newNodePosition = {
-      x: candidateX,
-      y: candidateY,
-    };
 
     const newNode: Node = {
       id: `${type}-${Date.now()}`,
       type: type,
-      position: newNodePosition,
+      position: { x: 0, y: 0 },
       data: {
         blockType: blockType,
         label: operation.label,
@@ -659,19 +611,14 @@ export const FlowBuilder = () => {
       },
     };
 
-    addNode(newNode);
-    
-    // Create edge from afterNode to newNode with handle IDs
-    const newEdge = {
-      id: `edge-${afterNode.id}-${newNode.id}`,
-      source: afterNode.id,
-      sourceHandle: 'source', // Use the source handle at the bottom
-      target: newNode.id,
-      targetHandle: 'target', // Use the target handle at the top
-    };
-    
-    // Add edge using store method
-    addEdge(newEdge);
+    const insertAfterIndex = nodes.findIndex((node) => node.id === afterNode.id);
+    if (insertAfterIndex === -1) {
+      return;
+    }
+    const nextNodes = [...nodes];
+    nextNodes.splice(insertAfterIndex + 1, 0, newNode);
+    setNodes(nextNodes);
+    setEdges([]);
 
     setIsOperationModalOpen(false);
     setOperationAfterNodeId(null);
@@ -703,7 +650,7 @@ export const FlowBuilder = () => {
     }
   };
 
-  const getNodeFileIds = (nodeId: string): number[] => {
+  const getNodeFileIds = useCallback((nodeId: string): number[] => {
     const node = nodes.find((n) => n.id === nodeId);
     if (node?.data?.fileIds && Array.isArray(node.data.fileIds)) {
       return node.data.fileIds;
@@ -713,6 +660,249 @@ export const FlowBuilder = () => {
       return [node.data.fileId];
     }
     return [];
+  }, [nodes]);
+
+  const fileSourceNode = useMemo(() => {
+    // Prefer the first node with file IDs so legacy flows still preview correctly.
+    const nodeWithFiles = nodes.find((node) => {
+      const fileIds = getNodeFileIds(node.id);
+      return fileIds.length > 0;
+    });
+    if (nodeWithFiles) {
+      return nodeWithFiles;
+    }
+    // Fall back to known source-like types if no file IDs are attached yet.
+    return (
+      nodes.find((node) => node.type === 'source' || node.type === 'upload' || node.type === 'data') || null
+    );
+  }, [nodes, getNodeFileIds]);
+  const primaryFileId = fileSourceNode ? getNodeFileIds(fileSourceNode.id)[0] : undefined;
+
+  const buildFlowData = useCallback(
+    (subset: Node[]): FlowData => ({
+      nodes: subset.map((node) => ({
+        id: node.id,
+        type: node.type,
+        position: node.position,
+        data: node.data,
+      })),
+      edges: [],
+    }),
+    []
+  );
+
+  const normalizePreviewState = useCallback(() => {
+    const nodeIds = new Set(nodes.map((node) => node.id));
+    setStepPreviews((prev) => {
+      const next: Record<string, FilePreview | null> = {};
+      nodeIds.forEach((id) => {
+        next[id] = prev[id] ?? null;
+      });
+      return next;
+    });
+    setPreviewLoading((prev) => {
+      const next: Record<string, boolean> = {};
+      nodeIds.forEach((id) => {
+        next[id] = prev[id] ?? false;
+      });
+      return next;
+    });
+    setPreviewErrors((prev) => {
+      const next: Record<string, string | null> = {};
+      nodeIds.forEach((id) => {
+        next[id] = prev[id] ?? null;
+      });
+      return next;
+    });
+  }, [nodes]);
+
+  useEffect(() => {
+    normalizePreviewState();
+  }, [normalizePreviewState]);
+
+  useEffect(() => {
+    if (nodes.length === 0) {
+      setStepPreviews({});
+      setPreviewLoading({});
+      setPreviewErrors({});
+      previewSignatureRef.current = {};
+      setActivePreviewNodeIds(new Set());
+      return;
+    }
+
+    // Only recompute previews for steps the user has expanded.
+    const activeNodeIds = Array.from(activePreviewNodeIds).filter((nodeId) =>
+      nodes.some((node) => node.id === nodeId)
+    );
+
+    // Avoid network churn when no previews are expanded.
+    if (activeNodeIds.length === 0) {
+      return;
+    }
+
+    if (!primaryFileId) {
+      // Cancel any in-flight preview runs when the file source disappears.
+      previewRunIdRef.current += 1;
+      setStepPreviews((prev) => ({ ...prev }));
+      setPreviewErrors((prev) => {
+        const next = { ...prev };
+        activeNodeIds.forEach((nodeId) => {
+          const node = nodes.find((item) => item.id === nodeId);
+          next[nodeId] = node?.id === fileSourceNode?.id ? 'Upload a file to see preview' : prev[nodeId] ?? null;
+        });
+        return next;
+      });
+      setPreviewLoading((prev) => {
+        const next = { ...prev };
+        activeNodeIds.forEach((nodeId) => {
+          next[nodeId] = false;
+        });
+        return next;
+      });
+      return;
+    }
+
+    // Snapshot state so the async preview loop is deterministic.
+    const nodesSnapshot = [...nodes];
+    const fileIdSnapshot = primaryFileId;
+    const sheetSnapshot = sourceSheetName || undefined;
+
+    // Signature map lets us recompute only when upstream config/order changes.
+    const signaturesToUpdate = new Set<string>();
+    const signatureMap = { ...previewSignatureRef.current };
+
+    activeNodeIds.forEach((nodeId) => {
+      const index = nodesSnapshot.findIndex((node) => node.id === nodeId);
+      if (index === -1) {
+        return;
+      }
+      const signature = JSON.stringify({
+        fileId: fileIdSnapshot,
+        sheetName: sheetSnapshot,
+        nodes: nodesSnapshot.slice(0, index + 1).map((node) => ({
+          id: node.id,
+          type: node.type,
+          blockType: node.data?.blockType,
+          config: node.data?.config || {},
+        })),
+      });
+      if (signatureMap[nodeId] !== signature) {
+        signatureMap[nodeId] = signature;
+        signaturesToUpdate.add(nodeId);
+      }
+    });
+
+    // If nothing changed upstream, skip recompute for all active previews.
+    if (signaturesToUpdate.size === 0) {
+      return;
+    }
+
+    previewSignatureRef.current = signatureMap;
+
+    // Debounce recomputations so typing in config fields doesn't spam the API.
+    if (previewUpdateTimeoutRef.current) {
+      clearTimeout(previewUpdateTimeoutRef.current);
+    }
+
+    previewUpdateTimeoutRef.current = setTimeout(() => {
+      // runId guards against out-of-order responses overwriting newer previews.
+      const runId = previewRunIdRef.current + 1;
+      previewRunIdRef.current = runId;
+
+      const nextLoading: Record<string, boolean> = {};
+      signaturesToUpdate.forEach((nodeId) => {
+        nextLoading[nodeId] = true;
+      });
+      setPreviewLoading((prev) => ({ ...prev, ...nextLoading }));
+
+      (async () => {
+        for (const nodeId of signaturesToUpdate) {
+          if (previewRunIdRef.current !== runId) {
+            return;
+          }
+          const index = nodesSnapshot.findIndex((node) => node.id === nodeId);
+          if (index === -1) {
+            continue;
+          }
+          const node = nodesSnapshot[index];
+          try {
+            if (index === 0) {
+              // Source preview reads the file directly, no transforms applied yet.
+              const preview = await filesApi.preview(fileIdSnapshot, sheetSnapshot);
+              if (previewRunIdRef.current !== runId) {
+                return;
+              }
+              setStepPreviews((prev) => ({ ...prev, [node.id]: preview }));
+              setPreviewErrors((prev) => ({ ...prev, [node.id]: null }));
+            } else {
+              // Downstream previews execute the pipeline up to this step.
+              const flowData = buildFlowData(nodesSnapshot.slice(0, index + 1));
+              const result = await transformApi.execute({
+                file_id: fileIdSnapshot,
+                flow_data: flowData,
+              });
+              if (previewRunIdRef.current !== runId) {
+                return;
+              }
+              setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
+              setPreviewErrors((prev) => ({ ...prev, [node.id]: null }));
+            }
+          } catch (_error) {
+            if (previewRunIdRef.current !== runId) {
+              return;
+            }
+            setStepPreviews((prev) => ({ ...prev, [node.id]: null }));
+            setPreviewErrors((prev) => ({
+              ...prev,
+              [node.id]: 'Preview failed. Check the step configuration.',
+            }));
+          } finally {
+            if (previewRunIdRef.current === runId) {
+              setPreviewLoading((prev) => ({ ...prev, [node.id]: false }));
+            }
+          }
+        }
+      })();
+    }, 400);
+
+    return () => {
+      if (previewUpdateTimeoutRef.current) {
+        clearTimeout(previewUpdateTimeoutRef.current);
+      }
+    };
+  }, [nodes, primaryFileId, sourceSheetName, activePreviewNodeIds, buildFlowData, fileSourceNode]);
+
+  const handleTogglePreview = (nodeId: string) => {
+    setActivePreviewNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteNode = (nodeId: string) => {
+    deleteNode(nodeId);
+    if (selectedNodeId === nodeId) {
+      setSelectedNodeId(null);
+    }
+    setActivePreviewNodeIds((prev) => {
+      const next = new Set(prev);
+      next.delete(nodeId);
+      return next;
+    });
+    hasUnsavedChangesRef.current = true;
+    setHasUnsavedChanges(true);
+  };
+
+  const handleReorderNodes = (nextNodes: Node[]) => {
+    setNodes(nextNodes);
+    setEdges([]);
+    hasUnsavedChangesRef.current = true;
+    setHasUnsavedChanges(true);
   };
 
   return (
@@ -825,10 +1015,10 @@ export const FlowBuilder = () => {
                                     className="ml-2 text-red-600 hover:text-red-800 text-sm"
                                     title="Delete flow"
                                     type="button"
-                              >
-                                ×
-                              </button>
-                            </div>
+                                  >
+                                    ×
+                                  </button>
+                                </div>
                               </div>
                             );
                           })}
@@ -869,33 +1059,6 @@ export const FlowBuilder = () => {
                   return 'Save Flow';
                 })()}
               </button>
-              {/* Previous and Next buttons with Figma icons */}
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleUndo}
-                  disabled={!canUndo}
-                  className="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                  title="Previous (Ctrl+Z / Cmd+Z)"
-                >
-                  <img 
-                    src="/assets/icons/back-icon.svg" 
-                    alt="Previous" 
-                    className="w-5 h-5 scale-y-[-1]"
-                  />
-                </button>
-                <button
-                  onClick={handleRedo}
-                  disabled={!canRedo}
-                  className="p-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                  title="Next (Ctrl+Shift+Z / Cmd+Shift+Z)"
-                >
-                  <img 
-                    src="/assets/icons/return-icon.svg" 
-                    alt="Next" 
-                    className="w-5 h-5 rotate-180"
-                  />
-                </button>
-              </div>
               <button
                 onClick={() => {
                   if (hasUnsavedChangesRef.current) {
@@ -921,7 +1084,58 @@ export const FlowBuilder = () => {
           </div>
         </div>
         <div className="flex-1 relative">
-          <FlowCanvas onNodeClick={handleNodeClick} onAddOperation={handleAddOperation} />
+          <div className="pipeline-toolbar absolute left-6 bottom-6 z-50 flex items-center gap-2 rounded-full border border-gray-200 bg-white/95 p-2 shadow-md backdrop-blur">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className="p-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              title="Undo (Ctrl+Z / Cmd+Z)"
+            >
+              <img 
+                src="/assets/icons/back-icon.svg" 
+                alt="Undo" 
+                className="w-4 h-4 scale-y-[-1]"
+              />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className="p-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              title="Redo (Ctrl+Shift+Z / Cmd+Shift+Z)"
+            >
+              <img 
+                src="/assets/icons/return-icon.svg" 
+                alt="Redo" 
+                className="w-4 h-4 rotate-180"
+              />
+            </button>
+            <button
+              onClick={() => setViewAction({ type: 'reset', id: Date.now() })}
+              className="p-2 bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200 flex items-center justify-center"
+              title="Reset zoom"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12a9 9 0 0115.3-6.36M21 12a9 9 0 01-15.3 6.36" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3v6h6M21 21v-6h-6" />
+              </svg>
+            </button>
+          </div>
+          <FlowPipeline
+            nodes={nodes}
+            selectedNodeId={selectedNodeId}
+            activePreviewNodeIds={activePreviewNodeIds}
+            fileSourceNodeId={fileSourceNode?.id || null}
+            viewAction={viewAction}
+            previews={stepPreviews}
+            previewLoading={previewLoading}
+            previewErrors={previewErrors}
+            onNodeClick={handleNodeClick}
+            onAddOperation={handleAddOperation}
+            onDeleteNode={handleDeleteNode}
+            onReorderNodes={handleReorderNodes}
+            onSourceSheetChange={(sheetName) => setSourceSheetName(sheetName)}
+            onTogglePreview={handleTogglePreview}
+          />
         </div>
       </div>
       

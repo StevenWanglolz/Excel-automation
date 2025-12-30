@@ -27,7 +27,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 - **React 18** - UI framework
 - **TypeScript** - Type safety
 - **Zustand** - State management (lightweight, no boilerplate)
-- **React Flow** - Drag-and-drop flow builder
+- **Sequential Pipeline UI** - Drag-and-drop step list with per-step previews
 - **Axios** - HTTP client
 - **React Router** - Client-side routing
 - **Tailwind CSS** - Styling
@@ -119,8 +119,8 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `Auth/` - Login, Register, ProtectedRoute
 - `Dashboard/` - Main dashboard view
-- `FlowBuilder/` - Flow builder interface
-- `blocks/` - Individual transform blocks
+- `FlowBuilder/` - Sequential pipeline builder and previews
+- `blocks/` - Legacy block components (node-based UI)
 - `Common/` - Shared components (modals, etc.)
 
 #### Stores (`src/store/`)
@@ -227,6 +227,7 @@ Zustand stores:
 ### Authorization
 
 - All routes except `/api/auth/login` and `/api/auth/register` require authentication
+- Dev bypass can disable auth in `backend/app/core/config.py` for local workflows
 - Users can only access their own files and flows
 - File paths include user ID to prevent cross-user access
 

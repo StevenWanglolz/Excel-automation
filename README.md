@@ -2,11 +2,11 @@
 
 ## What this is
 
-SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build data transformation workflows using a visual drag-and-drop interface. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. The platform saves automation flows for reuse and exports transformed data back to Excel.
+SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand using the uploaded file source.
 
 ## Tech
 
-- **Frontend:** React, TypeScript, Zustand, React Flow, Tailwind CSS
+- **Frontend:** React, TypeScript, Zustand, Tailwind CSS, @dnd-kit
 - **Backend:** FastAPI (Python), SQLAlchemy, Pandas
 - **Database:** PostgreSQL
 - **Deployment:** Docker Compose (v2+)
@@ -16,6 +16,14 @@ SheetPilot is a low-code Excel automation platform that lets users upload Excel/
 **With Docker (recommended):**
 ```bash
 ./start.sh
+```
+
+**Auth bypass (dev only):**
+```bash
+# Backend (.env or exported env vars)
+DISABLE_AUTH=true
+DEV_AUTH_EMAIL=test@gmail.com
+DEV_AUTH_PASSWORD=test
 ```
 
 VS Code tasks are available in `.vscode/tasks.json` for `start`, `restart`, and `stop`.

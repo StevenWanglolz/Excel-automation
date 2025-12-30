@@ -34,6 +34,10 @@ SheetPilot uses **Zustand** for state management - a lightweight alternative to 
 - `logout()` - Clear token and user data
 - `checkAuth()` - Verify stored token is still valid on app startup
 
+**Dev Bypass:**
+- Backend `DISABLE_AUTH=true` returns a dev user without validating JWTs.
+- Optional `DEV_AUTH_EMAIL` / `DEV_AUTH_PASSWORD` control the dev user identity.
+
 **Persistence:**
 - Token stored in `localStorage` for persistence across page refreshes
 - Token automatically added to API requests via interceptor
@@ -46,13 +50,15 @@ const { user, isAuthenticated, login } = useAuthStore();
 
 ### Flow Store (`src/store/flowStore.ts`)
 
-**Purpose:** Manages flow builder state (nodes, edges, selections).
+**Purpose:** Manages flow builder state (sequential nodes, optional edges, selections).
+
+**Important:** Node order in the array defines execution order in the pipeline UI.
 
 **State:**
 ```typescript
 {
   nodes: Node[],              // Flow nodes (blocks)
-  edges: Edge[],              // Connections between nodes
+  edges: Edge[],              // Legacy connections (pipeline ignores edges)
   selectedNode: Node | null   // Currently selected node
 }
 ```
@@ -61,7 +67,7 @@ const { user, isAuthenticated, login } = useAuthStore();
 - `addNode(node)` - Add a new node to the flow
 - `updateNode(id, updates)` - Update node configuration
 - `deleteNode(id)` - Remove node and its connections
-- `addEdge(edge)` - Connect two nodes
+- `addEdge(edge)` - Legacy; not used by sequential pipeline UI
 - `deleteEdge(id)` - Remove connection
 - `getFlowData()` - Convert to format for API (save flow)
 - `loadFlowData(data)` - Load flow from API (edit existing flow)
@@ -69,8 +75,28 @@ const { user, isAuthenticated, login } = useAuthStore();
 
 **Usage:**
 ```typescript
-const { nodes, edges, addNode, updateNode } = useFlowStore();
+const { nodes, edges, updateNode } = useFlowStore();
 ```
+
+### FlowBuilder Local State (`src/components/FlowBuilder/FlowBuilder.tsx`)
+
+**Purpose:** Manages UI-only state for the pipeline builder.
+
+**State:**
+```typescript
+{
+  stepPreviews: Record<string, FilePreview | null>, // Per-step preview cache
+  previewLoading: Record<string, boolean>,          // Per-step loading flags
+  previewErrors: Record<string, string | null>,     // Per-step error messages
+  sourceSheetName: string | null,                   // Selected sheet for source preview
+  activePreviewNodeIds: Set<string>,                // Steps with preview expanded
+  viewAction: { type: 'fit' | 'reset'; id: number } | null // Pipeline view commands
+}
+```
+
+**Triggers:**
+- Node order or config changes → recompute previews from the changed step onward.
+- Source file change → invalidates all previews.
 
 ## State Flow Patterns
 
@@ -78,7 +104,7 @@ const { nodes, edges, addNode, updateNode } = useFlowStore();
 ```typescript
 // In any component
 const { user, isAuthenticated } = useAuthStore();
-const { nodes, edges } = useFlowStore();
+const { nodes, edges } = useFlowStore(); // edges remain for stored flow compatibility
 ```
 
 ### Updating State

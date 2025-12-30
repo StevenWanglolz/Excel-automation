@@ -27,6 +27,12 @@ This document explains how data moves through the SheetPilot system. Local devel
 8. User redirected to dashboard
 ```
 
+**Dev bypass (optional):**
+
+If backend `DISABLE_AUTH=true`, `authStore.checkAuth()` can call `/auth/me` without a token.
+The store sets `isAuthenticated=true` and marks the session as bypassed when the backend
+returns the dev user, which skips the login screen during local development.
+
 **Step 1: User enters credentials**
 
 ```typescript
@@ -514,13 +520,13 @@ const loadInitialFiles = async () => {
 ## Flow Execution Flow
 
 ```
-1. User builds flow in FlowBuilder.tsx
-   - Nodes and edges stored in flowStore
+1. User builds a sequential pipeline in FlowBuilder.tsx
+   - Nodes are stored in flowStore in execution order
    ↓
-2. User clicks "Execute"
+2. User executes the flow
    ↓
 3. Component calls transformApi.execute()
-   - Sends: { file_id, flow_data: { nodes, edges } }
+   - Sends: { file_id, flow_data: { nodes, edges: [] } }
    ↓
 4. Backend transform.py route:
    - Validates file belongs to user
@@ -540,6 +546,25 @@ const loadInitialFiles = async () => {
 7. Preview returned to frontend
    ↓
 8. Component displays results in DataPreview.tsx
+```
+
+**Step 1: Pipeline nodes stored in order**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowPipeline.tsx (lines 62-69)
+const orderedNodes = useMemo(() => nodes, [nodes]);
+
+// Steps render in the same order as the nodes array.
+```
+
+**Step 2: User executes the flow**
+
+```typescript
+// frontend/src/api/transform.ts (lines 15-20)
+export interface FlowExecuteRequest {
+  file_id: number;
+  flow_data: FlowData;
+}
 ```
 
 **Step 3: Frontend API call**
@@ -635,10 +660,85 @@ def execute_flow(
             # Validate config before executing - prevents errors from invalid configurations
             # If validation fails, skip this transform (don't break entire flow)
             if transform.validate(df, config):
-                # Execute transform - modifies DataFrame in place or returns new one
-                df = transform.execute(df, config)
-    
+        # Execute transform - modifies DataFrame in place or returns new one
+        df = transform.execute(df, config)
+        
     return df
+```
+
+## Per-Step Preview Flow (Pipeline)
+
+```
+1. User clicks "Preview" on a step in FlowPipeline
+   ↓
+2. FlowBuilder detects active preview steps + node/order/config changes
+   - Uses the first node with uploaded file IDs as the file source
+   ↓
+3. Source step preview loads from filesApi.preview()
+   ↓
+4. Each downstream step preview runs transformApi.execute() with nodes up to that step
+   ↓
+5. DataPreview renders the preview table inside the step
+```
+
+**Step 1: Pipeline toggles preview on demand**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowPipeline.tsx (lines 121-130)
+<button
+  type="button"
+  onClick={() => onTogglePreview(node.id)}
+>
+  {isPreviewOpen ? 'Hide preview' : 'Preview'}
+</button>
+```
+
+**Step 2: FlowBuilder schedules preview updates for active steps**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 400-412)
+previewUpdateTimeoutRef.current = setTimeout(() => {
+  const runId = previewRunIdRef.current + 1;
+  previewRunIdRef.current = runId;
+  // recompute previews only for active steps
+}, 400);
+```
+
+**Step 3: Source preview uses filesApi.preview**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 430-437)
+const preview = await filesApi.preview(fileIdSnapshot, sheetSnapshot);
+setStepPreviews((prev) => ({ ...prev, [node.id]: preview }));
+```
+
+**Step 4: Step preview executes flow up to the node**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 442-450)
+const flowData = buildFlowData(nodesSnapshot.slice(0, index + 1));
+const result = await transformApi.execute({
+  file_id: fileIdSnapshot,
+  flow_data: flowData,
+});
+setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
+```
+
+**Step 5: DataPreview renders the table**
+
+```typescript
+// frontend/src/components/Preview/DataPreview.tsx (lines 45-66)
+{preview.preview_rows.map((row, idx) => (
+  <tr key={idx} className="hover:bg-gray-50">
+    {preview.columns.map((column) => (
+      <td key={column} className="px-4 py-3 text-sm text-gray-900">
+        {row[column] !== null && row[column] !== undefined
+          ? String(row[column])
+          : ''}
+      </td>
+    ))}
+  </tr>
+))}
 ```
 
 **Step 5a: Transform validation**

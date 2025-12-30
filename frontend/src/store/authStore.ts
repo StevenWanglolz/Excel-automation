@@ -7,6 +7,7 @@ interface AuthState {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isAuthBypass: boolean;
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
@@ -22,6 +23,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   // Check if token exists to determine auth state
   // !! converts truthy/falsy to boolean
   isAuthenticated: !!localStorage.getItem('access_token'),
+  isAuthBypass: false,
 
   login: async (credentials: LoginCredentials) => {
     set({ isLoading: true });
@@ -37,6 +39,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         token: response.access_token,
         isAuthenticated: true,
         isLoading: false,
+        isAuthBypass: false,
       });
     } catch (error) {
       set({ isLoading: false });
@@ -62,6 +65,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         token: response.access_token,
         isAuthenticated: true,
         isLoading: false,
+        isAuthBypass: false,
       });
     } catch (error) {
       set({ isLoading: false });
@@ -77,6 +81,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       token: null,
       isAuthenticated: false,
+      isAuthBypass: false,
     });
   },
 
@@ -84,18 +89,28 @@ export const useAuthStore = create<AuthState>((set) => ({
     // Verify if stored token is still valid by calling API
     // Called on app startup to restore auth state
     const token = localStorage.getItem('access_token');
-    if (!token) {
-      set({ isAuthenticated: false, user: null });
-      return;
-    }
-
     try {
+      set({ isLoading: true });
+      if (!token) {
+        // Backend auth bypass may allow this request without a token.
+        const user = await authApi.getCurrentUser();
+        set({
+          user,
+          token: null,
+          isAuthenticated: true,
+          isLoading: false,
+          isAuthBypass: true,
+        });
+        return;
+      }
       // If API call succeeds, token is valid and user is authenticated
       const user = await authApi.getCurrentUser();
       set({
         user,
         token,
         isAuthenticated: true,
+        isLoading: false,
+        isAuthBypass: false,
       });
     } catch (error) {
       // Token is invalid (expired, tampered, etc.) - clear it and log user out
@@ -105,8 +120,9 @@ export const useAuthStore = create<AuthState>((set) => ({
         user: null,
         token: null,
         isAuthenticated: false,
+        isLoading: false,
+        isAuthBypass: false,
       });
     }
   },
 }));
-

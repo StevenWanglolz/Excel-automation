@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FlowNode, FlowEdge, FlowData } from '../types';
+import type { FlowData } from '../types';
 import { Node, Edge } from '@xyflow/react';
 
 const normalizeNodes = (nodes: Node[]): Node[] => {

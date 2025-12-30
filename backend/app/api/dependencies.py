@@ -2,16 +2,17 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, get_password_hash
+from app.core.config import settings
 from app.models.user import User
 
 # OAuth2 password bearer scheme - extracts token from Authorization header
 # tokenUrl tells FastAPI where to find the login endpoint for Swagger UI
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db)
 ) -> User:
     """
@@ -28,6 +29,25 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    if settings.DISABLE_AUTH:
+        # Dev bypass returns a real user so ownership checks still work.
+        user = db.query(User).filter(User.email == settings.DEV_AUTH_EMAIL).first()
+        if user:
+            return user
+        user = User(
+            email=settings.DEV_AUTH_EMAIL,
+            hashed_password=get_password_hash(settings.DEV_AUTH_PASSWORD),
+            full_name="Dev User",
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
+    if token is None:
+        raise credentials_exception
 
     # Decode and verify JWT token
     # Returns None if token is invalid, expired, or tampered with

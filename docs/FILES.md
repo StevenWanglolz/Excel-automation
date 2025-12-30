@@ -204,7 +204,9 @@ This document explains the purpose of each major file and folder. It is meant fo
 - Orchestrates flow builder UI
 - Changes affect entire flow builder
 
-- **FlowCanvas.tsx** 🟡 - React Flow canvas for nodes/edges
+- **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
+- **SortableNode.tsx** 🟢 - Wraps flow nodes with sortable drag handles and logic
+- **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
 - **BlockPalette.tsx** 🟢 - Sidebar with available blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
 - **DataUploadModal.tsx** 🟡 - Modal for selecting files

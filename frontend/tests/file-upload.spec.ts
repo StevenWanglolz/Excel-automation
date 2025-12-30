@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
-import { existsSync } from 'fs';
+import { existsSync, unlinkSync, writeFileSync } from 'fs';
 
 test.describe('File Upload Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -138,9 +138,8 @@ test.describe('File Upload Tests', () => {
     const invalidFilePath = path.join(__dirname, '../../test-invalid.txt');
     
     // Create a temporary invalid file for testing
-    const fs = require('fs');
-    if (!fs.existsSync(invalidFilePath)) {
-      fs.writeFileSync(invalidFilePath, 'This is not a valid Excel file');
+    if (!existsSync(invalidFilePath)) {
+      writeFileSync(invalidFilePath, 'This is not a valid Excel file');
     }
     
     await fileInput.setInputFiles(invalidFilePath);
@@ -156,8 +155,8 @@ test.describe('File Upload Tests', () => {
     expect(errorText).toContain('valid Excel');
     
     // Cleanup
-    if (fs.existsSync(invalidFilePath)) {
-      fs.unlinkSync(invalidFilePath);
+    if (existsSync(invalidFilePath)) {
+      unlinkSync(invalidFilePath);
     }
   });
 
@@ -221,4 +220,3 @@ test.describe('File Upload Tests', () => {
     await expect(errorMessage).toBeVisible();
   });
 });
-

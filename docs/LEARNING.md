@@ -160,7 +160,8 @@ Resources for understanding and working with the SheetPilot codebase.
 
    - Create block component in `frontend/src/components/blocks/`
    - Add to `BlockPalette.tsx`
-   - Register in `FlowCanvas.tsx` nodeTypes
+   - Add to `OperationSelectionModal.tsx` and `FlowBuilder.tsx` mapping
+   - FlowPipeline renders steps from ordered nodes (no React Flow nodeTypes)
 
 ### Adding a New Component
 

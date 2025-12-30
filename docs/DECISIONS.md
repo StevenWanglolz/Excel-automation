@@ -22,6 +22,18 @@ This document records important architectural decisions and their rationale. Eac
 
 **Revisit if:** Need features React Flow doesn't support or performance becomes an issue.
 
+### 2025-12-30 – Chose @dnd-kit for drag and drop
+
+**Reason:** Native HTML5 drag and drop was clunky and lacked animation. @dnd-kit provides a modern, accessible, and smooth sorting experience with minimal boilerplate.
+
+**Revisit if:** Bundle size becomes a major concern (though it is relatively lightweight).
+
+### 2025-02-14 – Switched to sequential pipeline UI
+
+**Reason:** Backend execution is strictly sequential (order-based), so a linear pipeline with drag-and-drop reorder and per-step previews matches user expectations and prevents graph/edge confusion.
+
+**Revisit if:** We add true branching/merging execution (topological sort + multi-input nodes).
+
 ### 2024-12-27 – Chose PostgreSQL over SQLite/MySQL
 
 **Reason:** Production-ready, better concurrency, rich features (JSON columns), Docker setup easy. SQLite not suitable for production, MySQL has weaker JSON support.
@@ -154,4 +166,3 @@ This document records important architectural decisions and their rationale. Eac
 3. **Phase 3:** Add caching layer (Redis)
 4. **Phase 4:** Horizontal scaling with load balancer
 5. **Phase 5:** Background job queue for heavy processing
-

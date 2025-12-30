@@ -72,7 +72,6 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
       
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */}
         <dialog
           open
           className="bg-white rounded-lg shadow-xl w-[1181px] h-[601px] pointer-events-auto relative border-0 p-0 m-0"
@@ -156,4 +155,3 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
     </>
   );
 };
-

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { filesApi } from '../../api/files';
 import { DataPreview } from '../Preview/DataPreview';
 import { ConfirmationModal } from '../Common/ConfirmationModal';
@@ -36,27 +36,7 @@ export const DataUploadModal = ({
 
   const lastLoadedNodeIdRef = useRef<string | null>(null);
 
-  // Load initial files once per modal open for the selected node
-  useEffect(() => {
-    if (!isOpen) {
-      lastLoadedNodeIdRef.current = null;
-      return;
-    }
-
-    if (lastLoadedNodeIdRef.current === nodeId) {
-      return;
-    }
-
-    lastLoadedNodeIdRef.current = nodeId;
-
-    if (initialFileIds.length > 0) {
-      loadInitialFiles();
-    } else {
-      setUploadedFiles([]);
-    }
-  }, [isOpen, nodeId, initialFileIds]);
-
-  const loadInitialFiles = async () => {
+  const loadInitialFiles = useCallback(async () => {
     setIsLoadingFiles(true);
     try {
       const allFiles = await filesApi.list();
@@ -82,7 +62,27 @@ export const DataUploadModal = ({
     } finally {
       setIsLoadingFiles(false);
     }
-  };
+  }, [initialFileIds, onFileUploaded]);
+
+  // Load initial files once per modal open for the selected node
+  useEffect(() => {
+    if (!isOpen) {
+      lastLoadedNodeIdRef.current = null;
+      return;
+    }
+
+    if (lastLoadedNodeIdRef.current === nodeId) {
+      return;
+    }
+
+    lastLoadedNodeIdRef.current = nodeId;
+
+    if (initialFileIds.length > 0) {
+      loadInitialFiles();
+    } else {
+      setUploadedFiles([]);
+    }
+  }, [isOpen, nodeId, initialFileIds, loadInitialFiles]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);

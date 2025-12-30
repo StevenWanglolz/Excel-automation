@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: Union[str, list[str]
                         ] = "http://localhost:5173,http://localhost:3000"
 
+    # Dev auth bypass - skips JWT validation for local development
+    DISABLE_AUTH: bool = True
+    DEV_AUTH_EMAIL: str = "test@gmail.com"
+    DEV_AUTH_PASSWORD: str = "test"
+
     def get_cors_origins(self) -> list[str]:
         """Parse CORS_ORIGINS string into list"""
         # Handle both string and list formats for flexibility

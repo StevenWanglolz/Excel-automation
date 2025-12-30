@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { ConfirmationModal } from '../Common/ConfirmationModal';
@@ -23,12 +23,7 @@ export const Dashboard = () => {
   const [flowToDelete, setFlowToDelete] = useState<number | null>(null);
   const [alertMessage, setAlertMessage] = useState('');
 
-  useEffect(() => {
-    // Load all flows by default
-    loadFlows();
-  }, []);
-
-  const loadFlows = async () => {
+  const loadFlows = useCallback(async () => {
     setIsLoadingFlows(flows.length === 0);
     try {
       const flowList = await flowsApi.list();
@@ -39,7 +34,12 @@ export const Dashboard = () => {
     } finally {
       setIsLoadingFlows(false);
     }
-  };
+  }, [flows.length, FLOWS_CACHE_KEY]);
+
+  useEffect(() => {
+    // Load all flows by default
+    loadFlows();
+  }, [loadFlows]);
 
   const handleFlowClick = (flowId: number) => {
     navigate(`/flow-builder?flow=${flowId}`);
