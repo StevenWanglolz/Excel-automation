@@ -206,6 +206,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
 - **SortableNode.tsx** 🟢 - Wraps flow nodes with sortable drag handles and logic
+- **PipelineNodeCard.tsx** 🟢 - Shared node card rendering for pipeline steps
 - **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
 - **BlockPalette.tsx** 🟢 - Sidebar with available blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config

@@ -874,13 +874,11 @@ export const FlowBuilder = () => {
 
   const handleTogglePreview = (nodeId: string) => {
     setActivePreviewNodeIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(nodeId)) {
-        next.delete(nodeId);
-      } else {
-        next.add(nodeId);
+      // Full-screen preview is single-instance; toggle replaces the active one.
+      if (prev.has(nodeId)) {
+        return new Set();
       }
-      return next;
+      return new Set([nodeId]);
     });
   };
 

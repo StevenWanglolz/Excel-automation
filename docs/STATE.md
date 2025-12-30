@@ -89,7 +89,7 @@ const { nodes, edges, updateNode } = useFlowStore();
   previewLoading: Record<string, boolean>,          // Per-step loading flags
   previewErrors: Record<string, string | null>,     // Per-step error messages
   sourceSheetName: string | null,                   // Selected sheet for source preview
-  activePreviewNodeIds: Set<string>,                // Steps with preview expanded
+  activePreviewNodeIds: Set<string>,                // Single active full-screen preview (stored as a set)
   viewAction: { type: 'fit' | 'reset'; id: number } | null // Pipeline view commands
 }
 ```

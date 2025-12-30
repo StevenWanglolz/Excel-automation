@@ -20,10 +20,9 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  DragOverlay,
-  defaultDropAnimationSideEffects,
+  pointerWithin,
+  type CollisionDetection,
   type DragEndEvent,
-  type DropAnimation,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -32,6 +31,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import type { FilePreview } from '../../types';
+import { DataPreview } from '../Preview/DataPreview';
+import { PipelineNodeCard } from './PipelineNodeCard';
 import { SortableNode } from './SortableNode';
 
 interface FlowPipelineProps {
@@ -69,21 +70,13 @@ const getConfigSummary = (config: Record<string, unknown> | undefined) => {
   return extraCount > 0 ? `${previewEntries.join(', ')} +${extraCount} more` : previewEntries.join(', ');
 };
 
-const buildStepLabel = (index: number, isSource: boolean) => {
-  if (isSource) {
-    return 'Source';
-  }
-  return `Step ${index}`;
-};
 
-const dropAnimation: DropAnimation = {
-  sideEffects: defaultDropAnimationSideEffects({
-    styles: {
-      active: {
-        opacity: '0.4',
-      },
-    },
-  }),
+const collisionDetectionStrategy: CollisionDetection = (args) => {
+  const pointerHits = pointerWithin(args);
+  if (pointerHits.length > 0) {
+    return pointerHits;
+  }
+  return closestCenter(args);
 };
 
 export const FlowPipeline = ({
@@ -105,20 +98,31 @@ export const FlowPipeline = ({
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
-  const [activeDragId, setActiveDragId] = useState<string | null>(null);
-  
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      // Avoid immediate drag jumps by requiring slight movement first.
+      activationConstraint: { distance: 6 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
 
   const orderedNodes = useMemo(() => nodes, [nodes]);
+  // Pin the first node so it never shifts during drag sorting.
+  const pinnedNode = orderedNodes[0] || null;
+  const sortableNodes = orderedNodes.slice(1);
+  const activePreviewNodeId = useMemo(() => {
+    const [first] = Array.from(activePreviewNodeIds);
+    return first ?? null;
+  }, [activePreviewNodeIds]);
+  const activePreviewNode = activePreviewNodeId
+    ? orderedNodes.find((node) => node.id === activePreviewNodeId) || null
+    : null;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -169,31 +173,20 @@ export const FlowPipeline = ({
     setPan(nextPan);
   }, [viewAction]);
 
-  const handleDragStart = (event: any) => {
-    setActiveDragId(event.active.id);
-  };
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setActiveDragId(null);
 
     if (active.id !== over?.id && over) {
-      const oldIndex = nodes.findIndex((node) => node.id === active.id);
-      const newIndex = nodes.findIndex((node) => node.id === over.id);
+      const oldIndex = sortableNodes.findIndex((node) => node.id === active.id);
+      const newIndex = sortableNodes.findIndex((node) => node.id === over.id);
 
-      // Prevent moving anything to the source position (index 0)
-      if (newIndex === 0) {
+      if (oldIndex === -1 || newIndex === -1 || !pinnedNode) {
         return;
       }
 
-      // Prevent moving source node is handled by SortableNode disabled prop, 
-      // but double check here.
-      if (oldIndex === 0) {
-        return;
-      }
-
-      const nextNodes = arrayMove(nodes, oldIndex, newIndex);
-      onReorderNodes(nextNodes);
+      const nextSortable = arrayMove(sortableNodes, oldIndex, newIndex);
+      onReorderNodes([pinnedNode, ...nextSortable]);
     }
   };
 
@@ -273,19 +266,28 @@ export const FlowPipeline = ({
       >
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
+          collisionDetection={collisionDetectionStrategy}
           onDragEnd={handleDragEnd}
         >
           {/* Content wrapper defines the bounds used for fit-to-view. */}
-          <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-3 px-6 py-6">
-            <SortableContext items={orderedNodes} strategy={verticalListSortingStrategy}>
-              {orderedNodes.map((node, index) => {
+          <div ref={contentRef} className="mx-auto flex w-full max-w-xs flex-col gap-2 px-6 py-4">
+            {pinnedNode && (
+              <PipelineNodeCard
+                node={pinnedNode}
+                isFileSource={true}
+                isSelected={selectedNodeId === pinnedNode.id}
+                isPreviewOpen={activePreviewNodeIds.has(pinnedNode.id)}
+                configSummary={getConfigSummary(pinnedNode.data?.config as Record<string, unknown> | undefined)}
+                onNodeClick={onNodeClick}
+                onAddOperation={onAddOperation}
+                onDeleteNode={onDeleteNode}
+                onTogglePreview={onTogglePreview}
+              />
+            )}
+            {/* Only non-source nodes participate in sorting to keep the data block fixed. */}
+            <SortableContext items={sortableNodes} strategy={verticalListSortingStrategy}>
+              {sortableNodes.map((node, index) => {
                 const isFileSource = fileSourceNodeId === node.id || node.type === 'source';
-                const stepLabel = buildStepLabel(isFileSource ? 0 : index, isFileSource);
-                const preview = previews[node.id] || null;
-                const isLoading = previewLoading[node.id] || false;
-                const errorMessage = previewErrors[node.id];
                 const configSummary = getConfigSummary(node.data?.config as Record<string, unknown> | undefined);
                 const isSelected = selectedNodeId === node.id;
                 const isPreviewOpen = activePreviewNodeIds.has(node.id);
@@ -294,62 +296,70 @@ export const FlowPipeline = ({
                   <SortableNode
                     key={node.id}
                     node={node}
-                    index={index}
+                    index={index + 1}
+                    scale={scale}
                     isFileSource={isFileSource}
                     isSelected={isSelected}
                     isPreviewOpen={isPreviewOpen}
-                    preview={preview}
-                    isLoading={isLoading}
-                    errorMessage={errorMessage}
-                    stepLabel={stepLabel}
                     configSummary={configSummary}
                     onNodeClick={onNodeClick}
                     onAddOperation={onAddOperation}
                     onDeleteNode={onDeleteNode}
                     onTogglePreview={onTogglePreview}
-                    onSourceSheetChange={onSourceSheetChange}
                   />
                 );
               })}
             </SortableContext>
-            <DragOverlay dropAnimation={dropAnimation}>
-            {activeDragId ? (
-                (() => {
-                  const node = nodes.find((n) => n.id === activeDragId);
-                  if (!node) return null;
-                  const index = nodes.findIndex((n) => n.id === activeDragId);
-                  const isFileSource = fileSourceNodeId === node.id || node.type === 'source';
-                  const stepLabel = buildStepLabel(isFileSource ? 0 : index, isFileSource);
-                  const preview = previews[node.id] || null;
-                  const isLoading = previewLoading[node.id] || false;
-                  const errorMessage = previewErrors[node.id];
-                  const configSummary = getConfigSummary(node.data?.config as Record<string, unknown> | undefined);
-                  
-                  return (
-                    <SortableNode
-                      node={node}
-                      index={index}
-                      isFileSource={isFileSource}
-                      isSelected={true}
-                      isPreviewOpen={false} // Collapsed during drag for cleanliness
-                      preview={null}
-                      isLoading={false}
-                      errorMessage={null}
-                      stepLabel={stepLabel}
-                      configSummary={configSummary}
-                      onNodeClick={() => {}}
-                      onAddOperation={() => {}}
-                      onDeleteNode={() => {}}
-                      onTogglePreview={() => {}}
-                      onSourceSheetChange={() => {}}
-                    />
-                  );
-                })()
-              ) : null}
-            </DragOverlay>
           </div>
         </DndContext>
       </div>
+      {activePreviewNode && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
+          onClick={() => onTogglePreview(activePreviewNode.id)}
+        >
+          <div
+            className="w-full max-w-6xl rounded-2xl bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Full Screen Preview</div>
+                <div className="text-xs text-gray-500">
+                  {activePreviewNode.data?.label || activePreviewNode.type || 'Step'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="rounded-md p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+                onClick={() => onTogglePreview(activePreviewNode.id)}
+                title="Close preview"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="h-[70vh] p-5">
+              {previewErrors[activePreviewNode.id] ? (
+                <div className="flex h-full items-center justify-center text-sm text-red-600">
+                  {previewErrors[activePreviewNode.id]}
+                </div>
+              ) : (
+                <DataPreview
+                  preview={previews[activePreviewNode.id] || null}
+                  isLoading={previewLoading[activePreviewNode.id] || false}
+                  onSheetChange={
+                    activePreviewNode.id === fileSourceNodeId || activePreviewNode.type === 'source'
+                      ? onSourceSheetChange
+                      : undefined
+                  }
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

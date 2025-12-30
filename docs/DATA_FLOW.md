@@ -557,6 +557,8 @@ const orderedNodes = useMemo(() => nodes, [nodes]);
 // Steps render in the same order as the nodes array.
 ```
 
+**UI note:** The first node is pinned in the pipeline so drag sorting only reorders downstream steps.
+
 **Step 2: User executes the flow**
 
 ```typescript
@@ -678,7 +680,7 @@ def execute_flow(
    ↓
 4. Each downstream step preview runs transformApi.execute() with nodes up to that step
    ↓
-5. DataPreview renders the preview table inside the step
+5. DataPreview renders the preview table in a full-screen modal
 ```
 
 **Step 1: Pipeline toggles preview on demand**
