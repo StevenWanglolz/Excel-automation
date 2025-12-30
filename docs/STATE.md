@@ -119,6 +119,13 @@ const [email, setEmail] = useState('');
 const [isModalOpen, setIsModalOpen] = useState(false);
 ```
 
+### Dashboard Local State
+
+- `flows` and `isLoadingFlows` live in `frontend/src/components/Dashboard/Dashboard.tsx`.
+- The dashboard uses a stale-while-revalidate pattern:
+  - Reads cached flows from `localStorage` (`sheetpilot_flows_cache`) for instant render.
+  - Refreshes from the API in the background and updates the cache.
+
 ### When to Use Store State (Zustand)
 - **Global state** - needed by multiple components
 - **Persistent state** - should survive component unmount
@@ -171,6 +178,11 @@ function MyComponent() {
 - **On refresh:** Flow state is lost unless loaded from saved flow
 - **Save flow:** Converts state to JSON, sends to backend
 
+### Unsaved Changes (Flow Builder)
+
+- New flows prompt on any meaningful edit, including name changes.
+- Existing flows compare against the last saved snapshot including the name.
+
 ## State Synchronization
 
 ### Frontend → Backend
@@ -212,4 +224,3 @@ function MyComponent() {
 - **UI preferences store** - Theme, layout settings
 - **Cache store** - Store API responses temporarily
 - **Optimistic updates** - Update UI before API confirms
-

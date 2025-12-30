@@ -8,7 +8,16 @@ import type { Flow } from '../../types';
 export const Dashboard = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
-  const [flows, setFlows] = useState<Flow[]>([]);
+  const FLOWS_CACHE_KEY = 'sheetpilot_flows_cache';
+  const [flows, setFlows] = useState<Flow[]>(() => {
+    try {
+      const cached = localStorage.getItem(FLOWS_CACHE_KEY);
+      return cached ? (JSON.parse(cached) as Flow[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoadingFlows, setIsLoadingFlows] = useState(flows.length === 0);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [flowToDelete, setFlowToDelete] = useState<number | null>(null);
@@ -20,11 +29,15 @@ export const Dashboard = () => {
   }, []);
 
   const loadFlows = async () => {
+    setIsLoadingFlows(flows.length === 0);
     try {
       const flowList = await flowsApi.list();
       setFlows(flowList);
+      localStorage.setItem(FLOWS_CACHE_KEY, JSON.stringify(flowList));
     } catch (error) {
       console.error('Failed to load flows:', error);
+    } finally {
+      setIsLoadingFlows(false);
     }
   };
 
@@ -101,7 +114,23 @@ export const Dashboard = () => {
           </div>
 
           {/* Flows Grid */}
-          {flows.length === 0 ? (
+          {isLoadingFlows && flows.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div
+                  key={`flow-skeleton-${index}`}
+                  className="bg-white rounded-lg border-2 border-gray-200 p-6 min-h-[136px] shadow-sm animate-pulse"
+                >
+                  <div className="h-4 w-1/2 bg-gray-200 rounded mb-3" />
+                  <div className="h-3 w-3/4 bg-gray-100 rounded" />
+                  <div className="mt-6 flex items-center justify-between border-t border-gray-100 pt-3">
+                    <div className="h-3 w-16 bg-gray-100 rounded" />
+                    <div className="h-3 w-12 bg-gray-100 rounded" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : flows.length === 0 ? (
             <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
               <div className="text-4xl mb-4">📋</div>
               <p className="text-gray-600 mb-4">No automations created yet</p>

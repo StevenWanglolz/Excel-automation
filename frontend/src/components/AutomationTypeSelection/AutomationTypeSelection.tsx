@@ -1,11 +1,14 @@
 import { useNavigate } from 'react-router-dom';
+import { useFlowStore } from '../../store/flowStore';
 
 export const AutomationTypeSelection = () => {
   const navigate = useNavigate();
+  const { clearFlow } = useFlowStore();
 
   const handleSelectAutomation = (automationType: string) => {
-    // Navigate to flow builder with the selected automation type
-    navigate(`/flow-builder?type=${automationType}`);
+    // Mark this navigation as a new flow start to avoid carrying over prior nodes.
+    clearFlow();
+    navigate(`/flow-builder?type=${automationType}&new=1`);
   };
 
   return (
@@ -71,4 +74,3 @@ export const AutomationTypeSelection = () => {
     </div>
   );
 };
-

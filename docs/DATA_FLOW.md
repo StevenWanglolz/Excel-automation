@@ -720,11 +720,13 @@ def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
 ## New Flow Initialization
 
 ```
-1. User navigates to /flow-builder without a flow ID
+1. User selects an automation type
    ↓
-2. FlowBuilder checks for a clean single-source state
+2. Flow state is cleared immediately (before paint) to avoid flashing old nodes
    ↓
-3. If stale nodes exist, the flow is reset to a single source node
+3. A `new=1` query param is added to force a clean init
+   ↓
+4. FlowBuilder detects `new=1`, inserts a single source node, and removes the param
 ```
 
 **Step 2-3: Reset to a single source node**

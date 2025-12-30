@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FlowCanvas } from './FlowCanvas';
 import { DataUploadModal } from './DataUploadModal';
@@ -178,10 +178,22 @@ export const FlowBuilder = () => {
   useEffect(() => {
     // For new flows (no selectedFlowId), always allow saving if there are nodes
     if (!selectedFlowId) {
-      // For new flows, mark as having changes if there are any nodes
-      const hasNodes = nodes.length > 0;
-      hasUnsavedChangesRef.current = hasNodes;
-      setHasUnsavedChanges(hasNodes);
+      const isSingleSource =
+        nodes.length === 1 &&
+        nodes[0]?.id === 'source-0' &&
+        nodes[0]?.type === 'source';
+      const sourceData = nodes[0]?.data;
+      const hasUploadedFiles =
+        Array.isArray(sourceData?.fileIds) ? sourceData.fileIds.length > 0 : Boolean(sourceData?.fileId);
+      const hasChanges =
+        flowName.trim().length > 0 ||
+        edges.length > 0 ||
+        nodes.length > 1 ||
+        !isSingleSource ||
+        hasUploadedFiles;
+
+      hasUnsavedChangesRef.current = hasChanges;
+      setHasUnsavedChanges(hasChanges);
       return;
     }
     
@@ -254,7 +266,18 @@ export const FlowBuilder = () => {
     setPendingNavigation(null);
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const isNewFlow = searchParams.get('new') === '1';
+
+    if (isNewFlow) {
+      clearFlowInternal();
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('new');
+      const nextQuery = nextParams.toString();
+      navigate(nextQuery ? `/flow-builder?${nextQuery}` : '/flow-builder', { replace: true });
+      return;
+    }
+
     // Load flow from URL parameter if present
     const flowIdParam = searchParams.get('flow');
     if (flowIdParam) {
@@ -334,18 +357,18 @@ export const FlowBuilder = () => {
         showModal('success', 'Success', 'Flow updated successfully!');
       } else {
         // Create new flow
-      await flowsApi.create({
-        name: flowName,
-        description: '',
-        flow_data: flowData,
-      });
+        const createdFlow = await flowsApi.create({
+          name: flowName,
+          description: '',
+          flow_data: flowData,
+        });
         // Save state including flowName for comparison
         savedFlowDataRef.current = JSON.stringify({ ...flowData, flowName });
         hasUnsavedChangesRef.current = false;
-      setHasUnsavedChanges(false);
+        setHasUnsavedChanges(false);
+        setSelectedFlowId(createdFlow.id);
+        setFlowName(createdFlow.name);
         showModal('success', 'Success', 'Flow saved successfully!');
-      setFlowName('');
-        setSelectedFlowId(null);
       }
       
       await loadFlows();
