@@ -72,10 +72,12 @@ const getConfigSummary = (config: Record<string, unknown> | undefined) => {
 
 
 const collisionDetectionStrategy: CollisionDetection = (args) => {
+  // Prioritize pointer collision so "drop under cursor" feels natural when zoomed.
   const pointerHits = pointerWithin(args);
   if (pointerHits.length > 0) {
     return pointerHits;
   }
+  // Fall back to closest center for reliable reordering when pointer misses thin targets.
   return closestCenter(args);
 };
 
@@ -95,6 +97,7 @@ export const FlowPipeline = ({
   onSourceSheetChange,
   onTogglePreview,
 }: FlowPipelineProps) => {
+  // Canvas scale/pan are owned here so the pipeline can zoom independently of the app shell.
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -147,6 +150,7 @@ export const FlowPipeline = ({
       return;
     }
     if (viewAction.type === 'reset') {
+      // Reset is explicit so the toolbar can snap back to the default scale.
       setScale(1);
       setPan({ x: 0, y: 0 });
       return;
@@ -159,6 +163,7 @@ export const FlowPipeline = ({
     }
 
     const canvasRect = canvas.getBoundingClientRect();
+    // Fit-to-view uses the unscaled content bounds as the baseline.
     const baseWidth = Math.max(content.scrollWidth, 1);
     const baseHeight = Math.max(content.scrollHeight, 1);
     const paddingFactor = 0.9;
@@ -175,8 +180,8 @@ export const FlowPipeline = ({
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setActiveDragId(null);
 
+    // Only reorder when we drop over a different item in the sortable list.
     if (active.id !== over?.id && over) {
       const oldIndex = sortableNodes.findIndex((node) => node.id === active.id);
       const newIndex = sortableNodes.findIndex((node) => node.id === over.id);
@@ -185,6 +190,7 @@ export const FlowPipeline = ({
         return;
       }
 
+      // Rebuild the ordered list with the pinned source still first.
       const nextSortable = arrayMove(sortableNodes, oldIndex, newIndex);
       onReorderNodes([pinnedNode, ...nextSortable]);
     }
@@ -210,6 +216,7 @@ export const FlowPipeline = ({
         ) {
           return;
         }
+        // Capture the start position so we can offset pan by drag distance.
         event.preventDefault();
         setIsPanning(true);
         panStartRef.current = {
@@ -223,6 +230,7 @@ export const FlowPipeline = ({
         if (!panStartRef.current) {
           return;
         }
+        // Translate based on pointer delta from the initial pan anchor.
         const nextX = panStartRef.current.panX + (event.clientX - panStartRef.current.x);
         const nextY = panStartRef.current.panY + (event.clientY - panStartRef.current.y);
         setPan({ x: nextX, y: nextY });
@@ -244,6 +252,7 @@ export const FlowPipeline = ({
         if (!rect) {
           return;
         }
+        // Zoom around the cursor so users feel like they're "pointing" at the target.
         const scaleDelta = event.deltaY > 0 ? -0.1 : 0.1;
         const nextScale = Math.min(1.6, Math.max(0.6, scale + scaleDelta));
         const cursorX = event.clientX - rect.left;
@@ -284,8 +293,8 @@ export const FlowPipeline = ({
                 onTogglePreview={onTogglePreview}
               />
             )}
-            {/* Only non-source nodes participate in sorting to keep the data block fixed. */}
-            <SortableContext items={sortableNodes} strategy={verticalListSortingStrategy}>
+            {/* DnD-kit expects stable IDs; keep the list keyed by node IDs. */}
+            <SortableContext items={sortableNodes.map((node) => node.id)} strategy={verticalListSortingStrategy}>
               {sortableNodes.map((node, index) => {
                 const isFileSource = fileSourceNodeId === node.id || node.type === 'source';
                 const configSummary = getConfigSummary(node.data?.config as Record<string, unknown> | undefined);

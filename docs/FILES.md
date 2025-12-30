@@ -205,6 +205,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - Changes affect entire flow builder
 
 - **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
+  - Drag reorder lives here; drag end must not throw or drops will revert to original order
 - **SortableNode.tsx** 🟢 - Wraps flow nodes with sortable drag handles and logic
 - **PipelineNodeCard.tsx** 🟢 - Shared node card rendering for pipeline steps
 - **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
