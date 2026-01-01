@@ -11,6 +11,8 @@ interface DataPreviewProps {
   fileId?: number;
   fileOptions?: FileOption[];
   currentFileId?: number | null;
+  sheetOptions?: string[];
+  currentSheet?: string | null;
   onFileChange?: (fileId: number) => void;
   onSheetChange?: (sheetName: string) => void;
 }
@@ -21,6 +23,8 @@ export const DataPreview = ({
   fileId: _fileId,
   fileOptions,
   currentFileId,
+  sheetOptions,
+  currentSheet,
   onFileChange,
   onSheetChange,
 }: DataPreviewProps) => {
@@ -57,8 +61,18 @@ export const DataPreview = ({
   }
 
   const hasMultipleFiles = Boolean(fileOptions && fileOptions.length > 1 && onFileChange);
-  const hasMultipleSheets = preview.sheets && preview.sheets.length > 1;
-  const currentSheet = preview.current_sheet || (preview.sheets && preview.sheets.length > 0 ? preview.sheets[0] : null);
+  const effectiveSheets = sheetOptions ?? preview.sheets ?? [];
+  const hasMultipleSheets = effectiveSheets.length > 1;
+  const activeSheet = currentSheet ?? preview.current_sheet ?? (effectiveSheets.length > 0 ? effectiveSheets[0] : null);
+  const rowCountLabel = preview.is_placeholder ? 0 : preview.row_count;
+  // Keep a visible grid even when the sheet has no data or columns yet.
+  const fallbackColumns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  const effectiveColumns = preview.columns.length > 0 ? preview.columns : fallbackColumns;
+  const displayRows = preview.preview_rows.length > 0
+    ? preview.preview_rows
+    : Array.from({ length: 20 }, () =>
+        Object.fromEntries(effectiveColumns.map((column) => [column, '']))
+      );
 
   return (
     <div className="w-full flex flex-col h-full">
@@ -81,8 +95,8 @@ export const DataPreview = ({
           </label>
         )}
         <div className="text-sm text-gray-600">
-          <span className="font-semibold">{preview.row_count}</span> rows,{' '}
-          <span className="font-semibold">{preview.columns.length}</span> columns
+          <span className="font-semibold">{rowCountLabel}</span> rows,{' '}
+          <span className="font-semibold">{effectiveColumns.length}</span> columns
         </div>
       </div>
 
@@ -92,10 +106,10 @@ export const DataPreview = ({
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50 sticky top-0 z-10">
             <tr>
-              {preview.columns.map((column) => (
+              {effectiveColumns.map((column) => (
                 <th
                   key={column}
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200 border-r last:border-r-0"
                 >
                   {column}
                 </th>
@@ -103,15 +117,15 @@ export const DataPreview = ({
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {preview.preview_rows.map((row, idx) => {
+            {displayRows.map((row, idx) => {
               // Create a unique key from row data and index
               const rowKey = preview.columns.length > 0 
                 ? `${idx}-${String(row[preview.columns[0]] ?? '')}`
                 : `row-${idx}`;
               return (
               <tr key={rowKey} className="hover:bg-gray-50">
-                {preview.columns.map((column) => (
-                  <td key={column} className="px-4 py-3 text-sm text-gray-900">
+                {effectiveColumns.map((column) => (
+                  <td key={column} className="px-4 py-3 text-sm text-gray-900 border-b border-gray-200 border-r last:border-r-0">
                     {row[column] !== null && row[column] !== undefined
                       ? String(row[column])
                       : ''}
@@ -125,10 +139,10 @@ export const DataPreview = ({
       </div>
 
       {/* Sheet tabs at the bottom (Excel-style) - horizontal scroll only */}
-      {hasMultipleSheets && preview.sheets && (
+      {hasMultipleSheets && (
         <div className="flex items-end border-l border-r border-b border-gray-300 bg-gray-100 rounded-b-lg overflow-x-auto overflow-y-hidden">
-          {preview.sheets.map((sheet) => {
-            const isActive = sheet === currentSheet;
+          {effectiveSheets.map((sheet) => {
+            const isActive = sheet === activeSheet;
             return (
               <button
                 key={sheet}

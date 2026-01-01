@@ -8,6 +8,7 @@ from app.models.user import User
 from app.models.file import File
 from app.services.transform_service import transform_service
 from app.services.file_service import file_service
+from app.services.file_reference_service import file_reference_service
 import pandas as pd
 import io
 
@@ -18,6 +19,7 @@ class FlowExecuteRequest(BaseModel):
     file_id: int
     file_ids: list[int] | None = None
     flow_data: Dict[str, Any]
+    preview_target: Dict[str, Any] | None = None
 
 
 class StepPreviewRequest(BaseModel):
@@ -33,13 +35,18 @@ async def execute_flow(
 ):
     """Execute a flow on a file"""
     requested_ids = request.file_ids if request.file_ids else [request.file_id]
+    requested_ids = [file_id for file_id in requested_ids if isinstance(file_id, int) and file_id > 0]
+    referenced_ids = list(file_reference_service.extract_file_ids_from_flow_data(request.flow_data))
+    effective_ids = requested_ids or referenced_ids
     # Load all referenced files (multi-file flows need more than one).
-    db_files = db.query(File).filter(
-        File.user_id == current_user.id,
-        File.id.in_(requested_ids)
-    ).all()
+    db_files = []
+    if effective_ids:
+        db_files = db.query(File).filter(
+            File.user_id == current_user.id,
+            File.id.in_(effective_ids)
+        ).all()
 
-    if not db_files:
+    if effective_ids and not db_files:
         raise HTTPException(status_code=404, detail="File not found")
 
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
@@ -51,13 +58,41 @@ async def execute_flow(
             request.flow_data
         )
 
-        # Choose a preview table (last modified or first available).
-        if last_table_key and last_table_key in table_map:
+        preview_target = request.preview_target or {}
+        target_file_id = preview_target.get("file_id")
+        target_sheet_name = preview_target.get("sheet_name")
+        target_virtual_id = preview_target.get("virtual_id")
+
+        if not target_file_id and isinstance(target_virtual_id, str):
+            table_key = f"virtual:{target_virtual_id}"
+            result_df = table_map.get(table_key)
+            if result_df is None:
+                result_df = pd.DataFrame()
+            preview = file_service.get_file_preview(result_df)
+            return {
+                "preview": preview,
+                "row_count": len(result_df),
+                "column_count": len(result_df.columns)
+            }
+
+        if target_file_id:
+            table_key = f"{target_file_id}:{target_sheet_name or '__default__'}"
+            result_df = table_map.get(table_key)
+            if result_df is None and target_file_id in file_paths_by_id:
+                result_df = file_service.parse_file(
+                    file_paths_by_id[target_file_id],
+                    sheet_name=target_sheet_name
+                )
+            if result_df is None:
+                result_df = pd.DataFrame()
+        elif last_table_key and last_table_key in table_map:
             result_df = table_map[last_table_key]
-        else:
+        elif effective_ids:
             # Fallback to the first file in case no transforms ran.
-            fallback_file_id = requested_ids[0]
+            fallback_file_id = effective_ids[0]
             result_df = file_service.parse_file(file_paths_by_id[fallback_file_id])
+        else:
+            result_df = pd.DataFrame()
 
         preview = file_service.get_file_preview(result_df)
 
@@ -134,43 +169,73 @@ async def export_result(
             None
         )
         output_config = output_node.get("data", {}).get("output", {}) if output_node else {}
-        output_name = output_config.get("fileName") or "output.xlsx"
-        output_sheets = output_config.get("sheets") if isinstance(output_config, dict) else []
+        output_files = output_config.get("outputs") if isinstance(output_config, dict) else []
+        legacy_file_name = output_config.get("fileName") if isinstance(output_config, dict) else None
+        legacy_sheets = output_config.get("sheets") if isinstance(output_config, dict) else None
+
+        if last_table_key and last_table_key in table_map:
+            result_df = table_map[last_table_key]
+        elif effective_ids:
+            fallback_file_id = effective_ids[0]
+            result_df = file_service.parse_file(file_paths_by_id[fallback_file_id])
+        else:
+            result_df = pd.DataFrame()
 
         # Convert to Excel bytes
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine="openpyxl") as writer:
-            if output_sheets:
-                for sheet in output_sheets:
-                    source = sheet.get("source", {}) if isinstance(sheet, dict) else {}
-                    source_file_id = source.get("fileId")
-                    source_sheet_name = source.get("sheetName")
-                    if source_file_id not in file_paths_by_id:
-                        continue
-                    table_key = f"{source_file_id}:{source_sheet_name or '__default__'}"
-                    df = table_map.get(table_key)
-                    if df is None:
-                        df = file_service.parse_file(
-                            file_paths_by_id[source_file_id],
-                            sheet_name=source_sheet_name
-                        )
-                    sheet_name = sheet.get("sheetName") or "Sheet1"
-                    df.to_excel(writer, index=False, sheet_name=sheet_name)
-            else:
-                if last_table_key and last_table_key in table_map:
-                    result_df = table_map[last_table_key]
+        outputs_to_write = output_files if isinstance(output_files, list) else []
+        if not outputs_to_write and (legacy_file_name or legacy_sheets):
+            outputs_to_write = [{
+                "fileName": legacy_file_name or "output.xlsx",
+                "sheets": legacy_sheets or [{"sheetName": "Sheet1"}],
+            }]
+        if not outputs_to_write:
+            outputs_to_write = [{
+                "fileName": "output.xlsx",
+                "sheets": [{"sheetName": "Sheet1"}],
+            }]
+
+        files_payload = []
+        for index, output_file in enumerate(outputs_to_write):
+            file_name = output_file.get("fileName") or "output.xlsx"
+            sheets = output_file.get("sheets") if isinstance(output_file, dict) else []
+            output_id = output_file.get("id") if isinstance(output_file, dict) else None
+            if not output_id:
+                output_id = f"output-{index + 1}"
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                if sheets:
+                    for sheet in sheets:
+                        sheet_name = sheet.get("sheetName") or "Sheet1"
+                        virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                        sheet_df = table_map.get(virtual_key, pd.DataFrame())
+                        sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
                 else:
-                    fallback_file_id = requested_ids[0]
-                    result_df = file_service.parse_file(file_paths_by_id[fallback_file_id])
-                result_df.to_excel(writer, index=False, sheet_name="Sheet1")
-        output.seek(0)
+                    result_df.to_excel(writer, index=False, sheet_name="Sheet1")
+            output.seek(0)
+            files_payload.append((file_name, output.read()))
 
         from fastapi.responses import StreamingResponse
+        if len(files_payload) == 1:
+            file_name, payload = files_payload[0]
+            return StreamingResponse(
+                io.BytesIO(payload),
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={
+                    "Content-Disposition": f"attachment; filename={file_name}"
+                }
+            )
+
+        zip_output = io.BytesIO()
+        import zipfile
+        with zipfile.ZipFile(zip_output, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for file_name, payload in files_payload:
+                zip_file.writestr(file_name, payload)
+        zip_output.seek(0)
         return StreamingResponse(
-            io.BytesIO(output.read()),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            io.BytesIO(zip_output.read()),
+            media_type="application/zip",
             headers={
-                "Content-Disposition": f"attachment; filename={output_name}"
+                "Content-Disposition": "attachment; filename=outputs.zip"
             }
         )
     except Exception as e:

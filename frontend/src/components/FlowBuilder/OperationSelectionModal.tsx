@@ -36,6 +36,7 @@ const OPERATIONS: Operation[] = [
 
 export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: OperationSelectionModalProps) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const implementedOperations = new Set(['remove-columns-rows']);
 
   if (!isOpen) return null;
 
@@ -132,7 +133,11 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
                   <button
                     key={operation.id}
                     onClick={() => handleSelect(operation)}
-                    className="w-full bg-[#d9d9d9] h-12 rounded-md flex items-center px-3 hover:bg-gray-400 transition-colors text-left"
+                    className={`w-full h-12 rounded-md flex items-center px-3 transition-colors text-left ${
+                      implementedOperations.has(operation.id)
+                        ? 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                        : 'bg-[#d9d9d9] text-gray-900 hover:bg-gray-400'
+                    }`}
                   >
                     <span className="text-sm text-gray-900">{operation.label}</span>
                   </button>
@@ -145,7 +150,11 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
                   <button
                     key={operation.id}
                     onClick={() => handleSelect(operation)}
-                    className="w-full bg-[#d9d9d9] h-12 rounded-md flex items-center px-3 hover:bg-gray-400 transition-colors text-left"
+                    className={`w-full h-12 rounded-md flex items-center px-3 transition-colors text-left ${
+                      implementedOperations.has(operation.id)
+                        ? 'bg-emerald-100 text-emerald-900 hover:bg-emerald-200'
+                        : 'bg-[#d9d9d9] text-gray-900 hover:bg-gray-400'
+                    }`}
                   >
                     <span className="text-sm text-gray-900">{operation.label}</span>
                   </button>

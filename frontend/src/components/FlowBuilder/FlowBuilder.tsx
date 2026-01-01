@@ -24,6 +24,7 @@ import { flowsApi } from '../../api/flows';
 import { filesApi } from '../../api/files';
 import { transformApi } from '../../api/transform';
 import type {
+  BlockData,
   File,
   FilePreview,
   Flow,
@@ -61,6 +62,7 @@ export const FlowBuilder = () => {
     onConfirm?: () => void;
     onDiscard?: () => void;
     confirmText?: string;
+    confirmDisabled?: boolean;
     discardText?: string;
   } | null>(null);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
@@ -73,6 +75,8 @@ export const FlowBuilder = () => {
   const [sourceFileId, setSourceFileId] = useState<number | null>(null);
   const [sourceSheetByFileId, setSourceSheetByFileId] = useState<Record<number, string | null>>({});
   const [previewFiles, setPreviewFiles] = useState<File[]>([]);
+  const [sheetOptionsByFileId, setSheetOptionsByFileId] = useState<Record<number, string[]>>({});
+  const [previewOverrides, setPreviewOverrides] = useState<Record<string, TableTarget>>({});
   const [activePreviewNodeIds, setActivePreviewNodeIds] = useState<Set<string>>(new Set());
   const [viewAction, setViewAction] = useState<{ type: 'fit' | 'reset'; id: number } | null>(null);
   const [lastTarget, setLastTarget] = useState<TableTarget>({ fileId: null, sheetName: null });
@@ -400,7 +404,6 @@ export const FlowBuilder = () => {
         savedFlowDataRef.current = JSON.stringify({ ...flowData, flowName });
         hasUnsavedChangesRef.current = false;
       setHasUnsavedChanges(false);
-        showModal('success', 'Success', 'Flow updated successfully!');
       } else {
         // Create new flow
         const createdFlow = await flowsApi.create({
@@ -414,7 +417,6 @@ export const FlowBuilder = () => {
         setHasUnsavedChanges(false);
         setSelectedFlowId(createdFlow.id);
         setFlowName(createdFlow.name);
-        showModal('success', 'Success', 'Flow saved successfully!');
       }
       
       await loadFlows();
@@ -514,7 +516,7 @@ export const FlowBuilder = () => {
     });
     // #endregion
 
-    // Initialize with source node (required for the flow design)
+    // Initialize with source + output nodes (required for the flow design)
     const sourceNode: Node = {
       id: 'source-0',
       type: 'source',
@@ -525,10 +527,23 @@ export const FlowBuilder = () => {
         label: 'Data',
       },
     };
+    const outputNode: Node = {
+      id: 'output-0',
+      type: 'output',
+      position: { x: 250, y: 350 },
+      data: {
+        blockType: 'output',
+        config: {},
+        label: 'Output',
+        output: {
+          outputs: [],
+        },
+      },
+    };
     
     // Use setNodes for atomic state update
-    // Always reset to a single source node when starting a new flow
-    setNodes([sourceNode]);
+    // Always reset to source + output nodes when starting a new flow
+    setNodes([sourceNode, outputNode]);
     setEdges([]);
     
     // Reset other state
@@ -543,16 +558,29 @@ export const FlowBuilder = () => {
     
     // Reset undo/redo history
     reset({
-      nodes: [{
-        id: sourceNode.id,
-        type: sourceNode.type || 'source',
-        position: sourceNode.position,
-        data: {
-          blockType: 'source',
-          config: {},
-          label: 'Data',
+      nodes: [
+        {
+          id: sourceNode.id,
+          type: sourceNode.type || 'source',
+          position: sourceNode.position,
+          data: {
+            blockType: 'source',
+            config: {},
+            label: 'Data',
+          },
         },
-      }],
+        {
+          id: outputNode.id,
+          type: outputNode.type || 'output',
+          position: outputNode.position,
+          data: {
+            blockType: 'output',
+            config: {},
+            label: 'Output',
+            output: outputNode.data.output,
+          },
+        },
+      ],
       edges: [],
     });
     
@@ -650,17 +678,18 @@ export const FlowBuilder = () => {
     if (!afterNode) return;
 
     const { type, blockType } = getNodeTypeFromOperation(operation.id);
-    const defaultTarget = lastTarget.fileId ? lastTarget : {
-      fileId: resolvedSourceFileId ?? null,
-      sheetName: sourceSheetName ?? null,
+    const defaultTarget = {
+      fileId: null,
+      sheetName: null,
+      virtualId: null,
+      virtualName: null,
     };
     const targetForNode = operation.id === 'output'
       ? { fileId: null, sheetName: null }
       : defaultTarget;
     const outputConfig: OutputConfig | undefined = operation.id === 'output'
       ? {
-          fileName: 'output.xlsx',
-          sheets: [],
+          outputs: [],
         }
       : undefined;
 
@@ -673,6 +702,7 @@ export const FlowBuilder = () => {
         label: operation.label,
         config: {},
         target: targetForNode,
+        destination: operation.id === 'output' ? undefined : undefined,
         output: outputConfig,
       },
     };
@@ -699,6 +729,8 @@ export const FlowBuilder = () => {
     if (selectedNodeId) {
       const node = nodes.find((n) => n.id === selectedNodeId);
       if (node) {
+        const previousFileIds = Array.isArray(node.data?.fileIds) ? node.data.fileIds : [];
+        const hasFileIdChanges = JSON.stringify(previousFileIds) !== JSON.stringify(fileIds);
         // Store file IDs array in node data so it persists when flow is saved
         updateNode(selectedNodeId, {
           data: {
@@ -707,8 +739,8 @@ export const FlowBuilder = () => {
           }
         });
         // Mark as unsaved changes when files are uploaded
-        // This allows the user to save the flow after uploading files
-        if (fileIds.length > 0) {
+        // This allows the user to save the flow after uploading or deleting files
+        if (hasFileIdChanges) {
           hasUnsavedChangesRef.current = true;
           setHasUnsavedChanges(true);
         }
@@ -742,7 +774,10 @@ export const FlowBuilder = () => {
       nodes.find((node) => node.type === 'source' || node.type === 'upload' || node.type === 'data') || null
     );
   }, [nodes, getNodeFileIds]);
-  const sourceFileIds = fileSourceNode ? getNodeFileIds(fileSourceNode.id) : [];
+  const sourceFileIds = useMemo(
+    () => (fileSourceNode ? getNodeFileIds(fileSourceNode.id) : []),
+    [fileSourceNode, getNodeFileIds]
+  );
   const resolvedSourceFileId = sourceFileId ?? (sourceFileIds[0] ?? null);
 
   useEffect(() => {
@@ -775,7 +810,7 @@ export const FlowBuilder = () => {
     if (sourceTarget.fileId) {
       setSourceSheetByFileId((prev) => ({
         ...prev,
-        [sourceTarget.fileId]: sourceTarget.sheetName,
+        [sourceTarget.fileId as number]: sourceTarget.sheetName,
       }));
     }
     setSourceSheetName(sourceTarget.sheetName);
@@ -792,7 +827,11 @@ export const FlowBuilder = () => {
     // Backfill targets for legacy nodes so multi-sheet execution stays deterministic.
     nodes.forEach((node) => {
       const nodeData = node.data || {};
+      const hasConfig = nodeData.config && Object.keys(nodeData.config).length > 0;
       if (nodeData.target || nodeData.blockType === 'output' || node.type === 'source') {
+        return;
+      }
+      if (!hasConfig) {
         return;
       }
       updateNode(node.id, {
@@ -842,12 +881,30 @@ export const FlowBuilder = () => {
         id: node.id,
         type: node.type || 'default',
         position: node.position,
-        data: node.data as BlockData,
+        data: node.data as unknown as BlockData,
       })),
       edges: [],
     }),
     []
   );
+
+  const getOutputPreviewTarget = useCallback((node: Node): TableTarget | null => {
+    const output = node.data?.output as OutputConfig | { fileName?: string; sheets?: { sheetName?: string }[] } | undefined;
+    const outputFile = (output as OutputConfig | undefined)?.outputs?.[0];
+    const legacySheets = (output as { sheets?: { sheetName?: string }[] } | undefined)?.sheets;
+    if (!outputFile && (!legacySheets || legacySheets.length === 0)) {
+      return null;
+    }
+    const sheetName = outputFile?.sheets?.[0]?.sheetName || legacySheets?.[0]?.sheetName || 'Sheet 1';
+    const fileName = outputFile?.fileName || (output as { fileName?: string } | undefined)?.fileName || 'output.xlsx';
+    const outputId = outputFile?.id || 'legacy';
+    return {
+      fileId: null,
+      sheetName,
+      virtualId: `output:${outputId}:${sheetName}`,
+      virtualName: `${fileName} / ${sheetName}`,
+    };
+  }, []);
 
   const collectFileIds = useCallback((subset: Node[]) => {
     const fileIds = new Set<number>();
@@ -864,11 +921,35 @@ export const FlowBuilder = () => {
         fileIds.add(target.fileId);
       }
       const output = data.output as OutputConfig | undefined;
-      output?.sheets.forEach((sheet) => {
-        if (sheet.source?.fileId) {
-          fileIds.add(sheet.source.fileId);
-        }
-      });
+      // Handle modern 'outputs' array structure
+      if (output?.outputs && Array.isArray(output.outputs)) {
+        output.outputs.forEach((outputFile) => {
+          (outputFile.sheets || []).forEach((sheet) => {
+             // In the current types, OutputSheetMapping doesn't strictly have 'source', 
+             // but if we are collecting file dependencies, we should check safe properties if they exist.
+             // Based on types, sheets is just { sheetName: string }.
+             // The original code was seemingly trying to read sheet.source?.fileId?
+             // Let's preserve intent but be safe.
+             // If strict types say no 'source', this might be legacy data logic.
+             // I will comment out the unsafe access if it's not in types, or cast to any if needed to support legacy.
+             const legacySheet = sheet as any;
+             if (legacySheet.source?.fileId) {
+               fileIds.add(legacySheet.source.fileId);
+             }
+          });
+        });
+      }
+      // Handle legacy structure where sheets might be directly on output
+      else {
+          const legacyOutput = output as any;
+          if (legacyOutput?.sheets && Array.isArray(legacyOutput.sheets)) {
+            legacyOutput.sheets.forEach((sheet: any) => {
+                if (sheet.source?.fileId) {
+                    fileIds.add(sheet.source.fileId);
+                }
+            });
+          }
+      }
     });
     return Array.from(fileIds);
   }, []);
@@ -1057,15 +1138,29 @@ export const FlowBuilder = () => {
       if (index === -1) {
         return;
       }
+      const node = nodesSnapshot[index];
+      const override = previewOverrides[nodeId];
+      const nodeTarget = node.data?.target as TableTarget | undefined;
+      const nodeDestination = node.data?.destination as TableTarget | undefined;
+      const isOutputNode = node.data?.blockType === 'output' || node.type === 'output';
+      const outputPreviewTarget = isOutputNode ? getOutputPreviewTarget(node) : null;
+      const previewTarget = override ??
+        outputPreviewTarget ??
+        (nodeDestination?.fileId || nodeDestination?.virtualId
+          ? nodeDestination
+          : nodeTarget ?? null);
+      const nodesForSignature = nodesSnapshot.slice(0, index + 1);
       const signature = JSON.stringify({
         fileId: fileIdSnapshot,
         sheetName: sheetSnapshot,
-        nodes: nodesSnapshot.slice(0, index + 1).map((node) => ({
+        previewTarget,
+        nodes: nodesForSignature.map((node) => ({
           id: node.id,
           type: node.type,
           blockType: node.data?.blockType,
           config: node.data?.config || {},
           target: node.data?.target || null,
+          destination: node.data?.destination || null,
         })),
       });
       if (signatureMap[nodeId] !== signature) {
@@ -1086,6 +1181,7 @@ export const FlowBuilder = () => {
       clearTimeout(previewUpdateTimeoutRef.current);
     }
 
+    // Short debounce keeps previews responsive while still coalescing rapid edits.
     previewUpdateTimeoutRef.current = setTimeout(() => {
       // runId guards against out-of-order responses overwriting newer previews.
       const runId = previewRunIdRef.current + 1;
@@ -1107,6 +1203,8 @@ export const FlowBuilder = () => {
             continue;
           }
           const node = nodesSnapshot[index];
+          const override = previewOverrides[nodeId];
+          const isOutputNode = node.data?.blockType === 'output' || node.type === 'output';
           try {
             if (index === 0) {
               // Source preview reads the file directly, no transforms applied yet.
@@ -1132,11 +1230,63 @@ export const FlowBuilder = () => {
               }
             } else {
               // Downstream previews execute the pipeline up to this step.
-              const flowData = buildFlowData(nodesSnapshot.slice(0, index + 1));
+              const nodeTarget = node.data?.target as TableTarget | undefined;
+              const nodeDestination = node.data?.destination as TableTarget | undefined;
+              const outputPreviewTarget = isOutputNode ? getOutputPreviewTarget(node) : null;
+              if (isOutputNode && !override && !outputPreviewTarget) {
+                setStepPreviews((prev) => ({
+                  ...prev,
+                  [node.id]: {
+                    columns: [],
+                    row_count: 0,
+                    preview_rows: [],
+                    dtypes: {},
+                  },
+                }));
+                setPreviewErrors((prev) => ({ ...prev, [node.id]: null }));
+                continue;
+              }
+              const previewTarget = override ??
+                outputPreviewTarget ??
+                (nodeDestination?.fileId || nodeDestination?.virtualId
+                  ? nodeDestination
+                  : nodeTarget ?? {
+                      fileId: fileIdSnapshot ?? null,
+                      sheetName: sheetSnapshot ?? null,
+                    });
+              const hasSource =
+                Boolean(nodeTarget?.fileId || nodeTarget?.virtualId) ||
+                Boolean(override?.fileId || override?.virtualId) ||
+                Boolean(fileIdSnapshot);
+              if (!hasSource) {
+                setStepPreviews((prev) => ({ ...prev, [node.id]: null }));
+                setPreviewErrors((prev) => ({
+                  ...prev,
+                  [node.id]: 'Select a source file or output sheet to preview.',
+                }));
+                continue;
+              }
+              const previewFileIds = [...fileIdsSnapshot];
+              if (previewTarget?.fileId && !previewFileIds.includes(previewTarget.fileId)) {
+                previewFileIds.push(previewTarget.fileId);
+              }
+              const nodesForPreview = nodesSnapshot.slice(0, index + 1);
+              const flowData = buildFlowData(nodesForPreview);
               const result = await transformApi.execute({
-                file_id: fileIdsSnapshot[0] ?? fileIdSnapshot ?? 0,
-                file_ids: fileIdsSnapshot,
+                file_id: previewFileIds[0] ?? fileIdSnapshot ?? 0,
+                file_ids: previewFileIds,
                 flow_data: flowData,
+                preview_target: previewTarget?.fileId
+                  ? {
+                      file_id: previewTarget.fileId,
+                      sheet_name: previewTarget.sheetName ?? undefined,
+                    }
+                  : previewTarget?.virtualId
+                    ? {
+                        virtual_id: previewTarget.virtualId,
+                        sheet_name: previewTarget.sheetName ?? undefined,
+                      }
+                    : undefined,
               });
               if (previewRunIdRef.current !== runId) {
                 return;
@@ -1160,7 +1310,7 @@ export const FlowBuilder = () => {
           }
         }
       })();
-    }, 400);
+    }, 150);
 
     return () => {
       if (previewUpdateTimeoutRef.current) {
@@ -1177,7 +1327,90 @@ export const FlowBuilder = () => {
     fileSourceNode,
     fetchFilePreview,
     prefetchSheetPreviews,
+    previewOverrides,
+    getOutputPreviewTarget,
   ]);
+
+  const handleSourceSheetChange = useCallback((sheetName: string) => {
+    if (!resolvedSourceFileId) {
+      return;
+    }
+    setSourceSheetByFileId((prev) => ({
+      ...prev,
+      [resolvedSourceFileId]: sheetName,
+    }));
+    setSourceSheetName(sheetName);
+  }, [resolvedSourceFileId]);
+
+  const handleSourceFileChange = useCallback((fileId: number) => {
+    setSourceFileId(fileId);
+  }, []);
+
+  // Preview selectors should update the target so previews + exports stay consistent.
+  const handlePreviewFileChange = useCallback((nodeId: string, fileId: number) => {
+    setPreviewOverrides((prev) => ({
+      ...prev,
+      [nodeId]: { fileId, sheetName: null, virtualId: null, virtualName: null },
+    }));
+  }, []);
+
+  const handlePreviewSheetChange = useCallback((nodeId: string, sheetName: string) => {
+    const fallback = nodes.find((item) => item.id === nodeId)?.data?.target as TableTarget | undefined;
+    setPreviewOverrides((prev) => ({
+      ...prev,
+      [nodeId]: {
+        fileId: prev[nodeId]?.fileId ?? fallback?.fileId ?? null,
+        sheetName,
+        virtualId: null,
+        virtualName: null,
+      },
+    }));
+  }, [nodes]);
+
+  const handlePreviewTargetChange = useCallback((nodeId: string, target: TableTarget) => {
+    setPreviewOverrides((prev) => ({
+      ...prev,
+      [nodeId]: target,
+    }));
+  }, []);
+
+  useEffect(() => {
+    const fileIds = collectFileIds(nodes);
+    if (fileIds.length === 0) {
+      setPreviewFiles([]);
+      return;
+    }
+    const fileIdSet = new Set(fileIds);
+    filesApi.list()
+      .then((files) => {
+        const filtered = files.filter((file) => fileIdSet.has(file.id));
+        setPreviewFiles(filtered);
+      })
+      .catch(() => setPreviewFiles([]));
+  }, [collectFileIds, nodes]);
+
+  useEffect(() => {
+    const fileIds = collectFileIds(nodes);
+    if (fileIds.length === 0) {
+      if (Object.keys(sheetOptionsByFileId).length > 0) {
+        setSheetOptionsByFileId({});
+      }
+      return;
+    }
+    fileIds.forEach((fileId) => {
+      if (sheetOptionsByFileId[fileId]) {
+        return;
+      }
+      filesApi.sheets(fileId)
+        .then((sheets) => {
+          setSheetOptionsByFileId((prev) => ({ ...prev, [fileId]: sheets }));
+        })
+        .catch(() => {
+          setSheetOptionsByFileId((prev) => ({ ...prev, [fileId]: [] }));
+        });
+    });
+  }, [collectFileIds, nodes, sheetOptionsByFileId]);
+
 
   const handleTogglePreview = (nodeId: string) => {
     setActivePreviewNodeIds((prev) => {
@@ -1187,11 +1420,62 @@ export const FlowBuilder = () => {
       }
       return new Set([nodeId]);
     });
+    const node = nodes.find((item) => item.id === nodeId);
+    const isOutputNode = node?.data?.blockType === 'output' || node?.type === 'output';
+    if (!node) {
+      return;
+    }
+    if (previewOverrides[nodeId]) {
+      return;
+    }
+    if (isOutputNode) {
+      const outputPreviewTarget = getOutputPreviewTarget(node);
+      if (outputPreviewTarget) {
+        setPreviewOverrides((prev) => ({
+          ...prev,
+          [nodeId]: outputPreviewTarget,
+        }));
+      }
+      return;
+    }
+    const destinationTarget = node.data?.destination as TableTarget | undefined;
+    if (destinationTarget?.virtualId) {
+      setPreviewOverrides((prev) => ({
+        ...prev,
+        [nodeId]: destinationTarget,
+      }));
+    }
   };
+
+  const handleApplyPreviewTarget = useCallback(
+    (nodeId: string, targetOverride?: TableTarget) => {
+      const previewTarget = targetOverride ?? previewOverrides[nodeId];
+      if (!previewTarget?.fileId && !previewTarget?.virtualId) {
+        return;
+      }
+      const node = nodes.find((item) => item.id === nodeId);
+      if (!node) {
+        return;
+      }
+      updateNode(nodeId, {
+        data: {
+          ...node.data,
+          target: previewTarget,
+        },
+      });
+      if (previewTarget.fileId) {
+        setLastTarget(previewTarget);
+      }
+    },
+    [nodes, previewOverrides, updateNode]
+  );
 
   const handleDeleteNode = (nodeId: string) => {
     // #region cleanup files from backend if it's a source/data node
     const nodeToDelete = nodes.find((n) => n.id === nodeId);
+    if (nodeToDelete?.data?.blockType === 'output' || nodeToDelete?.type === 'output') {
+      return;
+    }
     if (nodeToDelete?.data?.fileIds && Array.isArray(nodeToDelete.data.fileIds)) {
       nodeToDelete.data.fileIds.forEach((fileId: number) => {
         filesApi.delete(fileId).catch((err) => {
@@ -1217,18 +1501,56 @@ export const FlowBuilder = () => {
   const getOutputFileName = useCallback(() => {
     const outputNode = nodes.find((node) => node.data?.blockType === 'output');
     const outputConfig = outputNode?.data?.output as OutputConfig | undefined;
-    return outputConfig?.fileName || 'output.xlsx';
+    const outputs = outputConfig?.outputs ?? [];
+    if (outputs.length > 1) {
+      return 'outputs.zip';
+    }
+    return outputs[0]?.fileName || 'output.xlsx';
   }, [nodes]);
+
+  const getFirstOutputSheetTarget = useCallback((): TableTarget | null => {
+    const outputNode = nodes.find((node) => node.data?.blockType === 'output' || node.type === 'output');
+    const outputConfig = outputNode?.data?.output as OutputConfig | { fileName?: string; sheets?: { sheetName?: string }[] } | undefined;
+    const outputFile = (outputConfig as OutputConfig | undefined)?.outputs?.[0];
+    const legacySheets = (outputConfig as { sheets?: { sheetName?: string }[] } | undefined)?.sheets;
+    if (!outputFile && (!legacySheets || legacySheets.length === 0)) {
+      return null;
+    }
+    const sheetName = outputFile?.sheets?.[0]?.sheetName || legacySheets?.[0]?.sheetName || 'Sheet 1';
+    const fileName = outputFile?.fileName || (outputConfig as { fileName?: string } | undefined)?.fileName || 'output.xlsx';
+    const outputId = outputFile?.id || 'legacy';
+    return {
+      fileId: null,
+      sheetName,
+      virtualId: `output:${outputId}:${sheetName}`,
+      virtualName: `${fileName} / ${sheetName}`,
+    };
+  }, [nodes]);
+
+  useEffect(() => {
+    const fallbackOutputTarget = getFirstOutputSheetTarget();
+    if (!fallbackOutputTarget) {
+      return;
+    }
+    setPreviewOverrides((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      Object.entries(prev).forEach(([nodeId, target]) => {
+        if (target?.virtualId?.startsWith('output:empty')) {
+          // Swap placeholder output previews to the first real output sheet once it exists.
+          next[nodeId] = fallbackOutputTarget;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [getFirstOutputSheetTarget]);
 
   const handleExport = async () => {
     const fileIds = collectFileIds(nodes);
-    if (fileIds.length === 0) {
-      showModal('alert', 'Missing files', 'Upload at least one file before exporting.');
-      return;
-    }
     try {
       const blob = await transformApi.export({
-        file_id: fileIds[0],
+        file_id: fileIds[0] ?? 0,
         file_ids: fileIds,
         flow_data: getFlowData(),
       });
@@ -1271,16 +1593,23 @@ export const FlowBuilder = () => {
                     setConfirmModalConfig({
                       type: 'confirm',
                       title: 'Unsaved Changes',
-                      message: 'You have unsaved changes. Do you want to save before leaving?',
+                      message: flowName.trim()
+                        ? 'You have unsaved changes. Do you want to save before leaving?'
+                        : 'You have unsaved changes. Enter a flow name to save before leaving.',
                       confirmText: 'Save & Leave',
+                      confirmDisabled: !flowName.trim(),
                       onConfirm: () => {
                         (async () => {
-                          if (flowName.trim()) {
-                            await handleSave();
+                          if (!flowName.trim()) {
+                            showModal('alert', 'Flow name required', 'Please enter a flow name before saving.');
+                            return;
                           }
-                          hasUnsavedChangesRef.current = false;
-                          setHasUnsavedChanges(false);
-                          navigate('/');
+                          await handleSave();
+                          if (flowName.trim()) {
+                            hasUnsavedChangesRef.current = false;
+                            setHasUnsavedChanges(false);
+                            navigate('/');
+                          }
                         })();
                       },
                       onDiscard: () => {
@@ -1338,20 +1667,16 @@ export const FlowBuilder = () => {
                             return (
                               <div
                                 key={flow.id}
-                                onClick={() => handleLoadFlow(flow)}
-                                className={`w-full text-left p-3 cursor-pointer hover:bg-gray-50 ${
-                                  isSelected ? 'bg-indigo-50' : ''
-                                }`}
-                                role="button"
-                                tabIndex={0}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
-                                    handleLoadFlow(flow);
-                                  }
-                                }}
+                                className="relative w-full"
                               >
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
+                                <button
+                                  onClick={() => handleLoadFlow(flow)}
+                                  className={`w-full text-left p-3 hover:bg-gray-50 transition-colors ${
+                                    isSelected ? 'bg-indigo-50' : ''
+                                  }`}
+                                  type="button"
+                                >
+                                  <div className="pr-6">
                                     <p className="text-sm font-medium text-gray-900">{flow.name}</p>
                                     {flow.description && (
                                       <p className="text-xs text-gray-500 mt-1">{flow.description}</p>
@@ -1360,18 +1685,19 @@ export const FlowBuilder = () => {
                                       {new Date(flow.created_at).toLocaleDateString()}
                                     </p>
                                   </div>
-                                  <button
-                                    onClick={(e) => handleDeleteFlow(flow.id, e)}
-                                    className="ml-2 text-red-600 hover:text-red-800 text-sm"
-                                    title="Delete flow"
-                                    type="button"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
+                                </button>
+                                <button
+                                  onClick={(e) => handleDeleteFlow(flow.id, e)}
+                                  className="absolute top-3 right-3 text-red-600 hover:text-red-800 text-sm p-1 leading-none rounded hover:bg-red-50"
+                                  title="Delete flow"
+                                  type="button"
+                                >
+                                  ×
+                                </button>
                               </div>
                             );
                           })}
+
                         </div>
                       );
                     })()}
@@ -1388,12 +1714,15 @@ export const FlowBuilder = () => {
               <button
                 onClick={handleSave}
                 disabled={
-                  isSaving || 
-                  !flowName.trim() || 
-                  (selectedFlowId ? !hasUnsavedChanges : nodes.length === 0)
+                  isSaving ||
+                  !flowName.trim() ||
+                  !hasUnsavedChanges
                 }
                 className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 title={(() => {
+                  if (!flowName.trim()) {
+                    return 'Enter a flow name to save';
+                  }
                   if (selectedFlowId && !hasUnsavedChangesRef.current) {
                     return 'No changes to save';
                   }
@@ -1408,12 +1737,6 @@ export const FlowBuilder = () => {
                   if (selectedFlowId) return 'Update Flow';
                   return 'Save Flow';
                 })()}
-              </button>
-              <button
-                onClick={handleExport}
-                className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
-              >
-                Export
               </button>
               <button
                 onClick={() => {
@@ -1476,23 +1799,34 @@ export const FlowBuilder = () => {
               </svg>
             </button>
           </div>
-          <FlowPipeline
-            nodes={nodes}
-            selectedNodeId={selectedNodeId}
-            activePreviewNodeIds={activePreviewNodeIds}
-            fileSourceNodeId={fileSourceNode?.id || null}
-            viewAction={viewAction}
-            previews={stepPreviews}
-            previewLoading={previewLoading}
-            previewErrors={previewErrors}
-            onNodeClick={handleNodeClick}
-            onAddOperation={handleAddOperation}
-            onDeleteNode={handleDeleteNode}
-            onReorderNodes={handleReorderNodes}
-            onSourceSheetChange={(sheetName) => setSourceSheetName(sheetName)}
-            onTogglePreview={handleTogglePreview}
-            onExport={handleExport}
-          />
+        <FlowPipeline
+          nodes={nodes}
+          selectedNodeId={selectedNodeId}
+          activePreviewNodeIds={activePreviewNodeIds}
+          fileSourceNodeId={fileSourceNode?.id || null}
+          viewAction={viewAction}
+          previewFiles={previewFiles}
+          previewSheetsByFileId={sheetOptionsByFileId}
+          sourceFileId={resolvedSourceFileId}
+          sourceFileIds={sourceFileIds}
+          sourceSheetName={sourceSheetName}
+          previewOverrides={previewOverrides}
+          previews={stepPreviews}
+          previewLoading={previewLoading}
+          previewErrors={previewErrors}
+          onNodeClick={handleNodeClick}
+          onAddOperation={handleAddOperation}
+          onDeleteNode={handleDeleteNode}
+          onReorderNodes={handleReorderNodes}
+          onSourceSheetChange={handleSourceSheetChange}
+          onSourceFileChange={handleSourceFileChange}
+          onPreviewFileChange={handlePreviewFileChange}
+          onPreviewSheetChange={handlePreviewSheetChange}
+          onPreviewTargetChange={handlePreviewTargetChange}
+          onTogglePreview={handleTogglePreview}
+          onApplyPreviewTarget={handleApplyPreviewTarget}
+          onExport={handleExport}
+        />
         </div>
       </div>
       
@@ -1559,6 +1893,7 @@ export const FlowBuilder = () => {
           showCancel={confirmModalConfig.type !== 'alert' && confirmModalConfig.type !== 'success'}
           cancelText="Cancel"
           confirmText={confirmModalConfig.type === 'success' ? 'OK' : confirmModalConfig.confirmText}
+          confirmDisabled={confirmModalConfig.confirmDisabled}
         />
       )}
     </div>

@@ -25,6 +25,7 @@ const blockTemplates = [
 
 export const BlockPalette = () => {
   const { addNode } = useFlowStore();
+  const implementedBlocks = new Set(['remove_columns_rows']);
 
   const onDragStart = useCallback(
     (event: React.DragEvent, blockTemplate: typeof blockTemplates[0]) => {
@@ -86,7 +87,11 @@ export const BlockPalette = () => {
                     draggable
                     onDragStart={(e) => onDragStart(e, block)}
                     onClick={() => handleAddBlock(block)}
-                    className="w-full text-left p-3 border border-gray-300 rounded-lg cursor-move hover:bg-gray-50 hover:border-indigo-500 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-0 bg-white"
+                    className={`w-full text-left p-3 border rounded-lg cursor-move transition-colors focus:outline-none focus:ring-2 focus:ring-offset-0 ${
+                      implementedBlocks.has(block.id)
+                        ? 'border-emerald-300 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-500 focus:ring-emerald-400'
+                        : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-indigo-500 focus:ring-indigo-500'
+                    }`}
                   >
                     <div className="flex items-center space-x-2">
                       {block.icon && <span className="text-base">{block.icon}</span>}

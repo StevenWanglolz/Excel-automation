@@ -745,14 +745,19 @@ def execute_flow(
 1. User clicks "Preview" on a step in FlowPipeline
    ↓
 2. FlowBuilder detects active preview steps + node/order/config changes
-   - Uses the first node with uploaded file IDs as the file source
-   - Each step reads its target file + sheet selection
+   - Uses the selected source file as the file source
+   - Each step reads its source (original file or output sheet) and writes to its destination output sheet
    ↓
 3. Source step preview loads from filesApi.preview()
    ↓
 4. Each downstream step preview runs transformApi.execute() with nodes up to that step
+   - Preview target (file/sheet or output sheet) is passed so the backend can select the correct table
+   - If a step has no source selected, preview returns a clear error message
    ↓
 5. DataPreview renders the preview table in a full-screen modal
+   - Empty output sheets render a placeholder grid (columns visible, no data)
+   - Output preview uses an output-file selector + per-sheet tabs
+   - "Use as source" copies the preview selection into the block target
 ```
 
 **Step 1: Pipeline toggles preview on demand**
@@ -765,6 +770,52 @@ def execute_flow(
 >
   {isPreviewOpen ? 'Hide preview' : 'Preview'}
 </button>
+```
+
+**Step 1a: Preview file/sheet selectors update preview overrides (no target changes)**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowPipeline.tsx (lines 390-405)
+<DataPreview
+  fileOptions={previewFileOptions}
+  currentFileId={
+    activePreviewNode.id === fileSourceNodeId || activePreviewNode.type === 'source'
+      ? sourceFileId
+      : previewOverride?.fileId ??
+        (activePreviewNode.data?.target as TableTarget | undefined)?.fileId ??
+        null
+  }
+  sheetOptions={previewSheetOptions}
+  currentSheet={
+    activePreviewNode.id === fileSourceNodeId || activePreviewNode.type === 'source'
+      ? sourceSheetName
+      : previewOverride?.sheetName ??
+        (activePreviewNode.data?.target as TableTarget | undefined)?.sheetName ??
+        null
+  }
+  onFileChange={(fileId) => {
+    if (activePreviewNode.id === fileSourceNodeId || activePreviewNode.type === 'source') {
+      onSourceFileChange(fileId);
+      return;
+    }
+    onPreviewFileChange(activePreviewNode.id, fileId);
+  }}
+  onSheetChange={(sheetName) => onPreviewSheetChange(activePreviewNode.id, sheetName)}
+/>;
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1180-1220)
+const handlePreviewSheetChange = useCallback((nodeId: string, sheetName: string) => {
+  const fallback = nodes.find((item) => item.id === nodeId)?.data?.target as TableTarget | undefined;
+  setPreviewOverrides((prev) => ({
+    ...prev,
+    [nodeId]: {
+      fileId: prev[nodeId]?.fileId ?? fallback?.fileId ?? null,
+      sheetName,
+    },
+  }));
+}, [nodes]);
 ```
 
 **Step 2: FlowBuilder schedules preview updates for active steps**
@@ -809,7 +860,7 @@ if (preview.sheets?.length) {
 
 ```typescript
 // frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 580-610)
-const cached = getCachedPreview(primaryFileId, sourceSheetName || undefined);
+const cached = getCachedPreview(resolvedSourceFileId, sourceSheetName || undefined);
 if (cached) {
   setStepPreviews((prev) => ({ ...prev, [fileSourceNode.id]: cached }));
   setPreviewErrors((prev) => ({ ...prev, [fileSourceNode.id]: null }));
@@ -845,13 +896,13 @@ setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
 ## Output Export Flow
 
 ```
-1. User adds an Output block and maps source tables to output sheets
+1. User adds an Output block and defines the output files + sheet names (can be empty)
    ↓
 2. Frontend calls transformApi.export() with flow_data + file_ids
    ↓
 3. Backend executes the pipeline across all targeted file/sheet tables
    ↓
-4. Output block mapping selects which tables become which sheets
+4. Export uses the output files + sheet names to build workbooks (zips when multiple files)
    ↓
 5. Server streams an Excel file with one or many sheets
 ```
@@ -859,7 +910,7 @@ setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
 **Step 5: DataPreview renders the table**
 
 ```typescript
-// frontend/src/components/Preview/DataPreview.tsx (lines 45-66)
+// frontend/src/components/Preview/DataPreview.tsx (lines 53-84)
 {preview.preview_rows.map((row, idx) => (
   <tr key={idx} className="hover:bg-gray-50">
     {preview.columns.map((column) => (
@@ -931,7 +982,7 @@ def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
 ## Flow Save Flow
 
 ```
-1. User clicks "Save Flow" in FlowBuilder
+1. User clicks "Save Flow" in FlowBuilder (requires a non-empty flow name)
    ↓
 2. Component gets flow data: flowStore.getFlowData()
    ↓
@@ -958,13 +1009,13 @@ def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
    ↓
 3. A `new=1` query param is added to force a clean init
    ↓
-4. FlowBuilder detects `new=1`, inserts a single source node, and removes the param
+4. FlowBuilder detects `new=1`, inserts required source + output nodes, and removes the param
 ```
 
-**Step 2-3: Reset to a single source node**
+**Step 2-3: Reset to source + output nodes**
 
 ```typescript
-// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 423-454)
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 529-590)
 const clearFlowInternal = () => {
   const sourceNode: Node = {
     id: 'source-0',
@@ -977,11 +1028,35 @@ const clearFlowInternal = () => {
     },
   };
 
-  // Always reset to a single source node when starting a new flow.
-  setNodes([sourceNode]);
+  const outputNode: Node = {
+    id: 'output-0',
+    type: 'output',
+    position: { x: 250, y: 350 },
+    data: {
+      blockType: 'output',
+      config: {},
+      label: 'Output',
+      output: { outputs: [] },
+    },
+  };
+
+  // Always reset to source + output nodes when starting a new flow.
+  setNodes([sourceNode, outputNode]);
   setEdges([]);
   // ...reset other state
 };
+
+## Operation Destination Defaults
+
+When output files exist, operation blocks auto-select the first output sheet as their destination unless the user has already picked one. This keeps the UI and backend aligned so previewing output sheets reflects the latest operation results.
+
+## Preview Defaults
+
+When an operation block has an output destination, the preview opens on the output sheet by default (users can still toggle to the source file). Preview refreshes are debounced briefly to reduce request spam while editing.
+
+When output sheets are created after a preview is already open, any placeholder output preview target is swapped to the first real output sheet so users see actual results without re-opening the preview.
+
+Empty sheets still render a grid (with placeholder columns) so the preview area stays visually consistent even when no data is present.
 ```
 
 **Step 2: Get flow data from store**

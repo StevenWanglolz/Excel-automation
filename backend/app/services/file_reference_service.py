@@ -60,19 +60,7 @@ class FileReferenceService:
                 if isinstance(lookup_file_id, int):
                     file_ids.add(lookup_file_id)
 
-            output = data.get("output", {})
-            if isinstance(output, dict):
-                output_sheets = output.get("sheets", [])
-                if isinstance(output_sheets, list):
-                    for sheet in output_sheets:
-                        if not isinstance(sheet, dict):
-                            continue
-                        source = sheet.get("source", {})
-                        if not isinstance(source, dict):
-                            continue
-                        source_file_id = source.get("fileId")
-                        if isinstance(source_file_id, int):
-                            file_ids.add(source_file_id)
+            # Output config no longer maps source files; outputs are virtual.
         
         return file_ids
 

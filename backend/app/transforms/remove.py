@@ -63,6 +63,31 @@ def _row_rule_mask(df: pd.DataFrame, rule: Dict[str, Any]) -> pd.Series:
     value = rule.get("value")
     series = df[column]
 
+    if pd.api.types.is_numeric_dtype(series):
+        try:
+            # Try to convert the value to a number for comparison
+            num_value = float(value)
+            if operator == "equals":
+                # Handle generic numeric equality (e.g. 1 == 1.0)
+                return series == num_value
+            if operator == "not_equals":
+                return series != num_value
+            if operator == "greater_than":
+                return series > num_value
+            if operator == "less_than":
+                return series < num_value
+        except (ValueError, TypeError):
+            # If value cannot be converted to number, but series is numeric:
+            # For non-numeric operators like 'contains', we proceed to string conversion.
+            # For numeric operators, it's a mismatch -> matches nothing (or everything for not_equals).
+            if operator == "equals":
+                return pd.Series([False] * len(df), index=df.index)
+            if operator == "not_equals":
+                return pd.Series([True] * len(df), index=df.index)
+            # greater/less than with non-numeric value is impossible
+            if operator in ("greater_than", "less_than"):
+                return pd.Series([False] * len(df), index=df.index)
+
     if operator == "equals":
         return series == value
     if operator == "not_equals":
@@ -123,6 +148,9 @@ class RemoveColumnsRowsTransform(BaseTransform):
         return True
 
     def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
+        print("DEBUG: RemoveColumnsRowsTransform.execute called")
+        print(f"DEBUG: Config: {config}")
+        print(f"DEBUG: DataFrame dtypes:\n{df.dtypes}")
         mode = config.get("mode", "columns")
 
         if mode == "rows":

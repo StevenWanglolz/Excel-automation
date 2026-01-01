@@ -21,14 +21,44 @@ class TransformService:
         def table_key(file_id: int, sheet_name: str | None) -> str:
             return f"{file_id}:{sheet_name or '__default__'}"
 
+        def virtual_key(virtual_id: str) -> str:
+            return f"virtual:{virtual_id}"
+
         def load_table(file_id: int, sheet_name: str | None) -> pd.DataFrame:
             key = table_key(file_id, sheet_name)
             if key in table_map:
                 return table_map[key]
+            if file_id not in file_paths_by_id:
+                return pd.DataFrame()
             df = file_service.parse_file(
                 file_paths_by_id[file_id], sheet_name=sheet_name)
             table_map[key] = df
             return df
+
+        def load_table_for_target(target: Dict[str, Any]) -> pd.DataFrame:
+            virtual_id = target.get("virtualId")
+            if isinstance(virtual_id, str):
+                key = virtual_key(virtual_id)
+                return table_map.get(key, pd.DataFrame())
+            file_id = target.get("fileId") or default_file_id
+            if not file_id:
+                return pd.DataFrame()
+            sheet_name = target.get("sheetName")
+            return load_table(file_id, sheet_name)
+
+        def store_table_for_target(target: Dict[str, Any], df: pd.DataFrame) -> str | None:
+            virtual_id = target.get("virtualId")
+            if isinstance(virtual_id, str):
+                key = virtual_key(virtual_id)
+                table_map[key] = df
+                return key
+            file_id = target.get("fileId")
+            if not file_id:
+                return None
+            sheet_name = target.get("sheetName")
+            key = table_key(file_id, sheet_name)
+            table_map[key] = df
+            return key
 
         def build_transform_config(
             config: Dict[str, Any],
@@ -54,13 +84,14 @@ class TransformService:
             if block_type in {"upload", "source", "data", "output"}:
                 continue
 
-            target = data.get("target", {}) or {}
-            target_file_id = target.get("fileId") or default_file_id
-            target_sheet = target.get("sheetName")
-            if not target_file_id:
+            source_target = data.get("target", {}) or {}
+            destination_target = data.get("destination", {}) or source_target
+            if not source_target and destination_target:
+                source_target = destination_target
+            if not source_target and not destination_target:
                 continue
 
-            df = load_table(target_file_id, target_sheet)
+            df = load_table_for_target(source_target)
             config = data.get("config", {}) or {}
 
             # Look up transform class from registry using block type.
@@ -82,8 +113,7 @@ class TransformService:
                     df = transform.execute(df, transform_config)
                     print(
                         f"[DEBUG] Transform executed. Result shape: {df.shape}, columns: {list(df.columns)}")
-                    table_map[table_key(target_file_id, target_sheet)] = df
-                    last_table_key = table_key(target_file_id, target_sheet)
+                    last_table_key = store_table_for_target(destination_target, df)
                     print(
                         f"[DEBUG] Updated last_table_key to: {last_table_key}")
                 else:

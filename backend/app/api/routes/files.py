@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.models.file import File
+from app.models.flow import Flow
 from app.services.file_service import file_service
 from app.services.file_reference_service import file_reference_service
 

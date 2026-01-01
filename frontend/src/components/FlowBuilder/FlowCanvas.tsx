@@ -12,6 +12,7 @@ import {
   Node,
   NodeMouseHandler,
   ReactFlowInstance,
+  PanOnScrollMode,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useFlowStore } from '../../store/flowStore';
@@ -204,7 +205,7 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
   );
 
   const handleNodeClick: NodeMouseHandler = useCallback(
-    (event, node) => {
+    (_, node) => {
       if (onNodeClick) {
         onNodeClick(node.id, node.type || '');
       }
@@ -241,17 +242,16 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
       const newZoom = Math.max(0.1, Math.min(2, currentZoom + delta));
       
       // Get mouse position relative to the viewport
-      const rect = event.currentTarget.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+      // const rect = event.currentTarget.getBoundingClientRect();
+      // const x = event.clientX - rect.left;
+      // const y = event.clientY - rect.top;
       
       // Convert screen coordinates to flow coordinates
-      const flowPosition = reactFlowInstanceRef.current.screenToFlowPosition({ x, y });
+      // Zoom to the point under the cursor
+      // const flowPosition = reactFlowInstanceRef.current.screenToFlowPosition({ x, y });
       
       // Zoom to the point under the cursor
       reactFlowInstanceRef.current.zoomTo(newZoom, {
-        x: flowPosition.x,
-        y: flowPosition.y,
         duration: 0,
       });
     } else {
@@ -265,7 +265,9 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
       const deltaY = -event.deltaY * panSpeed;
       
       // Pan the viewport
-      reactFlowInstanceRef.current.panBy({ x: deltaX, y: deltaY });
+      // Pan the viewport manually using setViewport
+      const { x, y, zoom } = reactFlowInstanceRef.current.getViewport();
+      reactFlowInstanceRef.current.setViewport({ x: x + deltaX, y: y + deltaY, zoom });
     }
   }, []);
 
@@ -287,7 +289,7 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
         zoomOnScroll={false}
         zoomOnPinch={true}
         panOnScroll={true}
-        panOnScrollMode="free"
+        panOnScrollMode={PanOnScrollMode.Free}
         panOnScrollSpeed={1}
       >
         <Background />

@@ -72,7 +72,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 **Key Services:**
 
 - `file_service.py` - File upload, parsing, preview generation
-- `transform_service.py` - Flow execution across targeted file/sheet tables, output-sheet mapping
+- `transform_service.py` - Flow execution across targeted file/sheet tables, output previews for export
 - `file_reference_service.py` - Track file usage across flows
 
 #### Models (`app/models/`)

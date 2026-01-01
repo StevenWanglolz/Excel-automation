@@ -6,11 +6,11 @@ import { PipelineNodeCard } from './PipelineNodeCard';
 
 interface SortableNodeProps {
   node: Node;
-  index: number;
   scale: number;
   isFileSource: boolean;
   isSelected: boolean;
   isPreviewOpen: boolean;
+  canPreview?: boolean;
   configSummary: string;
   onNodeClick: (nodeId: string, nodeType: string) => void;
   onAddOperation: (afterNodeId: string) => void;
@@ -24,6 +24,7 @@ export const SortableNode = ({
   isFileSource,
   isSelected,
   isPreviewOpen,
+  canPreview,
   configSummary,
   onNodeClick,
   onAddOperation,
@@ -64,14 +65,15 @@ export const SortableNode = ({
         isFileSource={isFileSource}
         isSelected={isSelected}
         isPreviewOpen={isPreviewOpen}
+        canPreview={canPreview}
         configSummary={configSummary}
         onNodeClick={onNodeClick}
         onAddOperation={onAddOperation}
         onDeleteNode={onDeleteNode}
         onTogglePreview={onTogglePreview}
         onExport={onExport}
-        dragAttributes={attributes}
-        dragListeners={listeners}
+        dragAttributes={attributes as unknown as Record<string, unknown>}
+        dragListeners={listeners as unknown as Record<string, unknown>}
       />
     </div>
   );

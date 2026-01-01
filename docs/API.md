@@ -58,6 +58,10 @@ username=user@example.com&password=password123
 }
 ```
 
+**Notes:**
+- `preview_target` is optional and lets the backend choose a specific file/sheet (or output sheet via `virtual_id`) for the preview response.
+- If the Output block defines multiple files, `/transform/export` returns a `.zip` with one Excel file per output.
+
 ### Get Current User
 ```http
 GET /api/auth/me
@@ -312,6 +316,11 @@ Content-Type: application/json
 {
   "file_id": 123,
   "file_ids": [123, 456],
+  "preview_target": {
+    "file_id": 123,
+    "sheet_name": "Sheet1",
+    "virtual_id": "output:Summary"
+  },
   "flow_data": {
     "nodes": [
       {

@@ -78,7 +78,7 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open (heading or file input)
-    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 15000 });
+    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 15000 });
     
     // Get the file input
     const fileInput = page.locator('input[type="file"]');
@@ -141,7 +141,7 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 10000 });
+    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 10000 });
     
     // Create a temporary invalid file (text file)
     const fileInput = page.locator('input[type="file"]');
@@ -176,7 +176,7 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 10000 });
+    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 10000 });
     
     // Upload a file
     const fileInput = page.locator('input[type="file"]');
@@ -207,7 +207,7 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 10000 });
+    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 10000 });
     
     // Try to upload a file
     const fileInput = page.locator('input[type="file"]');

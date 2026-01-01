@@ -213,7 +213,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - **FlowBuilder.tsx** 🔴 - Main flow builder component
 - Orchestrates flow builder UI, previews, and export
-- Export button uses Output block sheet mapping
+- Export button uses Output block file + sheet structure (zips when multiple files)
 - Changes affect entire flow builder
 
 - **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
@@ -223,7 +223,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
 - **BlockPalette.tsx** 🟢 - Sidebar with available blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
-  - Handles file + sheet target selection and output sheet mapping
+  - Handles source file/sheet selection, destination output sheet selection, and output file/sheet structure
 - **DataUploadModal.tsx** 🟡 - Modal for selecting files (previews only via pipeline icon)
 - **OperationSelectionModal.tsx** 🟡 - Modal for selecting transforms
 

@@ -11,6 +11,7 @@ interface ConfirmationModalProps {
   message: string;
   type?: ModalType;
   confirmText?: string;
+  confirmDisabled?: boolean;
   discardText?: string;
   cancelText?: string;
   showCancel?: boolean;
@@ -25,6 +26,7 @@ export const ConfirmationModal = ({
   message,
   type = 'confirm',
   confirmText = 'Confirm',
+  confirmDisabled = false,
   discardText = 'Discard',
   cancelText = 'Cancel',
   showCancel = true,
@@ -161,7 +163,10 @@ export const ConfirmationModal = ({
             )}
             <button
               onClick={handleConfirm}
-              className={`px-4 py-2 text-white rounded-md transition-colors ${getButtonColors()}`}
+              className={`px-4 py-2 text-white rounded-md transition-colors ${getButtonColors()} ${
+                confirmDisabled ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              disabled={confirmDisabled}
             >
               {type === 'alert' ? 'OK' : confirmText}
             </button>
@@ -171,4 +176,3 @@ export const ConfirmationModal = ({
     </>
   );
 };
-

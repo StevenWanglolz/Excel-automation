@@ -5,6 +5,11 @@ export interface FlowExecuteRequest {
   file_id: number;
   file_ids?: number[];
   flow_data: FlowData;
+  preview_target?: {
+    file_id?: number;
+    sheet_name?: string;
+    virtual_id?: string;
+  };
 }
 
 export interface StepPreviewRequest {

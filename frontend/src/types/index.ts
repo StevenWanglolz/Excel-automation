@@ -49,6 +49,7 @@ export interface BlockData {
   config: Record<string, any>;
   label?: string;
   target?: TableTarget;
+  destination?: TableTarget;
   output?: OutputConfig;
   fileIds?: number[];
 }
@@ -56,16 +57,22 @@ export interface BlockData {
 export interface TableTarget {
   fileId: number | null;
   sheetName: string | null;
+  virtualId?: string | null;
+  virtualName?: string | null;
 }
 
 export interface OutputSheetMapping {
   sheetName: string;
-  source: TableTarget;
+}
+
+export interface OutputFileConfig {
+  id: string;
+  fileName: string;
+  sheets: OutputSheetMapping[];
 }
 
 export interface OutputConfig {
-  fileName: string;
-  sheets: OutputSheetMapping[];
+  outputs: OutputFileConfig[];
 }
 
 export interface FilePreview {
@@ -73,6 +80,7 @@ export interface FilePreview {
   row_count: number;
   preview_rows: Record<string, any>[];
   dtypes: Record<string, string>;
+  is_placeholder?: boolean;
   sheets?: string[];  // List of sheet names (for Excel files)
   current_sheet?: string | null;  // Current sheet being previewed
 }

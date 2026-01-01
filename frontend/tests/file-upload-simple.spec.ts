@@ -56,7 +56,7 @@ test('File Upload Test - Check for errors', async ({ page }) => {
   
   // Wait for modal to open
   try {
-    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 15000 });
+    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 15000 });
   } catch (e) {
     // Take screenshot to see what's on screen
     await page.screenshot({ path: 'test-results/modal-not-opened.png', fullPage: true });
