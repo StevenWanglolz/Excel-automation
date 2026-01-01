@@ -214,16 +214,29 @@ This document explains the purpose of each major file and folder. It is meant fo
 - **FlowBuilder.tsx** 🔴 - Main flow builder component
 - Orchestrates flow builder UI, previews, and export
 - Export button uses Output block file + sheet structure (zips when multiple files)
+- Auto-swaps placeholder output previews to real output sheets once they exist
 - Changes affect entire flow builder
 
 - **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
   - Drag reorder lives here; drag end must not throw or drops will revert to original order
 - **SortableNode.tsx** 🟢 - Wraps flow nodes with sortable drag handles and logic
 - **PipelineNodeCard.tsx** 🟢 - Shared node card rendering for pipeline steps
+  - Shows step label + config summary text
+  - Hosts preview/export/delete buttons and forwards clicks to parent handlers
+  - Safe to adjust styling; avoid adding stateful logic that affects flow execution
 - **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
+  - Kept for backward compatibility and reference only
+  - Not wired into current Flow Builder page
+  - Changes here won’t affect the current UI unless it’s re-enabled
 - **BlockPalette.tsx** 🟢 - Sidebar with available blocks
+  - Defines which blocks are selectable and how they’re grouped
+  - Highlights implemented blocks (for UI affordance only)
+  - Changing block IDs impacts flow data and transform lookup
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
   - Handles source file/sheet selection, destination output sheet selection, and output file/sheet structure
+  - Auto-selects the first output sheet as destination when outputs exist and destination is empty
+  - Writes block config into node.data.config; save/reset for Remove Columns/Rows lives here
+  - Be careful: changes here directly affect preview execution and export output
 - **DataUploadModal.tsx** 🟡 - Modal for selecting files (previews only via pipeline icon)
 - **OperationSelectionModal.tsx** 🟡 - Modal for selecting transforms
 
@@ -241,6 +254,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 #### Preview/
 
 - **DataPreview.tsx** 🟢 - Displays data preview in table
+  - Keeps a placeholder grid visible even when sheets are empty
 
 ### frontend/src/types/
 
