@@ -71,10 +71,16 @@ export const DataUploadModal = ({
 
     lastLoadedNodeIdRef.current = nodeId;
 
-    if (initialFileIds.length > 0) {
-      loadInitialFiles();
-    } else {
-      setUploadedFiles([]);
+    try {
+      if (initialFileIds.length > 0) {
+        loadInitialFiles().catch((err) => {
+          console.error('Error loading initial files:', err);
+        });
+      } else {
+        setUploadedFiles([]);
+      }
+    } catch (err) {
+      console.error('Exception in useEffect:', err);
     }
   }, [isOpen, nodeId, initialFileIds, loadInitialFiles]);
 
@@ -171,7 +177,13 @@ export const DataUploadModal = ({
     onClose();
   };
 
+
   if (!isOpen) return null;
+  
+  // Log when modal tries to render (minimal, no hooks) - after early return to avoid hooks issues
+  if (typeof window !== 'undefined') {
+    console.log('DataUploadModal rendering with isOpen=true, nodeId=', nodeId);
+  }
 
   return (
     <>

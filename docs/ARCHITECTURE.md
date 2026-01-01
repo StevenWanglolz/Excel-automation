@@ -27,7 +27,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 - **React 18** - UI framework
 - **TypeScript** - Type safety
 - **Zustand** - State management (lightweight, no boilerplate)
-- **Sequential Pipeline UI** - Drag-and-drop step list with per-step previews
+- **Sequential Pipeline UI** - Drag-and-drop step list with per-step previews and per-step file/sheet targets
 - **Axios** - HTTP client
 - **React Router** - Client-side routing
 - **Tailwind CSS** - Styling
@@ -58,7 +58,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 **Key Routes:**
 
 - `auth.py` - Authentication (login, register, get current user)
-- `files.py` - File operations (upload, list, preview, download, delete)
+- `files.py` - File operations (upload, list, preview, sheet list, download, delete)
 - `flows.py` - Flow management (create, read, update, delete)
 - `transform.py` - Flow execution and data transformation
 
@@ -72,7 +72,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 **Key Services:**
 
 - `file_service.py` - File upload, parsing, preview generation
-- `transform_service.py` - Flow execution, transform orchestration
+- `transform_service.py` - Flow execution across targeted file/sheet tables, output-sheet mapping
 - `file_reference_service.py` - Track file usage across flows
 
 #### Models (`app/models/`)
@@ -119,7 +119,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `Auth/` - Login, Register, ProtectedRoute
 - `Dashboard/` - Main dashboard view
-- `FlowBuilder/` - Sequential pipeline builder and previews
+- `FlowBuilder/` - Sequential pipeline builder, target selection, and output mapping
 - `blocks/` - Legacy block components (node-based UI)
 - `Common/` - Shared components (modals, etc.)
 

@@ -3,6 +3,7 @@ import type { FlowData, FilePreview } from '../types';
 
 export interface FlowExecuteRequest {
   file_id: number;
+  file_ids?: number[];
   flow_data: FlowData;
 }
 
@@ -38,4 +39,3 @@ export const transformApi = {
     return response.data;
   },
 };
-

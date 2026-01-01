@@ -15,6 +15,7 @@ const blockTemplates = [
   { id: 'remove_duplicates', type: 'transform', label: 'Remove Duplicates', category: 'rows', icon: '🔁' },
   
   // Column Operations
+  { id: 'remove_columns_rows', type: 'transform', label: 'Remove Columns/Rows', category: 'columns', icon: '🧹' },
   { id: 'rename_columns', type: 'transform', label: 'Rename Columns', category: 'columns', icon: '✏️' },
   { id: 'rearrange_columns', type: 'transform', label: 'Rearrange Columns', category: 'columns', icon: '↔️' },
   
@@ -104,4 +105,3 @@ export const BlockPalette = () => {
     </div>
   );
 };
-

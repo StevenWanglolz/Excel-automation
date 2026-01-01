@@ -1,16 +1,42 @@
 import type { FilePreview } from '../../types';
 
+interface FileOption {
+  id: number;
+  label: string;
+}
+
 interface DataPreviewProps {
   preview: FilePreview | null;
   isLoading?: boolean;
   fileId?: number;
+  fileOptions?: FileOption[];
+  currentFileId?: number | null;
+  onFileChange?: (fileId: number) => void;
   onSheetChange?: (sheetName: string) => void;
 }
 
-export const DataPreview = ({ preview, isLoading, fileId: _fileId, onSheetChange }: DataPreviewProps) => {
+export const DataPreview = ({
+  preview,
+  isLoading,
+  fileId: _fileId,
+  fileOptions,
+  currentFileId,
+  onFileChange,
+  onSheetChange,
+}: DataPreviewProps) => {
   const handleSheetChange = (sheetName: string) => {
     if (onSheetChange) {
       onSheetChange(sheetName);
+    }
+  };
+
+  const handleFileChange = (value: string) => {
+    if (!onFileChange) {
+      return;
+    }
+    const nextId = Number(value);
+    if (Number.isFinite(nextId)) {
+      onFileChange(nextId);
     }
   };
 
@@ -30,13 +56,30 @@ export const DataPreview = ({ preview, isLoading, fileId: _fileId, onSheetChange
     );
   }
 
+  const hasMultipleFiles = Boolean(fileOptions && fileOptions.length > 1 && onFileChange);
   const hasMultipleSheets = preview.sheets && preview.sheets.length > 1;
   const currentSheet = preview.current_sheet || (preview.sheets && preview.sheets.length > 0 ? preview.sheets[0] : null);
 
   return (
     <div className="w-full flex flex-col h-full">
       {/* Header with row/column info */}
-      <div className="mb-2 flex items-center">
+      <div className="mb-2 flex flex-wrap items-center gap-3">
+        {hasMultipleFiles && (
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+            File
+            <select
+              className="ml-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
+              value={currentFileId ?? fileOptions?.[0]?.id ?? ''}
+              onChange={(event) => handleFileChange(event.target.value)}
+            >
+              {fileOptions?.map((file) => (
+                <option key={file.id} value={String(file.id)}>
+                  {file.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="text-sm text-gray-600">
           <span className="font-semibold">{preview.row_count}</span> rows,{' '}
           <span className="font-semibold">{preview.columns.length}</span> columns
@@ -113,4 +156,3 @@ export const DataPreview = ({ preview, isLoading, fileId: _fileId, onSheetChange
     </div>
   );
 };
-

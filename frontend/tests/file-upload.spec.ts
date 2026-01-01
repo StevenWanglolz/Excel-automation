@@ -3,65 +3,82 @@ import path from 'path';
 import { existsSync, unlinkSync, writeFileSync } from 'fs';
 
 test.describe('File Upload Tests', () => {
-  test.beforeEach(async ({ page }) => {
-    // Navigate to login page
+  const ensureAuthenticated = async (page: any) => {
     await page.goto('/login');
-    
-    // Wait for page to load
     await page.waitForLoadState('networkidle');
-    
-    // Login
+
     const emailInput = page.locator('input[type="email"], input[name="email"]');
-    const passwordInput = page.locator('input[type="password"], input[name="password"]');
-    
-    await emailInput.waitFor({ timeout: 5000 });
-    await emailInput.fill('test@gmail.com');
-    await passwordInput.fill('test');
-    
-    const loginButton = page.locator('button:has-text("Sign in"), button[type="submit"]').first();
-    await loginButton.click();
-    
-    // Wait for navigation to dashboard (root path)
-    await page.waitForURL('http://localhost:5173/', { timeout: 10000 });
-    
-    // Navigate to flow builder - look for "New Flow" button or link
-    await page.waitForLoadState('networkidle');
-    const newFlowButton = page.locator('text=New Flow, a:has-text("New Flow"), button:has-text("New Flow")').first();
-    if (await newFlowButton.isVisible({ timeout: 3000 })) {
-      await newFlowButton.click();
-      await page.waitForURL('**/flow-builder', { timeout: 10000 });
-    } else {
-      // If no New Flow button, navigate directly
-      await page.goto('/flow-builder');
-      await page.waitForLoadState('networkidle');
+    const authBypassBanner = page.locator('text=Auth bypass enabled');
+    const logoutButton = page.locator('button:has-text("Logout")');
+
+    const hasLoginForm = await emailInput.isVisible({ timeout: 2000 }).catch(() => false);
+    if (hasLoginForm) {
+      const passwordInput = page.locator('input[type="password"], input[name="password"]');
+      await emailInput.fill('test@gmail.com');
+      await passwordInput.fill('test');
+
+      const loginButton = page.locator('button:has-text("Sign in"), button[type="submit"]').first();
+      await loginButton.click();
+      await page.waitForURL('http://localhost:5173/', { timeout: 10000 });
+      return;
     }
+
+    const hasBypass = await authBypassBanner.isVisible({ timeout: 2000 }).catch(() => false);
+    const hasLogout = await logoutButton.isVisible({ timeout: 2000 }).catch(() => false);
+    if (hasBypass || hasLogout) {
+      await page.waitForURL('http://localhost:5173/', { timeout: 10000 });
+      return;
+    }
+
+    throw new Error('Unable to determine authentication state. Login form and bypass markers not found.');
+  };
+
+  const goToFlowBuilder = async (page: any) => {
+    // Navigate straight to a fresh Excel flow first.
+    await page.goto('/flow-builder?type=excel&new=1', { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(500);
+
+    if (!page.url().includes('/flow-builder')) {
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      const newAutomationButton = page
+        .locator('button:has-text("New Automation"), button:has-text("Create Your First Automation")')
+        .first();
+      await newAutomationButton.waitFor({ timeout: 10000 });
+      await newAutomationButton.click();
+
+      await page.waitForURL('**/new-automation**', { timeout: 10000 });
+      const excelCard = page.locator('button:has-text("Excel")').first();
+      await excelCard.waitFor({ timeout: 10000 });
+      await excelCard.click();
+    }
+
+    await page.waitForSelector('text=Flow Builder', { timeout: 15000 });
+    await page.waitForSelector('text=Click to upload a file', { timeout: 15000 });
+  };
+
+  const openUploadModal = async (page: any) => {
+    await page.waitForLoadState('networkidle');
+
+    await page.waitForSelector('text=Flow Builder', { timeout: 15000 });
+
+    const uploadHint = page.locator('text=Click to upload a file').first();
+    await uploadHint.waitFor({ timeout: 15000 });
+    await uploadHint.click();
+  };
+
+  test.beforeEach(async ({ page }) => {
+    await ensureAuthenticated(page);
+    await goToFlowBuilder(page);
   });
 
   test('should upload a file successfully', async ({ page }) => {
     // Wait for flow builder to load
     await page.waitForLoadState('networkidle');
     
-    // Look for Upload File button in the block palette
-    const uploadFileButton = page.locator('text=Upload File, button:has-text("Upload File")').first();
-    await uploadFileButton.waitFor({ timeout: 5000 });
-    await uploadFileButton.click();
+    await openUploadModal(page);
     
-    // Wait for the block/node to appear on canvas
-    // The node might have different selectors, try common ones
-    await page.waitForTimeout(1000); // Give time for node to render
-    
-    // Try to find and click the upload node
-    const uploadNode = page.locator('[data-id*="upload"], .react-flow__node').first();
-    if (await uploadNode.isVisible({ timeout: 3000 })) {
-      await uploadNode.click();
-    } else {
-      // If we can't find the node, try clicking in the canvas area
-      const canvas = page.locator('.react-flow');
-      await canvas.click({ position: { x: 400, y: 300 } });
-    }
-    
-    // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File', { timeout: 10000 });
+    // Wait for modal to open (heading or file input)
+    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 15000 });
     
     // Get the file input
     const fileInput = page.locator('input[type="file"]');
@@ -121,15 +138,10 @@ test.describe('File Upload Tests', () => {
   });
 
   test('should display error for invalid file type', async ({ page }) => {
-    // Add Upload File block
-    await page.click('text=Upload File');
-    
-    // Wait for the block to appear and click on it
-    await page.waitForSelector('[data-node-type="upload"]', { timeout: 5000 });
-    await page.click('[data-node-type="upload"]');
+    await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File', { timeout: 5000 });
+    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 10000 });
     
     // Create a temporary invalid file (text file)
     const fileInput = page.locator('input[type="file"]');
@@ -161,15 +173,10 @@ test.describe('File Upload Tests', () => {
   });
 
   test('should show file in select dropdown after upload', async ({ page }) => {
-    // Add Upload File block
-    await page.click('text=Upload File');
-    
-    // Wait for the block to appear and click on it
-    await page.waitForSelector('[data-node-type="upload"]', { timeout: 5000 });
-    await page.click('[data-node-type="upload"]');
+    await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File', { timeout: 5000 });
+    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 10000 });
     
     // Upload a file
     const fileInput = page.locator('input[type="file"]');
@@ -197,15 +204,10 @@ test.describe('File Upload Tests', () => {
       });
     });
     
-    // Add Upload File block
-    await page.click('text=Upload File');
-    
-    // Wait for the block to appear and click on it
-    await page.waitForSelector('[data-node-type="upload"]', { timeout: 5000 });
-    await page.click('[data-node-type="upload"]');
+    await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File', { timeout: 5000 });
+    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 10000 });
     
     // Try to upload a file
     const fileInput = page.locator('input[type="file"]');

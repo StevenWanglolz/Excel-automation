@@ -30,7 +30,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { FilePreview } from '../../types';
+import type { FilePreview, OutputConfig, TableTarget } from '../../types';
 import { DataPreview } from '../Preview/DataPreview';
 import { PipelineNodeCard } from './PipelineNodeCard';
 import { SortableNode } from './SortableNode';
@@ -50,6 +50,7 @@ interface FlowPipelineProps {
   onReorderNodes: (nextNodes: Node[]) => void;
   onSourceSheetChange: (sheetName: string) => void;
   onTogglePreview: (nodeId: string) => void;
+  onExport: () => void;
 }
 
 const getConfigSummary = (config: Record<string, unknown> | undefined) => {
@@ -70,6 +71,21 @@ const getConfigSummary = (config: Record<string, unknown> | undefined) => {
   return extraCount > 0 ? `${previewEntries.join(', ')} +${extraCount} more` : previewEntries.join(', ');
 };
 
+const formatTarget = (target?: TableTarget) => {
+  if (!target?.fileId) {
+    return null;
+  }
+  const sheetLabel = target.sheetName ? ` / ${target.sheetName}` : '';
+  return `Target: File ${target.fileId}${sheetLabel}`;
+};
+
+const formatOutput = (output?: OutputConfig) => {
+  if (!output) {
+    return null;
+  }
+  const sheetCount = output.sheets.length;
+  return sheetCount > 0 ? `Output: ${sheetCount} sheet(s)` : 'Output: no sheets';
+};
 
 const collisionDetectionStrategy: CollisionDetection = (args) => {
   // Prioritize pointer collision so "drop under cursor" feels natural when zoomed.
@@ -96,6 +112,7 @@ export const FlowPipeline = ({
   onReorderNodes,
   onSourceSheetChange,
   onTogglePreview,
+  onExport,
 }: FlowPipelineProps) => {
   // Canvas scale/pan are owned here so the pipeline can zoom independently of the app shell.
   const [scale, setScale] = useState(1);
@@ -286,18 +303,31 @@ export const FlowPipeline = ({
                 isFileSource={true}
                 isSelected={selectedNodeId === pinnedNode.id}
                 isPreviewOpen={activePreviewNodeIds.has(pinnedNode.id)}
-                configSummary={getConfigSummary(pinnedNode.data?.config as Record<string, unknown> | undefined)}
+                configSummary={[
+                  formatTarget(pinnedNode.data?.target as TableTarget | undefined),
+                  getConfigSummary(pinnedNode.data?.config as Record<string, unknown> | undefined),
+                  formatOutput(pinnedNode.data?.output as OutputConfig | undefined),
+                ]
+                  .filter(Boolean)
+                  .join(' • ')}
                 onNodeClick={onNodeClick}
                 onAddOperation={onAddOperation}
                 onDeleteNode={onDeleteNode}
                 onTogglePreview={onTogglePreview}
+                onExport={onExport}
               />
             )}
             {/* DnD-kit expects stable IDs; keep the list keyed by node IDs. */}
             <SortableContext items={sortableNodes.map((node) => node.id)} strategy={verticalListSortingStrategy}>
               {sortableNodes.map((node, index) => {
                 const isFileSource = fileSourceNodeId === node.id || node.type === 'source';
-                const configSummary = getConfigSummary(node.data?.config as Record<string, unknown> | undefined);
+                const configSummary = [
+                  formatTarget(node.data?.target as TableTarget | undefined),
+                  getConfigSummary(node.data?.config as Record<string, unknown> | undefined),
+                  formatOutput(node.data?.output as OutputConfig | undefined),
+                ]
+                  .filter(Boolean)
+                  .join(' • ');
                 const isSelected = selectedNodeId === node.id;
                 const isPreviewOpen = activePreviewNodeIds.has(node.id);
 
@@ -315,6 +345,7 @@ export const FlowPipeline = ({
                     onAddOperation={onAddOperation}
                     onDeleteNode={onDeleteNode}
                     onTogglePreview={onTogglePreview}
+                    onExport={onExport}
                   />
                 );
               })}

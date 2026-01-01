@@ -519,6 +519,46 @@ const loadInitialFiles = async () => {
 
 **Note:** File previews are opened from the pipeline step preview icon, not from the upload modal.
 
+## File Removal Cleanup
+
+```
+1. User removes a file from the upload modal
+   ↓
+2. Frontend calls DELETE /api/files/{file_id}
+   ↓
+3. Backend deletes the file on disk
+   ↓
+4. Backend strips the file ID from any flow_data that referenced it
+   ↓
+5. Database record is deleted and flows are updated in the same request
+```
+
+**Step 1-2: Remove file from the modal and call API**
+
+```typescript
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 140-165)
+const handleRemoveFile = async (fileId: number) => {
+  await filesApi.delete(fileId);
+  const remainingFiles = uploadedFiles.filter(file => file.id !== fileId);
+  setUploadedFiles(remainingFiles);
+  if (onFileUploaded) {
+    onFileUploaded(remainingFiles.map(file => file.id));
+  }
+};
+```
+
+**Step 3-4: Backend cleans up flow references before deleting**
+
+```python
+# backend/app/api/routes/files.py (delete_file)
+updated_flow_data, changed = file_reference_service.remove_file_id_from_flow_data(
+    flow.flow_data,
+    file_id
+)
+if changed:
+    flow.flow_data = updated_flow_data
+```
+
 ## Flow Execution Flow
 
 ```
@@ -548,6 +588,35 @@ const loadInitialFiles = async () => {
 7. Preview returned to frontend
    ↓
 8. Component displays results in DataPreview.tsx
+```
+
+## Remove Columns/Rows Block
+
+```
+1. User adds the Remove Columns/Rows block and selects a mode (columns or rows)
+   ↓
+2. PropertiesPanel stores selections in a draft config
+   ↓
+3. User clicks Save to persist the configuration to the node
+   ↓
+4. Backend transform uses the saved config to drop columns or rows
+```
+
+**Step 3: Config is saved on the node**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (Remove Columns/Rows section)
+updateRemoveConfig(removeDraftConfig);
+```
+
+**Step 3: Backend applies the selection**
+
+```python
+# backend/app/transforms/remove.py (execute)
+if mode == "columns":
+    df = df.drop(columns=list(columns_to_drop), errors="ignore")
+else:
+    df = df.loc[~combined_mask]
 ```
 
 **Step 1: Pipeline nodes stored in order**
@@ -677,6 +746,7 @@ def execute_flow(
    ↓
 2. FlowBuilder detects active preview steps + node/order/config changes
    - Uses the first node with uploaded file IDs as the file source
+   - Each step reads its target file + sheet selection
    ↓
 3. Source step preview loads from filesApi.preview()
    ↓
@@ -712,7 +782,7 @@ previewUpdateTimeoutRef.current = setTimeout(() => {
 
 ```typescript
 // frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 430-437)
-const preview = await fetchFilePreview(fileIdSnapshot, sheetSnapshot);
+const preview = await fetchFilePreview(targetFileId, targetSheetName);
 setStepPreviews((prev) => ({ ...prev, [node.id]: preview }));
 ```
 
@@ -765,10 +835,25 @@ previewInFlightRef.current.set(cacheKey, request);
 // frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 442-450)
 const flowData = buildFlowData(nodesSnapshot.slice(0, index + 1));
 const result = await transformApi.execute({
-  file_id: fileIdSnapshot,
+  file_id: fileIdsSnapshot[0] ?? fileIdSnapshot,
+  file_ids: fileIdsSnapshot,
   flow_data: flowData,
 });
 setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
+```
+
+## Output Export Flow
+
+```
+1. User adds an Output block and maps source tables to output sheets
+   ↓
+2. Frontend calls transformApi.export() with flow_data + file_ids
+   ↓
+3. Backend executes the pipeline across all targeted file/sheet tables
+   ↓
+4. Output block mapping selects which tables become which sheets
+   ↓
+5. Server streams an Excel file with one or many sheets
 ```
 
 **Step 5: DataPreview renders the table**

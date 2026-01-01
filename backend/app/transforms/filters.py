@@ -7,7 +7,7 @@ import pandas as pd
 @register_transform("filter_rows")
 class FilterRowsTransform(BaseTransform):
     """Filter rows based on column value and operator"""
-    
+
     def validate(self, df: pd.DataFrame, config: Dict[str, Any]) -> bool:
         # Validate that required config keys exist
         # Without these, execute() would fail with KeyError or produce incorrect results
@@ -19,12 +19,12 @@ class FilterRowsTransform(BaseTransform):
         if "operator" not in config:
             return False
         return True
-    
+
     def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
         column = config["column"]
         operator = config.get("operator", "equals")
         value = config.get("value")
-        
+
         # Apply filter based on operator type
         # Each operator handles different data types and edge cases
         if operator == "equals":
@@ -57,15 +57,15 @@ class FilterRowsTransform(BaseTransform):
 @register_transform("delete_rows")
 class DeleteRowsTransform(BaseTransform):
     """Delete rows based on conditions"""
-    
+
     def validate(self, df: pd.DataFrame, config: Dict[str, Any]) -> bool:
         # Always valid - this transform doesn't require specific config
         # It has sensible defaults for all operations
         return True
-    
+
     def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
         condition = config.get("condition", "blank_rows")
-        
+
         if condition == "blank_rows":
             # Delete rows where all columns are blank (NaN or empty)
             # how="all" means row must have ALL columns blank to be deleted
@@ -80,4 +80,3 @@ class DeleteRowsTransform(BaseTransform):
         else:
             # Unknown condition - return original DataFrame unchanged
             return df
-

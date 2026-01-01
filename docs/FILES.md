@@ -17,6 +17,12 @@ This document explains the purpose of each major file and folder. It is meant fo
 - Uses Docker Compose v2+ format (no version key)
 - Changes here affect how the app runs
 
+### frontend/Dockerfile 🟡
+
+- Frontend container image definition
+- Uses Node 20+ to satisfy Vite runtime requirements
+- Changes affect `./start.sh` and Playwright webServer startup
+
 ### start.sh / stop.sh / restart.sh 🟢
 
 - Convenience scripts for Docker operations
@@ -72,7 +78,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 #### routes/
 
 - **auth.py** 🟡 - User registration, login, get current user
-- **files.py** 🟡 - File upload, list, preview, download, delete
+- **files.py** 🟡 - File upload, list, preview, sheet list, download, delete
 - **flows.py** 🟡 - Create, read, update, delete automation flows
 - **transform.py** 🟡 - Execute flows and export results
 
@@ -105,7 +111,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 #### transform_service.py 🟡
 
 - Flow execution logic
-- Orchestrates transform execution
+- Orchestrates transform execution across targeted file/sheet tables
 - Used by transform routes
 
 #### file_reference_service.py 🟡
@@ -132,6 +138,11 @@ This document explains the purpose of each major file and folder. It is meant fo
 - Individual transform implementations
 - Safe to add new transforms here
 - Each transform is independent
+
+#### remove.py 🟢
+
+- Removes columns or rows using manual selections and rules
+- Used by the Remove Columns/Rows block
 
 ### backend/app/storage/
 
@@ -201,7 +212,8 @@ This document explains the purpose of each major file and folder. It is meant fo
 #### FlowBuilder/
 
 - **FlowBuilder.tsx** 🔴 - Main flow builder component
-- Orchestrates flow builder UI
+- Orchestrates flow builder UI, previews, and export
+- Export button uses Output block sheet mapping
 - Changes affect entire flow builder
 
 - **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
@@ -211,6 +223,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - **FlowCanvas.tsx** 🟡 - Legacy React Flow canvas (not used by pipeline UI)
 - **BlockPalette.tsx** 🟢 - Sidebar with available blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
+  - Handles file + sheet target selection and output sheet mapping
 - **DataUploadModal.tsx** 🟡 - Modal for selecting files (previews only via pipeline icon)
 - **OperationSelectionModal.tsx** 🟡 - Modal for selecting transforms
 
@@ -268,6 +281,11 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - Node.js dependencies
 - Safe to update versions (test first)
+
+### frontend/tests/ 🟢
+
+- Playwright end-to-end tests for the UI flow
+- Focus on file upload and flow builder interactions
 
 ### docker-compose.yml 🟡
 

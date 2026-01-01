@@ -23,8 +23,14 @@ import { useFlowStore } from '../../store/flowStore';
 import { flowsApi } from '../../api/flows';
 import { filesApi } from '../../api/files';
 import { transformApi } from '../../api/transform';
-import type { Flow } from '../../types';
-import type { FilePreview, FlowData } from '../../types';
+import type {
+  File,
+  FilePreview,
+  Flow,
+  FlowData,
+  OutputConfig,
+  TableTarget,
+} from '../../types';
 import { Node } from '@xyflow/react';
 import { useUndoRedo } from '../../hooks/useUndoRedo';
 
@@ -40,6 +46,11 @@ export const FlowBuilder = () => {
   const [showFlowList, setShowFlowList] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  // #region agent log
+  useEffect(() => {
+    fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:42',message:'isModalOpen state changed',data:{isModalOpen,selectedNodeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
+  }, [isModalOpen, selectedNodeId]);
+  // #endregion
   const [isOperationModalOpen, setIsOperationModalOpen] = useState(false);
   const [operationAfterNodeId, setOperationAfterNodeId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -59,8 +70,12 @@ export const FlowBuilder = () => {
   const [previewLoading, setPreviewLoading] = useState<Record<string, boolean>>({});
   const [previewErrors, setPreviewErrors] = useState<Record<string, string | null>>({});
   const [sourceSheetName, setSourceSheetName] = useState<string | null>(null);
+  const [sourceFileId, setSourceFileId] = useState<number | null>(null);
+  const [sourceSheetByFileId, setSourceSheetByFileId] = useState<Record<number, string | null>>({});
+  const [previewFiles, setPreviewFiles] = useState<File[]>([]);
   const [activePreviewNodeIds, setActivePreviewNodeIds] = useState<Set<string>>(new Set());
   const [viewAction, setViewAction] = useState<{ type: 'fit' | 'reset'; id: number } | null>(null);
+  const [lastTarget, setLastTarget] = useState<TableTarget>({ fileId: null, sheetName: null });
   const savedFlowDataRef = useRef<string>('');
   const hasUnsavedChangesRef = useRef(false);
   const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -487,6 +502,18 @@ export const FlowBuilder = () => {
   };
 
   const clearFlowInternal = () => {
+    // #region cleanup all files from all nodes from backend if they exist
+    nodes.forEach((node) => {
+      if (node.data?.fileIds && Array.isArray(node.data.fileIds)) {
+        node.data.fileIds.forEach((fileId: number) => {
+          filesApi.delete(fileId).catch((err) => {
+            console.error(`Failed to delete file ${fileId} on flow clear:`, err);
+          });
+        });
+      }
+    });
+    // #endregion
+
     // Initialize with source node (required for the flow design)
     const sourceNode: Node = {
       id: 'source-0',
@@ -509,6 +536,7 @@ export const FlowBuilder = () => {
     setSelectedFlowId(null);
     setShowFlowList(false);
     setActivePreviewNodeIds(new Set());
+    setLastTarget({ fileId: null, sheetName: null });
     savedFlowDataRef.current = '';
     hasUnsavedChangesRef.current = false;
     hasInitializedRef.current = true;
@@ -561,12 +589,29 @@ export const FlowBuilder = () => {
   };
 
   const handleNodeClick = (nodeId: string, nodeType: string) => {
+    // #region agent log
+    const shouldOpen = nodeType === 'upload' || nodeType === 'data' || nodeType === 'source';
+    fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:565',message:'handleNodeClick called',data:{nodeId,nodeType,shouldOpenModal:shouldOpen},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
     // Set selected node for properties panel
     setSelectedNodeId(nodeId);
     
     // Open modal for upload/data/source nodes (for file upload)
-    if (nodeType === 'upload' || nodeType === 'data' || nodeType === 'source') {
+    if (shouldOpen) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:571',message:'Opening modal - before setState',data:{nodeId,nodeType,currentIsModalOpen:isModalOpen,currentSelectedNodeId:selectedNodeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
       setIsModalOpen(true);
+      // #region agent log
+      // Use setTimeout to log after state update has been scheduled
+      setTimeout(() => {
+        fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:583',message:'After setIsModalOpen(true) scheduled',data:{nodeId,nodeType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
+      }, 0);
+      // #endregion
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:573',message:'Modal NOT opened - nodeType mismatch',data:{nodeId,nodeType,expectedTypes:['upload','data','source']},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
     }
   };
 
@@ -583,7 +628,8 @@ export const FlowBuilder = () => {
   // Map operation ID to node type and blockType
   const getNodeTypeFromOperation = (operationId: string): { type: string; blockType: string } => {
     const mapping: Record<string, { type: string; blockType: string }> = {
-      'remove-column': { type: 'transform', blockType: 'remove_column' },
+      'remove-column': { type: 'transform', blockType: 'remove_columns_rows' },
+      'remove-columns-rows': { type: 'transform', blockType: 'remove_columns_rows' },
       'rename-column': { type: 'transform', blockType: 'rename_columns' },
       'rearrange-column': { type: 'transform', blockType: 'rearrange_columns' },
       'sort-rows': { type: 'transform', blockType: 'sort_rows' },
@@ -591,6 +637,7 @@ export const FlowBuilder = () => {
       'filter-rows': { type: 'filter', blockType: 'filter' },
       'delete-rows': { type: 'filter', blockType: 'delete_rows' },
       'join-lookup': { type: 'transform', blockType: 'join' },
+      'output': { type: 'output', blockType: 'output' },
     };
     return mapping[operationId] || { type: 'transform', blockType: operationId };
   };
@@ -603,6 +650,19 @@ export const FlowBuilder = () => {
     if (!afterNode) return;
 
     const { type, blockType } = getNodeTypeFromOperation(operation.id);
+    const defaultTarget = lastTarget.fileId ? lastTarget : {
+      fileId: resolvedSourceFileId ?? null,
+      sheetName: sourceSheetName ?? null,
+    };
+    const targetForNode = operation.id === 'output'
+      ? { fileId: null, sheetName: null }
+      : defaultTarget;
+    const outputConfig: OutputConfig | undefined = operation.id === 'output'
+      ? {
+          fileName: 'output.xlsx',
+          sheets: [],
+        }
+      : undefined;
 
     const newNode: Node = {
       id: `${type}-${Date.now()}`,
@@ -612,6 +672,8 @@ export const FlowBuilder = () => {
         blockType: blockType,
         label: operation.label,
         config: {},
+        target: targetForNode,
+        output: outputConfig,
       },
     };
 
@@ -680,20 +742,136 @@ export const FlowBuilder = () => {
       nodes.find((node) => node.type === 'source' || node.type === 'upload' || node.type === 'data') || null
     );
   }, [nodes, getNodeFileIds]);
-  const primaryFileId = fileSourceNode ? getNodeFileIds(fileSourceNode.id)[0] : undefined;
+  const sourceFileIds = fileSourceNode ? getNodeFileIds(fileSourceNode.id) : [];
+  const resolvedSourceFileId = sourceFileId ?? (sourceFileIds[0] ?? null);
+
+  useEffect(() => {
+    if (!fileSourceNode) {
+      setSourceFileId(null);
+      return;
+    }
+    const sourceTarget = fileSourceNode.data?.target as TableTarget | undefined;
+    const targetFileId = sourceTarget?.fileId ?? null;
+    setSourceFileId((prev) => {
+      if (prev && sourceFileIds.includes(prev)) {
+        return prev;
+      }
+      if (targetFileId && sourceFileIds.includes(targetFileId)) {
+        return targetFileId;
+      }
+      return sourceFileIds[0] ?? null;
+    });
+  }, [fileSourceNode, sourceFileIds]);
+
+  useEffect(() => {
+    if (!fileSourceNode) {
+      return;
+    }
+    const sourceTarget = fileSourceNode.data?.target as TableTarget | undefined;
+    if (!sourceTarget?.sheetName || sourceSheetName) {
+      return;
+    }
+    // Restore the saved sheet selection so previews match the stored target.
+    if (sourceTarget.fileId) {
+      setSourceSheetByFileId((prev) => ({
+        ...prev,
+        [sourceTarget.fileId]: sourceTarget.sheetName,
+      }));
+    }
+    setSourceSheetName(sourceTarget.sheetName);
+  }, [fileSourceNode, sourceSheetName]);
+
+  useEffect(() => {
+    if (!resolvedSourceFileId) {
+      return;
+    }
+    const defaultTarget: TableTarget = {
+      fileId: resolvedSourceFileId,
+      sheetName: sourceSheetName ?? null,
+    };
+    // Backfill targets for legacy nodes so multi-sheet execution stays deterministic.
+    nodes.forEach((node) => {
+      const nodeData = node.data || {};
+      if (nodeData.target || nodeData.blockType === 'output' || node.type === 'source') {
+        return;
+      }
+      updateNode(node.id, {
+        data: {
+          ...nodeData,
+          target: defaultTarget,
+        },
+      });
+    });
+  }, [nodes, resolvedSourceFileId, sourceSheetName, updateNode]);
+
+  useEffect(() => {
+    if (!fileSourceNode || !resolvedSourceFileId) {
+      return;
+    }
+    const sourceTarget: TableTarget = {
+      fileId: resolvedSourceFileId,
+      sheetName: sourceSheetName ?? null,
+    };
+    const existingTarget = fileSourceNode.data?.target as TableTarget | undefined;
+    const hasChanged =
+      existingTarget?.fileId !== sourceTarget.fileId ||
+      existingTarget?.sheetName !== sourceTarget.sheetName;
+    if (hasChanged) {
+      // Keep the source node target aligned with the active sheet selection.
+      updateNode(fileSourceNode.id, {
+        data: {
+          ...fileSourceNode.data,
+          target: sourceTarget,
+        },
+      });
+    }
+    setLastTarget(sourceTarget);
+  }, [fileSourceNode, resolvedSourceFileId, sourceSheetName, updateNode]);
+
+  useEffect(() => {
+    if (!resolvedSourceFileId) {
+      return;
+    }
+    const rememberedSheet = sourceSheetByFileId[resolvedSourceFileId] ?? null;
+    setSourceSheetName(rememberedSheet);
+  }, [resolvedSourceFileId, sourceSheetByFileId]);
 
   const buildFlowData = useCallback(
     (subset: Node[]): FlowData => ({
       nodes: subset.map((node) => ({
         id: node.id,
-        type: node.type,
+        type: node.type || 'default',
         position: node.position,
-        data: node.data,
+        data: node.data as BlockData,
       })),
       edges: [],
     }),
     []
   );
+
+  const collectFileIds = useCallback((subset: Node[]) => {
+    const fileIds = new Set<number>();
+    subset.forEach((node) => {
+      const data = node.data || {};
+      const nodeFileIds = Array.isArray(data.fileIds) ? data.fileIds : [];
+      nodeFileIds.forEach((fileId) => {
+        if (typeof fileId === 'number') {
+          fileIds.add(fileId);
+        }
+      });
+      const target = data.target as TableTarget | undefined;
+      if (target?.fileId) {
+        fileIds.add(target.fileId);
+      }
+      const output = data.output as OutputConfig | undefined;
+      output?.sheets.forEach((sheet) => {
+        if (sheet.source?.fileId) {
+          fileIds.add(sheet.source.fileId);
+        }
+      });
+    });
+    return Array.from(fileIds);
+  }, []);
 
   const normalizePreviewState = useCallback(() => {
     const nodeIds = new Set(nodes.map((node) => node.id));
@@ -782,14 +960,14 @@ export const FlowBuilder = () => {
   );
 
   useEffect(() => {
-    if (!primaryFileId || !fileSourceNode) {
+    if (!resolvedSourceFileId || !fileSourceNode) {
       return;
     }
     if (!activePreviewNodeIds.has(fileSourceNode.id)) {
       return;
     }
 
-    const cached = getCachedPreview(primaryFileId, sourceSheetName || undefined);
+    const cached = getCachedPreview(resolvedSourceFileId, sourceSheetName || undefined);
     if (!cached) {
       return;
     }
@@ -805,17 +983,18 @@ export const FlowBuilder = () => {
       return;
     }
     const signature = JSON.stringify({
-      fileId: primaryFileId,
+      fileId: resolvedSourceFileId,
       sheetName: sourceSheetName || undefined,
       nodes: nodes.slice(0, sourceIndex + 1).map((node) => ({
         id: node.id,
         type: node.type,
         blockType: node.data?.blockType,
         config: node.data?.config || {},
+        target: node.data?.target || null,
       })),
     });
     previewSignatureRef.current = { ...previewSignatureRef.current, [fileSourceNode.id]: signature };
-  }, [activePreviewNodeIds, fileSourceNode, getCachedPreview, nodes, primaryFileId, sourceSheetName]);
+  }, [activePreviewNodeIds, fileSourceNode, getCachedPreview, nodes, resolvedSourceFileId, sourceSheetName]);
 
   useEffect(() => {
     normalizePreviewState();
@@ -841,7 +1020,7 @@ export const FlowBuilder = () => {
       return;
     }
 
-    if (!primaryFileId) {
+    if (!resolvedSourceFileId && collectFileIds(nodes).length === 0) {
       // Cancel any in-flight preview runs when the file source disappears.
       previewRunIdRef.current += 1;
       setStepPreviews((prev) => ({ ...prev }));
@@ -865,8 +1044,9 @@ export const FlowBuilder = () => {
 
     // Snapshot state so the async preview loop is deterministic.
     const nodesSnapshot = [...nodes];
-    const fileIdSnapshot = primaryFileId;
+    const fileIdSnapshot = resolvedSourceFileId;
     const sheetSnapshot = sourceSheetName || undefined;
+    const fileIdsSnapshot = collectFileIds(nodesSnapshot);
 
     // Signature map lets us recompute only when upstream config/order changes.
     const signaturesToUpdate = new Set<string>();
@@ -885,6 +1065,7 @@ export const FlowBuilder = () => {
           type: node.type,
           blockType: node.data?.blockType,
           config: node.data?.config || {},
+          target: node.data?.target || null,
         })),
       });
       if (signatureMap[nodeId] !== signature) {
@@ -929,7 +1110,13 @@ export const FlowBuilder = () => {
           try {
             if (index === 0) {
               // Source preview reads the file directly, no transforms applied yet.
-              const preview = await fetchFilePreview(fileIdSnapshot, sheetSnapshot);
+              const sourceTarget = node.data?.target as TableTarget | undefined;
+              const targetFileId = sourceTarget?.fileId ?? fileIdSnapshot;
+              const targetSheetName = sourceTarget?.sheetName ?? sheetSnapshot;
+              if (!targetFileId) {
+                throw new Error('Source target file is missing');
+              }
+              const preview = await fetchFilePreview(targetFileId, targetSheetName);
               if (previewRunIdRef.current !== runId) {
                 return;
               }
@@ -937,13 +1124,18 @@ export const FlowBuilder = () => {
               setPreviewErrors((prev) => ({ ...prev, [node.id]: null }));
               if (preview.sheets && preview.sheets.length > 1) {
                 // Warm the cache so sheet switches feel instant.
-                prefetchSheetPreviews(fileIdSnapshot, preview.sheets, preview.current_sheet ?? sheetSnapshot);
+                prefetchSheetPreviews(
+                  targetFileId,
+                  preview.sheets,
+                  preview.current_sheet ?? targetSheetName ?? undefined
+                );
               }
             } else {
               // Downstream previews execute the pipeline up to this step.
               const flowData = buildFlowData(nodesSnapshot.slice(0, index + 1));
               const result = await transformApi.execute({
-                file_id: fileIdSnapshot,
+                file_id: fileIdsSnapshot[0] ?? fileIdSnapshot ?? 0,
+                file_ids: fileIdsSnapshot,
                 flow_data: flowData,
               });
               if (previewRunIdRef.current !== runId) {
@@ -977,10 +1169,11 @@ export const FlowBuilder = () => {
     };
   }, [
     nodes,
-    primaryFileId,
+    resolvedSourceFileId,
     sourceSheetName,
     activePreviewNodeIds,
     buildFlowData,
+    collectFileIds,
     fileSourceNode,
     fetchFilePreview,
     prefetchSheetPreviews,
@@ -997,6 +1190,17 @@ export const FlowBuilder = () => {
   };
 
   const handleDeleteNode = (nodeId: string) => {
+    // #region cleanup files from backend if it's a source/data node
+    const nodeToDelete = nodes.find((n) => n.id === nodeId);
+    if (nodeToDelete?.data?.fileIds && Array.isArray(nodeToDelete.data.fileIds)) {
+      nodeToDelete.data.fileIds.forEach((fileId: number) => {
+        filesApi.delete(fileId).catch((err) => {
+          console.error(`Failed to delete file ${fileId} on node deletion:`, err);
+        });
+      });
+    }
+    // #endregion
+
     deleteNode(nodeId);
     if (selectedNodeId === nodeId) {
       setSelectedNodeId(null);
@@ -1008,6 +1212,40 @@ export const FlowBuilder = () => {
     });
     hasUnsavedChangesRef.current = true;
     setHasUnsavedChanges(true);
+  };
+
+  const getOutputFileName = useCallback(() => {
+    const outputNode = nodes.find((node) => node.data?.blockType === 'output');
+    const outputConfig = outputNode?.data?.output as OutputConfig | undefined;
+    return outputConfig?.fileName || 'output.xlsx';
+  }, [nodes]);
+
+  const handleExport = async () => {
+    const fileIds = collectFileIds(nodes);
+    if (fileIds.length === 0) {
+      showModal('alert', 'Missing files', 'Upload at least one file before exporting.');
+      return;
+    }
+    try {
+      const blob = await transformApi.export({
+        file_id: fileIds[0],
+        file_ids: fileIds,
+        flow_data: getFlowData(),
+      });
+      const fileName = getOutputFileName();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      // Use the output block filename to keep the export predictable.
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to export flow:', error);
+      showModal('error', 'Export failed', 'We could not export the output file.');
+    }
   };
 
   const handleReorderNodes = (nextNodes: Node[]) => {
@@ -1172,6 +1410,12 @@ export const FlowBuilder = () => {
                 })()}
               </button>
               <button
+                onClick={handleExport}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700"
+              >
+                Export
+              </button>
+              <button
                 onClick={() => {
                   if (hasUnsavedChangesRef.current) {
                     setShowConfirmModal(true);
@@ -1247,6 +1491,7 @@ export const FlowBuilder = () => {
             onReorderNodes={handleReorderNodes}
             onSourceSheetChange={(sheetName) => setSourceSheetName(sheetName)}
             onTogglePreview={handleTogglePreview}
+            onExport={handleExport}
           />
         </div>
       </div>
@@ -1255,6 +1500,8 @@ export const FlowBuilder = () => {
       <PropertiesPanel 
         selectedNodeId={selectedNodeId} 
         onClose={handleClosePropertiesPanel}
+        lastTarget={lastTarget}
+        onUpdateLastTarget={setLastTarget}
       />
       
       {/* Data Upload Modal */}

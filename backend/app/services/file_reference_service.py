@@ -1,4 +1,5 @@
 from typing import Set, List, Dict, Any
+import copy
 from sqlalchemy.orm import Session
 from app.models.flow import Flow
 from app.models.file import File
@@ -46,6 +47,32 @@ class FileReferenceService:
                 for file_id in file_ids_list:
                     if isinstance(file_id, int):
                         file_ids.add(file_id)
+
+            target = data.get("target", {})
+            if isinstance(target, dict):
+                target_file_id = target.get("fileId")
+                if isinstance(target_file_id, int):
+                    file_ids.add(target_file_id)
+
+            lookup_target = data.get("lookupTarget", {})
+            if isinstance(lookup_target, dict):
+                lookup_file_id = lookup_target.get("fileId")
+                if isinstance(lookup_file_id, int):
+                    file_ids.add(lookup_file_id)
+
+            output = data.get("output", {})
+            if isinstance(output, dict):
+                output_sheets = output.get("sheets", [])
+                if isinstance(output_sheets, list):
+                    for sheet in output_sheets:
+                        if not isinstance(sheet, dict):
+                            continue
+                        source = sheet.get("source", {})
+                        if not isinstance(source, dict):
+                            continue
+                        source_file_id = source.get("fileId")
+                        if isinstance(source_file_id, int):
+                            file_ids.add(source_file_id)
         
         return file_ids
 
@@ -127,6 +154,61 @@ class FileReferenceService:
         
         return FileReferenceService.extract_file_ids_from_flow_data(flow.flow_data)
 
+    @staticmethod
+    def remove_file_id_from_flow_data(flow_data: Dict[str, Any], file_id: int) -> tuple[Dict[str, Any], bool]:
+        """
+        Remove a file ID from flow_data targets and file lists.
+        Returns the updated flow_data and whether any changes were applied.
+        """
+        if not isinstance(flow_data, dict):
+            return flow_data, False
+
+        updated = copy.deepcopy(flow_data)
+        changed = False
+
+        nodes = updated.get("nodes", [])
+        if not isinstance(nodes, list):
+            return updated, False
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+
+            data = node.get("data", {})
+            if not isinstance(data, dict):
+                continue
+
+            file_ids_list = data.get("fileIds", [])
+            if isinstance(file_ids_list, list) and file_id in file_ids_list:
+                data["fileIds"] = [value for value in file_ids_list if value != file_id]
+                changed = True
+
+            target = data.get("target")
+            if isinstance(target, dict) and target.get("fileId") == file_id:
+                target["fileId"] = None
+                target["sheetName"] = None
+                changed = True
+
+            lookup_target = data.get("lookupTarget")
+            if isinstance(lookup_target, dict) and lookup_target.get("fileId") == file_id:
+                lookup_target["fileId"] = None
+                lookup_target["sheetName"] = None
+                changed = True
+
+            output = data.get("output")
+            if isinstance(output, dict):
+                output_sheets = output.get("sheets", [])
+                if isinstance(output_sheets, list):
+                    for sheet in output_sheets:
+                        if not isinstance(sheet, dict):
+                            continue
+                        source = sheet.get("source")
+                        if isinstance(source, dict) and source.get("fileId") == file_id:
+                            source["fileId"] = None
+                            source["sheetName"] = None
+                            changed = True
+
+        return updated, changed
+
 
 file_reference_service = FileReferenceService()
-

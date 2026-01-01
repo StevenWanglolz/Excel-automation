@@ -20,4 +20,3 @@ def get_transform(transform_id: str) -> Type[BaseTransform] | None:
 def list_transforms() -> list[str]:
     """List all registered transform IDs"""
     return list(_transform_registry.keys())
-

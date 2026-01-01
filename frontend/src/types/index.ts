@@ -48,6 +48,24 @@ export interface BlockData {
   blockType: string;
   config: Record<string, any>;
   label?: string;
+  target?: TableTarget;
+  output?: OutputConfig;
+  fileIds?: number[];
+}
+
+export interface TableTarget {
+  fileId: number | null;
+  sheetName: string | null;
+}
+
+export interface OutputSheetMapping {
+  sheetName: string;
+  source: TableTarget;
+}
+
+export interface OutputConfig {
+  fileName: string;
+  sheets: OutputSheetMapping[];
 }
 
 export interface FilePreview {
@@ -58,4 +76,3 @@ export interface FilePreview {
   sheets?: string[];  // List of sheet names (for Excel files)
   current_sheet?: string | null;  // Current sheet being previewed
 }
-

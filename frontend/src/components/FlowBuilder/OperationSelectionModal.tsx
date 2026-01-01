@@ -15,7 +15,7 @@ interface OperationSelectionModalProps {
 
 const OPERATIONS: Operation[] = [
   // Column Operations
-  { id: 'remove-column', label: 'Remove column', type: 'columns', category: 'Column Operations' },
+  { id: 'remove-columns-rows', label: 'Remove Columns/Rows', type: 'columns', category: 'Column Operations' },
   { id: 'rename-column', label: 'Rename Columns', type: 'columns', category: 'Column Operations' },
   { id: 'rearrange-column', label: 'Rearrange Columns', type: 'columns', category: 'Column Operations' },
   
@@ -29,6 +29,9 @@ const OPERATIONS: Operation[] = [
   
   // Transforms
   { id: 'join-lookup', label: 'Join/Lookup', type: 'transform', category: 'Transforms' },
+
+  // Output
+  { id: 'output', label: 'Output', type: 'output', category: 'Output' },
 ];
 
 export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: OperationSelectionModalProps) => {

@@ -26,6 +26,11 @@ export const filesApi = {
     return response.data;
   },
 
+  sheets: async (fileId: number): Promise<string[]> => {
+    const response = await apiClient.get(`/files/${fileId}/sheets`);
+    return response.data;
+  },
+
   delete: async (fileId: number): Promise<void> => {
     await apiClient.delete(`/files/${fileId}`);
   },
@@ -76,4 +81,3 @@ export const filesApi = {
     return response.data;
   },
 };
-

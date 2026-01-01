@@ -152,6 +152,30 @@ async def preview_file(
     return preview
 
 
+@router.get("/{file_id}/sheets", response_model=List[str])
+async def list_file_sheets(
+    file_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List sheet names for an Excel file (empty for CSV)."""
+    db_file = db.query(File).filter(
+        File.id == file_id,
+        File.user_id == current_user.id
+    ).first()
+
+    if not db_file:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    if db_file.mime_type not in [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel"
+    ]:
+        return []
+
+    return file_service.get_excel_sheets(db_file.file_path)
+
+
 @router.options("/{file_id}/download")
 async def download_file_options(file_id: int):
     """Handle OPTIONS preflight request for file download"""
@@ -251,6 +275,20 @@ async def delete_file(
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # Remove file references from any flows before deleting.
+    flows = db.query(Flow).filter(Flow.user_id == current_user.id).all()
+    flows_updated = 0
+    for flow in flows:
+        if not flow.flow_data:
+            continue
+        updated_flow_data, changed = file_reference_service.remove_file_id_from_flow_data(
+            flow.flow_data,
+            file_id
+        )
+        if changed:
+            flow.flow_data = updated_flow_data
+            flows_updated += 1
+
     # Delete file from disk
     from app.storage.local_storage import storage
     storage.delete_file(current_user.id, db_file.filename)
@@ -259,4 +297,7 @@ async def delete_file(
     db.delete(db_file)
     db.commit()
 
-    return {"message": "File deleted successfully"}
+    return {
+        "message": "File deleted successfully",
+        "flows_updated": flows_updated,
+    }

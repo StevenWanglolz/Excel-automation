@@ -1,0 +1,66 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - generic [ref=e3]: Auth bypass enabled
+  - generic [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - button "Back to Dashboard" [ref=e9] [cursor=pointer]:
+            - img [ref=e10]
+          - heading "Flow Builder" [level=1] [ref=e12]
+        - generic [ref=e13]:
+          - button "📋 Saved Flows 1" [ref=e15] [cursor=pointer]:
+            - generic [ref=e16]: 📋 Saved Flows
+            - generic [ref=e17]: "1"
+          - textbox "Flow name" [ref=e18]
+          - button "Save Flow" [disabled] [ref=e19]
+          - button "Export" [ref=e20] [cursor=pointer]
+          - button "Clear" [ref=e21] [cursor=pointer]
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - button "Undo" [ref=e24] [cursor=pointer]:
+            - img "Undo" [ref=e25]
+          - button "Redo" [disabled] [ref=e26]:
+            - img "Redo" [ref=e27]
+          - button "Reset zoom" [ref=e28] [cursor=pointer]:
+            - img [ref=e29]
+        - generic [ref=e33]:
+          - generic [ref=e35]:
+            - generic [ref=e37]:
+              - generic [ref=e38]:
+                - button "Source stays at the top" [ref=e39]:
+                  - img [ref=e40]
+                - generic [ref=e42]:
+                  - generic [ref=e43]: Data
+                  - generic [ref=e44]: No configuration
+                  - generic [ref=e45]: Click to upload a file
+              - button "Show preview" [ref=e47] [cursor=pointer]:
+                - img [ref=e48]
+            - button "Add step after this" [ref=e53] [cursor=pointer]:
+              - img [ref=e54]
+          - status [ref=e57]
+    - generic [ref=e58]:
+      - generic [ref=e59]:
+        - heading "Properties" [level=2] [ref=e60]
+        - button "Close" [ref=e61] [cursor=pointer]:
+          - img [ref=e62]
+      - generic [ref=e64]:
+        - generic [ref=e65]:
+          - generic [ref=e66]: Block Type
+          - generic [ref=e67]: Data
+        - generic [ref=e69]:
+          - heading "Files" [level=3] [ref=e70]
+          - generic [ref=e71]: No files attached
+    - generic [ref=e74]:
+      - generic [ref=e75]:
+        - heading "Upload Data File" [level=2] [ref=e76]
+        - button "Close" [ref=e77] [cursor=pointer]:
+          - img [ref=e78]
+      - generic [ref=e84] [cursor=pointer]:
+        - img [ref=e86]
+        - paragraph [ref=e88]: Upload files
+        - paragraph [ref=e89]: Click to browse or drag and drop
+        - paragraph [ref=e90]: Excel (.xlsx, .xls) or CSV (multiple files)
+```

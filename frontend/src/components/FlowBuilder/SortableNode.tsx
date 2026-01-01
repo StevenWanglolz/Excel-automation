@@ -16,6 +16,7 @@ interface SortableNodeProps {
   onAddOperation: (afterNodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onTogglePreview: (nodeId: string) => void;
+  onExport: () => void;
 }
 
 export const SortableNode = ({
@@ -28,6 +29,7 @@ export const SortableNode = ({
   onAddOperation,
   onDeleteNode,
   onTogglePreview,
+  onExport,
   scale,
 }: SortableNodeProps) => {
   const {
@@ -67,6 +69,7 @@ export const SortableNode = ({
         onAddOperation={onAddOperation}
         onDeleteNode={onDeleteNode}
         onTogglePreview={onTogglePreview}
+        onExport={onExport}
         dragAttributes={attributes}
         dragListeners={listeners}
       />

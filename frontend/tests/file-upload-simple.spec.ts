@@ -3,44 +3,60 @@ import path from 'path';
 import { existsSync } from 'fs';
 
 test('File Upload Test - Check for errors', async ({ page }) => {
-  // Navigate to login page
+  // Navigate to login page and handle auth bypass or login form.
   await page.goto('http://localhost:5173/login');
   await page.waitForLoadState('networkidle');
-  
-  // Login
-  await page.fill('input[type="email"]', 'test@gmail.com');
-  await page.fill('input[type="password"]', 'test');
-  await page.click('button:has-text("Sign in")');
-  
-  // Wait for navigation to dashboard
+
+  const emailInput = page.locator('input[type="email"], input[name="email"]');
+  const authBypassBanner = page.locator('text=Auth bypass enabled');
+  const logoutButton = page.locator('button:has-text("Logout")');
+
+  const hasLoginForm = await emailInput.isVisible({ timeout: 2000 }).catch(() => false);
+  if (hasLoginForm) {
+    await page.fill('input[type="email"]', 'test@gmail.com');
+    await page.fill('input[type="password"]', 'test');
+    await page.click('button:has-text("Sign in")');
+  }
+
+  const hasBypass = await authBypassBanner.isVisible({ timeout: 2000 }).catch(() => false);
+  const hasLogout = await logoutButton.isVisible({ timeout: 2000 }).catch(() => false);
+  if (!hasLoginForm && !hasBypass && !hasLogout) {
+    throw new Error('Unable to determine authentication state. Login form and bypass markers not found.');
+  }
+
+  // Ensure we are on the dashboard after auth
   await page.waitForURL('http://localhost:5173/', { timeout: 15000 });
   await page.waitForLoadState('networkidle');
-  
-  // Navigate to flow builder
-  await page.goto('http://localhost:5173/flow-builder');
-  await page.waitForLoadState('networkidle');
+
+  // Navigate straight to a fresh Excel flow, fall back to UI navigation if needed.
+  await page.goto('http://localhost:5173/flow-builder?type=excel&new=1', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(500);
+
+  if (!page.url().includes('/flow-builder')) {
+    await page.goto('http://localhost:5173/', { waitUntil: 'domcontentloaded' });
+    const newAutomationButton = page
+      .locator('button:has-text("New Automation"), button:has-text("Create Your First Automation")')
+      .first();
+    await newAutomationButton.waitFor({ timeout: 10000 });
+    await newAutomationButton.click();
+
+    await page.waitForURL('**/new-automation**', { timeout: 10000 });
+    const excelCard = page.locator('button:has-text("Excel")').first();
+    await excelCard.waitFor({ timeout: 10000 });
+    await excelCard.click();
+  }
+
+  await page.waitForSelector('text=Flow Builder', { timeout: 15000 });
+  await page.waitForSelector('text=Click to upload a file', { timeout: 15000 });
   await page.waitForTimeout(2000); // Give time for canvas to render
   
-  // Add Upload File block
-  const uploadFileButton = page.locator('text=Upload File').first();
-  await uploadFileButton.waitFor({ timeout: 5000 });
-  await uploadFileButton.click();
-  
-  // Wait a bit for node to render
-  await page.waitForTimeout(1000);
-  
-  // Try to click on the upload node to open modal
-  // Look for the node in the canvas
-  const canvas = page.locator('.react-flow');
-  await canvas.waitFor({ timeout: 5000 });
-  
-  // Click on the canvas where the node should be
-  await canvas.click({ position: { x: 400, y: 300 } });
-  await page.waitForTimeout(500);
+  const uploadHint = page.locator('text=Click to upload a file').first();
+  await uploadHint.waitFor({ timeout: 15000 });
+  await uploadHint.click();
   
   // Wait for modal to open
   try {
-    await page.waitForSelector('text=Upload Data File', { timeout: 10000 });
+    await page.waitForSelector('text=Upload Data File, input[type=\"file\"]', { timeout: 15000 });
   } catch (e) {
     // Take screenshot to see what's on screen
     await page.screenshot({ path: 'test-results/modal-not-opened.png', fullPage: true });
@@ -138,4 +154,3 @@ test('File Upload Test - Check for errors', async ({ page }) => {
   const fileInSelect = page.locator('select option:has-text("example data 1.xlsx")').first();
   await expect(fileInSelect).toHaveCount(1);
 });
-

@@ -89,6 +89,7 @@ const { nodes, edges, updateNode } = useFlowStore();
   previewLoading: Record<string, boolean>,          // Per-step loading flags
   previewErrors: Record<string, string | null>,     // Per-step error messages
   sourceSheetName: string | null,                   // Selected sheet for source preview
+  lastTarget: { fileId: number | null, sheetName: string | null }, // Last-selected file+sheet target
   activePreviewNodeIds: Set<string>,                // Single active full-screen preview (stored as a set)
   viewAction: { type: 'fit' | 'reset'; id: number } | null // Pipeline view commands
 }
@@ -97,6 +98,7 @@ const { nodes, edges, updateNode } = useFlowStore();
 **Triggers:**
 - Node order or config changes → recompute previews from the changed step onward.
 - Source file change → invalidates all previews.
+- Target selection → updates the node's target and becomes the default for newly added steps.
 
 **Preview caching (frontend-only):**
 - File previews are cached by `fileId + sheetName` in-memory to speed up sheet switching.

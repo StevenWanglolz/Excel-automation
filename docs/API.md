@@ -164,6 +164,17 @@ Authorization: Bearer <token>
 }
 ```
 
+### List File Sheets
+```http
+GET /api/files/{file_id}/sheets
+Authorization: Bearer <token>
+```
+
+**Response:** `200 OK`
+```json
+["Sheet1", "Sheet2"]
+```
+
 ### Download File
 ```http
 GET /api/files/{file_id}/download
@@ -184,9 +195,14 @@ Authorization: Bearer <token>
 **Response:** `200 OK`
 ```json
 {
-  "message": "File deleted successfully"
+  "message": "File deleted successfully",
+  "flows_updated": 2
 }
 ```
+
+Notes:
+- Deleting a file also strips it from any flow definitions that referenced it.
+- Use `flows_updated` to confirm how many flow records were cleaned.
 
 ### Cleanup Orphaned Files
 ```http
@@ -295,18 +311,20 @@ Content-Type: application/json
 
 {
   "file_id": 123,
+  "file_ids": [123, 456],
   "flow_data": {
     "nodes": [
       {
         "id": "1",
         "type": "upload",
-        "data": { "fileId": 123 }
+        "data": { "fileIds": [123, 456] }
       },
       {
         "id": "2",
         "type": "filter_rows",
         "data": {
           "blockType": "filter_rows",
+          "target": { "fileId": 123, "sheetName": "Sheet1" },
           "config": {
             "column": "Age",
             "operator": "greater_than",
@@ -365,9 +383,14 @@ Content-Type: application/json
 
 {
   "file_id": 123,
+  "file_ids": [123, 456],
   "flow_data": { ... }
 }
 ```
+
+**Notes:**
+- If the flow includes an Output block, its sheet mapping is used to build the Excel file.
+- Without an Output block, the last modified table is exported as `Sheet1`.
 
 **Response:** `200 OK`
 - Content-Type: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
@@ -415,4 +438,3 @@ http://localhost:8000/docs
 ```
 
 Generated automatically by FastAPI from route definitions.
-

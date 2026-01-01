@@ -2,7 +2,7 @@
 
 ## What this is
 
-SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand using the uploaded file source.
+SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step targets a specific file + sheet, and an Output block maps those tables into one or many export sheets. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand.
 
 ## Tech
 
@@ -30,6 +30,7 @@ VS Code tasks are available in `.vscode/tasks.json` for `start`, `restart`, and 
 
 **Without Docker:**
 ```bash
+# Requires Node.js 20.19+ (Vite 7 requirement)
 # Backend
 cd backend
 python -m venv venv
@@ -41,6 +42,14 @@ uvicorn app.main:app --reload
 cd frontend
 npm install
 npm run dev
+```
+
+## Test
+
+Playwright UI tests (auth bypass friendly):
+```bash
+cd frontend
+npx playwright test
 ```
 
 Access at:

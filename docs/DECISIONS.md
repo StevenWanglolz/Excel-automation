@@ -34,6 +34,12 @@ This document records important architectural decisions and their rationale. Eac
 
 **Revisit if:** We add true branching/merging execution (topological sort + multi-input nodes).
 
+### 2025-02-20 – Added per-step file/sheet targeting + output block mapping
+
+**Reason:** Users need to apply operations to specific file/sheet tables and export multi-sheet outputs without abandoning the sequential pipeline model.
+
+**Revisit if:** We introduce true branching graphs or want to support explicit dataset nodes.
+
 ### 2024-12-27 – Chose PostgreSQL over SQLite/MySQL
 
 **Reason:** Production-ready, better concurrency, rich features (JSON columns), Docker setup easy. SQLite not suitable for production, MySQL has weaker JSON support.
