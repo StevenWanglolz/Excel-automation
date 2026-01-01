@@ -2,7 +2,7 @@
 
 ## What this is
 
-SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step selects a source table and writes into a destination output sheet, and the Output block defines one or many export files. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand with file + sheet switching (preview selection doesn’t change targets). Saving a flow requires a name, and file add/remove actions mark the flow as dirty for saving.
+SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step selects a source table and writes into a destination output sheet, and the Output block defines one or many export files. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand with file + sheet switching (preview selection doesn’t change targets). Source previews require selecting a sheet for multi-sheet files. Previews are cached server-side and warmed after config saves, preview opens, or file uploads to keep sheet switching snappy. Saving a flow requires a name, and file add/remove actions mark the flow as dirty for saving.
 
 ## Tech
 

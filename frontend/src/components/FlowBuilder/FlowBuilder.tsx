@@ -88,10 +88,14 @@ export const FlowBuilder = () => {
   const previewSignatureRef = useRef<Record<string, string>>({});
   const previewUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRunIdRef = useRef(0);
+  const previewPrecomputeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewPrecomputeSignatureRef = useRef<string | null>(null);
   // Cache raw file previews by file+sheet to avoid re-fetching when users switch tabs.
   const previewCacheRef = useRef<Map<string, FilePreview>>(new Map());
   // Track in-flight preview requests so rapid sheet clicks share the same promise.
   const previewInFlightRef = useRef<Map<string, Promise<FilePreview>>>(new Map());
+  // Cache transform previews by signature so sheet switches can reuse results.
+  const transformPreviewCacheRef = useRef<Map<string, FilePreview>>(new Map());
 
   // Undo/Redo system
   const { addToHistory, undo, redo, canUndo, canRedo, reset } = useUndoRedo({
@@ -577,7 +581,7 @@ export const FlowBuilder = () => {
             blockType: 'output',
             config: {},
             label: 'Output',
-            output: outputNode.data.output,
+            output: (outputNode.data as unknown as BlockData).output,
           },
         },
       ],
@@ -743,6 +747,7 @@ export const FlowBuilder = () => {
         if (hasFileIdChanges) {
           hasUnsavedChangesRef.current = true;
           setHasUnsavedChanges(true);
+          queuePreviewPrecompute();
         }
       }
     }
@@ -954,6 +959,32 @@ export const FlowBuilder = () => {
     return Array.from(fileIds);
   }, []);
 
+  // Precompute output previews to keep first preview open/sheet switching responsive.
+  const queuePreviewPrecompute = useCallback(() => {
+    const flowData = getFlowData();
+    const fileIds = collectFileIds(nodes);
+    const signature = JSON.stringify({
+      fileIds,
+      flowData,
+    });
+    if (previewPrecomputeSignatureRef.current === signature) {
+      return;
+    }
+    if (previewPrecomputeTimeoutRef.current) {
+      clearTimeout(previewPrecomputeTimeoutRef.current);
+    }
+    previewPrecomputeTimeoutRef.current = setTimeout(() => {
+      previewPrecomputeSignatureRef.current = signature;
+      void transformApi.precompute({
+        file_id: fileIds[0],
+        file_ids: fileIds.length > 0 ? fileIds : undefined,
+        flow_data: flowData,
+      }).catch(() => {
+        // Precompute is best-effort; ignore failures to keep UI responsive.
+      });
+    }, 200);
+  }, [collectFileIds, getFlowData, nodes]);
+
   const normalizePreviewState = useCallback(() => {
     const nodeIds = new Set(nodes.map((node) => node.id));
     setStepPreviews((prev) => {
@@ -1104,12 +1135,20 @@ export const FlowBuilder = () => {
     if (!resolvedSourceFileId && collectFileIds(nodes).length === 0) {
       // Cancel any in-flight preview runs when the file source disappears.
       previewRunIdRef.current += 1;
-      setStepPreviews((prev) => ({ ...prev }));
+      setStepPreviews((prev) => {
+        const next = { ...prev };
+        activeNodeIds.forEach((nodeId) => {
+          next[nodeId] = null;
+        });
+        return next;
+      });
       setPreviewErrors((prev) => {
         const next = { ...prev };
         activeNodeIds.forEach((nodeId) => {
           const node = nodes.find((item) => item.id === nodeId);
-          next[nodeId] = node?.id === fileSourceNode?.id ? 'Upload a file to see preview' : prev[nodeId] ?? null;
+          next[nodeId] = node?.id === fileSourceNode?.id
+            ? 'Select a source file to preview.'
+            : prev[nodeId] ?? null;
         });
         return next;
       });
@@ -1176,6 +1215,40 @@ export const FlowBuilder = () => {
 
     previewSignatureRef.current = signatureMap;
 
+    const cachedPreviews: Record<string, FilePreview> = {};
+    const cachedLoading: Record<string, boolean> = {};
+    const cachedErrors: Record<string, string | null> = {};
+    const uncachedNodes = new Set(signaturesToUpdate);
+
+    signaturesToUpdate.forEach((nodeId) => {
+      const index = nodesSnapshot.findIndex((node) => node.id === nodeId);
+      if (index <= 0) {
+        return;
+      }
+      const signature = signatureMap[nodeId];
+      if (!signature) {
+        return;
+      }
+      const cached = transformPreviewCacheRef.current.get(signature);
+      if (!cached) {
+        return;
+      }
+      cachedPreviews[nodeId] = cached;
+      cachedLoading[nodeId] = false;
+      cachedErrors[nodeId] = null;
+      uncachedNodes.delete(nodeId);
+    });
+
+    if (Object.keys(cachedPreviews).length > 0) {
+      setStepPreviews((prev) => ({ ...prev, ...cachedPreviews }));
+      setPreviewErrors((prev) => ({ ...prev, ...cachedErrors }));
+      setPreviewLoading((prev) => ({ ...prev, ...cachedLoading }));
+    }
+
+    if (uncachedNodes.size === 0) {
+      return;
+    }
+
     // Debounce recomputations so typing in config fields doesn't spam the API.
     if (previewUpdateTimeoutRef.current) {
       clearTimeout(previewUpdateTimeoutRef.current);
@@ -1188,13 +1261,13 @@ export const FlowBuilder = () => {
       previewRunIdRef.current = runId;
 
       const nextLoading: Record<string, boolean> = {};
-      signaturesToUpdate.forEach((nodeId) => {
+      uncachedNodes.forEach((nodeId) => {
         nextLoading[nodeId] = true;
       });
       setPreviewLoading((prev) => ({ ...prev, ...nextLoading }));
 
       (async () => {
-        for (const nodeId of signaturesToUpdate) {
+        for (const nodeId of uncachedNodes) {
           if (previewRunIdRef.current !== runId) {
             return;
           }
@@ -1211,8 +1284,15 @@ export const FlowBuilder = () => {
               const sourceTarget = node.data?.target as TableTarget | undefined;
               const targetFileId = sourceTarget?.fileId ?? fileIdSnapshot;
               const targetSheetName = sourceTarget?.sheetName ?? sheetSnapshot;
-              if (!targetFileId) {
-                throw new Error('Source target file is missing');
+              const availableSheets = targetFileId ? sheetOptionsByFileId[targetFileId] : [];
+              const requiresSheet = Array.isArray(availableSheets) && availableSheets.length > 0;
+              if (!targetFileId || (requiresSheet && !targetSheetName)) {
+                setStepPreviews((prev) => ({ ...prev, [node.id]: null }));
+                setPreviewErrors((prev) => ({
+                  ...prev,
+                  [node.id]: 'Select a source file and sheet to preview.',
+                }));
+                continue;
               }
               const preview = await fetchFilePreview(targetFileId, targetSheetName);
               if (previewRunIdRef.current !== runId) {
@@ -1291,6 +1371,10 @@ export const FlowBuilder = () => {
               if (previewRunIdRef.current !== runId) {
                 return;
               }
+              const signature = signatureMap[nodeId];
+              if (signature) {
+                transformPreviewCacheRef.current.set(signature, result.preview);
+              }
               setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
               setPreviewErrors((prev) => ({ ...prev, [node.id]: null }));
             }
@@ -1329,7 +1413,16 @@ export const FlowBuilder = () => {
     prefetchSheetPreviews,
     previewOverrides,
     getOutputPreviewTarget,
+    sheetOptionsByFileId,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (previewPrecomputeTimeoutRef.current) {
+        clearTimeout(previewPrecomputeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleSourceSheetChange = useCallback((sheetName: string) => {
     if (!resolvedSourceFileId) {
@@ -1413,6 +1506,7 @@ export const FlowBuilder = () => {
 
 
   const handleTogglePreview = (nodeId: string) => {
+    const isCurrentlyOpen = activePreviewNodeIds.has(nodeId);
     setActivePreviewNodeIds((prev) => {
       // Full-screen preview is single-instance; toggle replaces the active one.
       if (prev.has(nodeId)) {
@@ -1420,6 +1514,9 @@ export const FlowBuilder = () => {
       }
       return new Set([nodeId]);
     });
+    if (!isCurrentlyOpen) {
+      queuePreviewPrecompute();
+    }
     const node = nodes.find((item) => item.id === nodeId);
     const isOutputNode = node?.data?.blockType === 'output' || node?.type === 'output';
     if (!node) {
@@ -1805,6 +1902,7 @@ export const FlowBuilder = () => {
           activePreviewNodeIds={activePreviewNodeIds}
           fileSourceNodeId={fileSourceNode?.id || null}
           viewAction={viewAction}
+          isInteractionDisabled={isModalOpen || isOperationModalOpen}
           previewFiles={previewFiles}
           previewSheetsByFileId={sheetOptionsByFileId}
           sourceFileId={resolvedSourceFileId}

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile, Query, Response, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -12,6 +12,7 @@ from app.models.file import File
 from app.models.flow import Flow
 from app.services.file_service import file_service
 from app.services.file_reference_service import file_reference_service
+from app.services.preview_cache import preview_cache, stable_hash
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -42,6 +43,7 @@ class FilePreviewResponse(BaseModel):
 
 @router.post("/upload", response_model=FileResponse, status_code=201)
 async def upload_file(
+    background_tasks: BackgroundTasks,
     file: UploadFile = FastAPIFile(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -50,6 +52,9 @@ async def upload_file(
     # Delegate to service layer - keeps route thin and business logic testable
     # Service handles validation, file storage, and database record creation
     db_file = await file_service.upload_file(db, current_user.id, file)
+    # Warm file preview cache after upload so the first preview opens quickly.
+    background_tasks.add_task(
+        _precompute_file_previews, current_user.id, db_file)
     return db_file
 
 
@@ -133,6 +138,17 @@ async def preview_file(
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    cache_key = stable_hash({
+        "type": "file_preview",
+        "user_id": current_user.id,
+        "file_id": db_file.id,
+        "file_size": db_file.file_size,
+        "sheet_name": sheet_name or "__default__",
+    })
+    cached_preview = preview_cache.get(cache_key)
+    if cached_preview is not None:
+        return cached_preview
+
     # Get list of sheets if Excel file
     sheets = []
     if db_file.mime_type in [
@@ -150,7 +166,41 @@ async def preview_file(
     preview["current_sheet"] = sheet_name if sheet_name else (
         sheets[0] if sheets else None)
 
+    preview_cache.set(cache_key, preview)
     return preview
+
+
+def _precompute_file_previews(user_id: int, db_file: File) -> None:
+    """Build previews for all sheets in a file and cache them."""
+    sheets = []
+    if db_file.mime_type in [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel"
+    ]:
+        try:
+            sheets = file_service.get_excel_sheets(db_file.file_path)
+        except Exception:
+            sheets = []
+
+    if not sheets:
+        sheets = [None]
+
+    for sheet_name in sheets:
+        cache_key = stable_hash({
+            "type": "file_preview",
+            "user_id": user_id,
+            "file_id": db_file.id,
+            "file_size": db_file.file_size,
+            "sheet_name": sheet_name or "__default__",
+        })
+        if preview_cache.get(cache_key) is not None:
+            continue
+        df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
+        preview = file_service.get_file_preview(df)
+        preview["sheets"] = [
+            s for s in sheets if s] if sheet_name is not None else []
+        preview["current_sheet"] = sheet_name
+        preview_cache.set(cache_key, preview)
 
 
 @router.get("/{file_id}/sheets", response_model=List[str])

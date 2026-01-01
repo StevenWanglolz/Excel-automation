@@ -79,8 +79,11 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - **auth.py** 🟡 - User registration, login, get current user
 - **files.py** 🟡 - File upload, list, preview, sheet list, download, delete
+  - Caches file preview responses and warms sheet previews after upload
 - **flows.py** 🟡 - Create, read, update, delete automation flows
 - **transform.py** 🟡 - Execute flows and export results
+  - Uses in-memory preview cache for /transform/execute responses
+  - `/transform/precompute` warms cached previews for output sheets
 
 ### backend/app/models/
 
@@ -113,6 +116,12 @@ This document explains the purpose of each major file and folder. It is meant fo
 - Flow execution logic
 - Orchestrates transform execution across targeted file/sheet tables
 - Used by transform routes
+
+#### preview_cache.py 🟢
+
+- In-memory LRU cache for preview responses
+- Keyed by user + file IDs + flow data + preview target
+- Avoids re-running transforms on repeated previews
 
 #### file_reference_service.py 🟡
 

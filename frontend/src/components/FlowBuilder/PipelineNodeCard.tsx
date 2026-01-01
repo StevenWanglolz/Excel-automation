@@ -9,6 +9,7 @@
  * - Stop event propagation on action buttons to avoid unwanted selection.
  */
 import type { Node } from '@xyflow/react';
+import type { OutputConfig } from '../../types';
 
 interface PipelineNodeCardProps {
   node: Node;
@@ -42,9 +43,12 @@ export const PipelineNodeCard = ({
   dragListeners,
 }: PipelineNodeCardProps) => {
   const isOutputNode = node.data?.blockType === 'output' || node.type === 'output';
-  const hasOutputConfig = isOutputNode &&
-    Array.isArray(node.data?.output?.outputs) &&
-    node.data.output.outputs.some((outputFile: { sheets: unknown[] }) => outputFile.sheets.length > 0);
+  const outputConfig = node.data?.output as OutputConfig | undefined;
+  const hasOutputConfig = Boolean(
+    isOutputNode &&
+      Array.isArray(outputConfig?.outputs) &&
+      outputConfig.outputs.some((outputFile) => outputFile.sheets.length > 0)
+  );
 
   return (
     <div className="flex flex-col">
@@ -76,7 +80,7 @@ export const PipelineNodeCard = ({
             </button>
             <div>
               <div className={`text-sm font-semibold ${isOutputNode ? 'text-emerald-900' : 'text-gray-900'}`}>
-                {node.data?.label || node.type || 'Block'}
+                {(node.data?.label as string) || (node.type as string) || 'Block'}
                 {isOutputNode && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-emerald-600 opacity-60">End Node</span>}
               </div>
               <div className={`text-xs ${isOutputNode ? 'text-emerald-700/70' : 'text-gray-500'}`}>{configSummary}</div>

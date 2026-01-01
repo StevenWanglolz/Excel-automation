@@ -100,6 +100,12 @@ This document records important architectural decisions and their rationale. Eac
 
 **Revisit if:** Need better performance for simple operations or lower memory usage for very large files.
 
+### 2025-03-10 – In-memory preview cache (no Redis yet)
+
+**Reason:** Fastest path to reduce repeated preview recomputation without adding infrastructure. Cache is per-process LRU+TTL, warmed via `/transform/precompute`.
+
+**Revisit if:** Previews need to persist across app restarts, multi-instance deployments are added, or cache hit rate is too low.
+
 ## Code Organization Decisions
 
 ### 2024-12-27 – Separate API client from components
