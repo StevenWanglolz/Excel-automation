@@ -241,6 +241,10 @@ This document explains the purpose of each major file and folder. It is meant fo
   - Defines which blocks are selectable and how they’re grouped
   - Highlights implemented blocks (for UI affordance only)
   - Changing block IDs impacts flow data and transform lookup
+- **OperationSelectionModal.tsx** 🟡 - Modal for inserting new operation blocks
+  - Lists available operations grouped by category
+  - Highlighted operations are implemented; others are placeholders
+- **FlowBuilder.tsx** 🟡 - Operation defaults + config skeletons for new blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
   - Handles source file/sheet selection, destination output sheet selection, and output file/sheet structure
   - Auto-selects the first output sheet as destination when outputs exist and destination is empty

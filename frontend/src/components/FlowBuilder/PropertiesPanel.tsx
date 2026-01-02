@@ -673,6 +673,11 @@ export const PropertiesPanel = ({
                               {isLoadingSheets ? 'Loading sheets...' : 'CSV (single sheet)'}
                             </option>
                           )}
+                          {hasSheetList && (
+                            <option value={SINGLE_SHEET_VALUE} disabled>
+                              Select a sheet
+                            </option>
+                          )}
                           {sheetOptions
                             .filter((sheet) => sheet !== SINGLE_SHEET_VALUE)
                             .map((sheet) => (
@@ -753,7 +758,17 @@ export const PropertiesPanel = ({
             </>
           )}
 
-          {nodeData.blockType === 'filter_rows' && (
+          {nodeData.blockType === 'filter_rows' && (() => {
+            const hasSourceSelection = Boolean(target.fileId || target.virtualId);
+            const needsSheetSelection = sourceMode === 'original' && hasSheetList && !target.sheetName;
+            const showSourceHint = !hasSourceSelection || needsSheetSelection;
+            const hintText = !hasSourceSelection
+              ? 'Select a source file and sheet to apply the filter.'
+              : needsSheetSelection
+                ? 'Select a sheet to apply the filter.'
+                : null;
+
+            return (
             <div className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-900 border-b pb-2">Filter Rows</h3>
               <div className="space-y-4">
@@ -852,19 +867,21 @@ export const PropertiesPanel = ({
                 )}
               </div>
               
-              <div className="pt-4 mt-4 border-t border-gray-100">
-                 <div className="rounded-lg bg-indigo-50 p-3 text-[11px] text-indigo-700 flex items-start gap-2">
-                    <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>
-                      The filter will be applied to the <strong>{target.sheetName || 'default sheet'}</strong> of{' '}
-                      <strong>{resolvedTargetFile?.original_filename || 'the selected file'}</strong>.
-                    </span>
-                 </div>
-              </div>
+              {showSourceHint && hintText && (
+                <div className="pt-4 mt-4 border-t border-gray-100">
+                   <div className="rounded-lg bg-indigo-50 p-3 text-[11px] text-indigo-700 flex items-start gap-2">
+                      <svg className="w-4 h-4 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>
+                        {hintText}
+                      </span>
+                   </div>
+                </div>
+              )}
             </div>
-          )}
+            );
+          })()}
 
           {nodeData.blockType === 'remove_columns_rows' && (
             <div className="space-y-4">

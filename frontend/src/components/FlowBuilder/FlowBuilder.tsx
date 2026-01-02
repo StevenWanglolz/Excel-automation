@@ -86,12 +86,15 @@ export const FlowBuilder = () => {
   const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isUndoRedoInProgressRef = useRef(false);
   const hasInitializedRef = useRef(false);
+  const hasInitializedFlowStateRef = useRef(false);
   const previewSignatureRef = useRef<Record<string, string>>({});
   const previewRefreshTokenRef = useRef<Record<string, number>>({});
+  const stepPreviewsRef = useRef<Record<string, FilePreview | null>>({});
   const previewUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRunIdRef = useRef(0);
   const previewPrecomputeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewPrecomputeSignatureRef = useRef<string | null>(null);
+  const searchParamsKey = useMemo(() => searchParams.toString(), [searchParams]);
   // Cache raw file previews by file+sheet to avoid re-fetching when users switch tabs.
   const previewCacheRef = useRef<Map<string, FilePreview>>(new Map());
   // Track in-flight preview requests so rapid sheet clicks share the same promise.
@@ -235,12 +238,18 @@ export const FlowBuilder = () => {
 
   useEffect(() => {
     loadFlows();
-    
-    // Initialize saved flow data reference on mount
+
+    if (hasInitializedFlowStateRef.current) {
+      return;
+    }
+
+    // Snapshot once; getFlowData dependency would retrigger the effect on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     savedFlowDataRef.current = JSON.stringify(getFlowData());
     hasUnsavedChangesRef.current = false;
     setHasUnsavedChanges(false);
-  }, [loadFlows, getFlowData]);
+    hasInitializedFlowStateRef.current = true;
+  }, [loadFlows]);
 
   // Track unsaved changes
   useEffect(() => {
@@ -339,6 +348,7 @@ export const FlowBuilder = () => {
 
     if (isNewFlow) {
       clearFlowInternal();
+      hasInitializedRef.current = true;
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('new');
       const nextQuery = nextParams.toString();
@@ -359,20 +369,21 @@ export const FlowBuilder = () => {
     }
     // No flow parameter - ensure a clean, single-source starting state
     // This prevents stale nodes from a previous flow from carrying over
-    if (!selectedFlowId) {
-      const hasSingleSource =
-        nodes.length === 1 &&
-        nodes[0]?.id === 'source-0' &&
-        nodes[0]?.type === 'source';
+    if (!selectedFlowId && !hasInitializedRef.current) {
+      // Check store state directly to avoid dependency loop
+      const currentNodes = useFlowStore.getState().nodes;
+      const hasSourceNode = currentNodes.some((node) => node.id === 'source-0' && node.type === 'source');
+      const hasOutputNode = currentNodes.some((node) => node.id === 'output-0' && node.type === 'output');
+      const hasBaseNodes = currentNodes.length === 2 && hasSourceNode && hasOutputNode;
 
-      if (!hasSingleSource) {
+      if (!hasBaseNodes) {
         clearFlowInternal();
       } else {
         hasInitializedRef.current = true;
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, selectedFlowId]);
+  }, [searchParamsKey, selectedFlowId]);
 
   useEffect(() => {
     // Close dropdown when clicking outside
@@ -662,15 +673,20 @@ export const FlowBuilder = () => {
   // Map operation ID to node type and blockType
   const getNodeTypeFromOperation = (operationId: string): { type: string; blockType: string } => {
     const mapping: Record<string, { type: string; blockType: string }> = {
-      'remove-column': { type: 'transform', blockType: 'remove_columns_rows' },
-      'remove-columns-rows': { type: 'transform', blockType: 'remove_columns_rows' },
-      'rename-column': { type: 'transform', blockType: 'rename_columns' },
-      'rearrange-column': { type: 'transform', blockType: 'rearrange_columns' },
+      'row-filter': { type: 'transform', blockType: 'filter_rows' },
       'sort-rows': { type: 'transform', blockType: 'sort_rows' },
       'remove-duplicates': { type: 'transform', blockType: 'remove_duplicates' },
-      'filter-rows': { type: 'filter', blockType: 'filter' },
-      'delete-rows': { type: 'filter', blockType: 'delete_rows' },
-      'join-lookup': { type: 'transform', blockType: 'join' },
+      'column-manager': { type: 'transform', blockType: 'column_manager' },
+      'text-cleanup': { type: 'transform', blockType: 'text_cleanup' },
+      'calculated-column': { type: 'transform', blockType: 'calculated_column' },
+      'type-format': { type: 'transform', blockType: 'type_and_format' },
+      'split-merge': { type: 'transform', blockType: 'split_merge' },
+      'reshape-table': { type: 'transform', blockType: 'reshape_table' },
+      'lookup-map': { type: 'transform', blockType: 'lookup_map' },
+      'append-files': { type: 'transform', blockType: 'append_files' },
+      'sheet-manager': { type: 'transform', blockType: 'sheet_manager' },
+      'qa-checks': { type: 'transform', blockType: 'qa_checks' },
+      'data-entry': { type: 'transform', blockType: 'data_entry' },
       'output': { type: 'output', blockType: 'output' },
     };
     return mapping[operationId] || { type: 'transform', blockType: operationId };
@@ -698,6 +714,78 @@ export const FlowBuilder = () => {
           outputs: [],
         }
       : undefined;
+    const configDefaults: Record<string, Record<string, unknown>> = {
+      filter_rows: {
+        column: '',
+        operator: 'equals',
+        value: '',
+      },
+      sort_rows: {
+        sortBy: [],
+      },
+      remove_duplicates: {
+        columns: [],
+        keep: 'first',
+      },
+      column_manager: {
+        actions: [],
+      },
+      text_cleanup: {
+        trimWhitespace: true,
+        normalizeSpaces: true,
+        standardizeCase: null,
+        findReplace: [],
+        replaceNulls: null,
+      },
+      calculated_column: {
+        outputColumn: '',
+        formula: '',
+      },
+      type_and_format: {
+        column: '',
+        targetType: '',
+        format: '',
+      },
+      split_merge: {
+        mode: 'split',
+        sourceColumn: '',
+        targetColumns: [],
+        delimiter: '',
+      },
+      reshape_table: {
+        mode: 'transpose',
+        idColumns: [],
+        valueColumns: [],
+        variableColumnName: 'field',
+        valueColumnName: 'value',
+        indexColumns: [],
+        columnField: '',
+        valueField: '',
+        aggregation: 'first',
+      },
+      lookup_map: {
+        mode: 'lookup',
+        sourceColumn: '',
+        lookupFile: null,
+        lookupSheet: null,
+        keyColumn: '',
+        valueColumn: '',
+        mappingPairs: [],
+        defaultValue: null,
+      },
+      append_files: {
+        fileIds: [],
+      },
+      sheet_manager: {
+        actions: [],
+      },
+      qa_checks: {
+        checks: [],
+      },
+      data_entry: {
+        rows: [],
+      },
+    };
 
     const newNode: Node = {
       id: `${type}-${Date.now()}`,
@@ -706,7 +794,7 @@ export const FlowBuilder = () => {
       data: {
         blockType: blockType,
         label: operation.label,
-        config: {},
+        config: configDefaults[blockType] ?? {},
         target: targetForNode,
         destination: operation.id === 'output' ? undefined : undefined,
         output: outputConfig,
@@ -785,7 +873,7 @@ export const FlowBuilder = () => {
     () => (fileSourceNode ? getNodeFileIds(fileSourceNode.id) : []),
     [fileSourceNode, getNodeFileIds]
   );
-  const resolvedSourceFileId = sourceFileId ?? (sourceFileIds[0] ?? null);
+  const resolvedSourceFileId = sourceFileId;
 
   useEffect(() => {
     if (!fileSourceNode) {
@@ -801,7 +889,7 @@ export const FlowBuilder = () => {
       if (targetFileId && sourceFileIds.includes(targetFileId)) {
         return targetFileId;
       }
-      return sourceFileIds[0] ?? null;
+      return null;
     });
   }, [fileSourceNode, sourceFileIds]);
 
@@ -912,6 +1000,48 @@ export const FlowBuilder = () => {
       virtualName: `${fileName} / ${sheetName}`,
     };
   }, []);
+
+  const getFirstOutputSheetTarget = useCallback((): TableTarget | null => {
+    const outputNode = nodes.find((node) => node.data?.blockType === 'output' || node.type === 'output');
+    const outputConfig = outputNode?.data?.output as OutputConfig | { fileName?: string; sheets?: { sheetName?: string }[] } | undefined;
+    const outputFile = (outputConfig as OutputConfig | undefined)?.outputs?.[0];
+    const legacySheets = (outputConfig as { sheets?: { sheetName?: string }[] } | undefined)?.sheets;
+    if (!outputFile && (!legacySheets || legacySheets.length === 0)) {
+      return null;
+    }
+    const sheetName = outputFile?.sheets?.[0]?.sheetName || legacySheets?.[0]?.sheetName || 'Sheet 1';
+    const fileName = outputFile?.fileName || (outputConfig as { fileName?: string } | undefined)?.fileName || 'output.xlsx';
+    const outputId = outputFile?.id || 'legacy';
+    return {
+      fileId: null,
+      sheetName,
+      virtualId: `output:${outputId}:${sheetName}`,
+      virtualName: `${fileName} / ${sheetName}`,
+    };
+  }, [nodes]);
+
+  useEffect(() => {
+    const fallbackOutput = getFirstOutputSheetTarget();
+    if (!fallbackOutput) {
+      return;
+    }
+    nodes.forEach((node) => {
+      const blockType = node.data?.blockType || node.type;
+      if (blockType === 'output' || blockType === 'source' || blockType === 'data' || blockType === 'upload') {
+        return;
+      }
+      const destination = node.data?.destination as TableTarget | undefined;
+      if (destination?.fileId || destination?.virtualId) {
+        return;
+      }
+      updateNode(node.id, {
+        data: {
+          ...node.data,
+          destination: fallbackOutput,
+        },
+      });
+    });
+  }, [nodes, getFirstOutputSheetTarget, updateNode]);
 
   const collectFileIds = useCallback((subset: Node[]) => {
     const fileIds = new Set<number>();
@@ -1115,12 +1245,19 @@ export const FlowBuilder = () => {
   }, [normalizePreviewState]);
 
   useEffect(() => {
+    stepPreviewsRef.current = stepPreviews;
+  }, [stepPreviews]);
+
+  useEffect(() => {
     if (nodes.length === 0) {
-      setStepPreviews({});
-      setPreviewLoading({});
-      setPreviewErrors({});
-      previewSignatureRef.current = {};
-      setActivePreviewNodeIds(new Set());
+      // Only clear if we actually have data to clear, to avoid infinite loops
+      if (Object.keys(stepPreviews).length > 0) {
+        setStepPreviews({});
+        setPreviewLoading({});
+        setPreviewErrors({});
+        previewSignatureRef.current = {};
+        setActivePreviewNodeIds(new Set());
+      }
       return;
     }
 
@@ -1166,7 +1303,7 @@ export const FlowBuilder = () => {
 
     // Snapshot state so the async preview loop is deterministic.
     const nodesSnapshot = [...nodes];
-    const fileIdSnapshot = resolvedSourceFileId;
+    const fileIdSnapshot = resolvedSourceFileId ?? sourceFileIds[0] ?? null;
     const sheetSnapshot = sourceSheetName || undefined;
     const fileIdsSnapshot = collectFileIds(nodesSnapshot);
 
@@ -1279,7 +1416,7 @@ export const FlowBuilder = () => {
 
       const nextLoading: Record<string, boolean> = {};
       uncachedNodes.forEach((nodeId) => {
-        nextLoading[nodeId] = !stepPreviews[nodeId];
+        nextLoading[nodeId] = !stepPreviewsRef.current[nodeId];
       });
       setPreviewLoading((prev) => ({ ...prev, ...nextLoading }));
 
@@ -1299,11 +1436,10 @@ export const FlowBuilder = () => {
             if (index === 0) {
               // Source preview reads the file directly, no transforms applied yet.
               const sourceTarget = node.data?.target as TableTarget | undefined;
-              const targetFileId = sourceTarget?.fileId ?? fileIdSnapshot;
-              const targetSheetName = sourceTarget?.sheetName ?? sheetSnapshot;
-              const availableSheets = targetFileId ? sheetOptionsByFileId[targetFileId] : [];
-              const requiresSheet = Array.isArray(availableSheets) && availableSheets.length > 0;
-              if (!targetFileId || (requiresSheet && !targetSheetName)) {
+              const targetFileId = sourceTarget?.fileId ?? fileIdSnapshot ?? sourceFileIds[0];
+              const rememberedSheet = targetFileId ? sourceSheetByFileId[targetFileId] : null;
+              const targetSheetName = sourceTarget?.sheetName ?? sheetSnapshot ?? rememberedSheet ?? null;
+              if (!targetFileId) {
                 setStepPreviews((prev) => ({ ...prev, [node.id]: null }));
                 setPreviewErrors((prev) => ({
                   ...prev,
@@ -1436,7 +1572,8 @@ export const FlowBuilder = () => {
     previewOverrides,
     getOutputPreviewTarget,
     sheetOptionsByFileId,
-    stepPreviews,
+    sourceFileIds,
+    sourceSheetByFileId,
   ]);
 
   useEffect(() => {
@@ -1448,15 +1585,19 @@ export const FlowBuilder = () => {
   }, []);
 
   const handleSourceSheetChange = useCallback((sheetName: string) => {
-    if (!resolvedSourceFileId) {
+    const targetFileId = resolvedSourceFileId ?? sourceFileIds[0];
+    if (!targetFileId) {
       return;
+    }
+    if (!resolvedSourceFileId) {
+      setSourceFileId(targetFileId);
     }
     setSourceSheetByFileId((prev) => ({
       ...prev,
-      [resolvedSourceFileId]: sheetName,
-    }));
+      [targetFileId]: sheetName,
+  }));
     setSourceSheetName(sheetName);
-  }, [resolvedSourceFileId]);
+  }, [resolvedSourceFileId, sourceFileIds]);
 
   const handleSourceFileChange = useCallback((fileId: number) => {
     setSourceFileId(fileId);
@@ -1572,6 +1713,16 @@ export const FlowBuilder = () => {
       return;
     }
     const destinationTarget = node.data?.destination as TableTarget | undefined;
+    if (!destinationTarget?.virtualId && !destinationTarget?.fileId) {
+      const fallbackOutput = getFirstOutputSheetTarget();
+      if (fallbackOutput) {
+        setPreviewOverrides((prev) => ({
+          ...prev,
+          [nodeId]: fallbackOutput,
+        }));
+        return;
+      }
+    }
     if (destinationTarget?.virtualId) {
       setPreviewOverrides((prev) => ({
         ...prev,
@@ -1639,25 +1790,6 @@ export const FlowBuilder = () => {
       return 'outputs.zip';
     }
     return outputs[0]?.fileName || 'output.xlsx';
-  }, [nodes]);
-
-  const getFirstOutputSheetTarget = useCallback((): TableTarget | null => {
-    const outputNode = nodes.find((node) => node.data?.blockType === 'output' || node.type === 'output');
-    const outputConfig = outputNode?.data?.output as OutputConfig | { fileName?: string; sheets?: { sheetName?: string }[] } | undefined;
-    const outputFile = (outputConfig as OutputConfig | undefined)?.outputs?.[0];
-    const legacySheets = (outputConfig as { sheets?: { sheetName?: string }[] } | undefined)?.sheets;
-    if (!outputFile && (!legacySheets || legacySheets.length === 0)) {
-      return null;
-    }
-    const sheetName = outputFile?.sheets?.[0]?.sheetName || legacySheets?.[0]?.sheetName || 'Sheet 1';
-    const fileName = outputFile?.fileName || (outputConfig as { fileName?: string } | undefined)?.fileName || 'output.xlsx';
-    const outputId = outputFile?.id || 'legacy';
-    return {
-      fileId: null,
-      sheetName,
-      virtualId: `output:${outputId}:${sheetName}`,
-      virtualName: `${fileName} / ${sheetName}`,
-    };
   }, [nodes]);
 
   useEffect(() => {

@@ -786,6 +786,7 @@ def execute_flow(
    - Source preview requires a file + sheet when the file has multiple sheets
    - Output preview requires a selected source file
    - Cached previews render immediately, then revalidate in the background (SWR)
+   - Source file is not auto-selected; users must choose explicitly
    ↓
 5. DataPreview renders the preview table in a full-screen modal
    - Empty output sheets render a placeholder grid (columns visible, no data)
@@ -1138,6 +1139,9 @@ When output files exist, operation blocks auto-select the first output sheet as 
 ## Preview Defaults
 
 When an operation block has an output destination, the preview opens on the output sheet by default (users can still toggle to the source file). Preview refreshes are debounced briefly to reduce request spam while editing.
+
+If a source file is uploaded but the user has not selected a specific source file/sheet yet, previews fall back to the first uploaded file so the Data block can still render a preview immediately.
+When the user switches a sheet in preview without a pinned source file, the selected sheet is stored against the first uploaded file and the source file selection is set automatically so sheet tabs remain interactive.
 
 When output sheets are created after a preview is already open, any placeholder output preview target is swapped to the first real output sheet so users see actual results without re-opening the preview.
 
