@@ -9,7 +9,7 @@ import { FlowBuilder } from './components/FlowBuilder/FlowBuilder';
 import { AutomationTypeSelection } from './components/AutomationTypeSelection/AutomationTypeSelection';
 
 function App() {
-  const { checkAuth, isAuthenticated, isAuthBypass } = useAuthStore();
+  const { checkAuth, isAuthenticated } = useAuthStore();
 
   // Check authentication status on app mount
   // Verifies if stored token is still valid and restores user session

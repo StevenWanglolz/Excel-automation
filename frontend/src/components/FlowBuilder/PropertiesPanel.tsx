@@ -10,9 +10,10 @@
  * Be careful:
  * - Loading sheets is async; avoid wiping user selections when lists refresh.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { filesApi } from '../../api/files';
+import { transformApi } from '../../api/transform';
 import { useFlowStore } from '../../store/flowStore';
 import type { BlockData, File, OutputConfig, OutputFileConfig, OutputSheetMapping, TableTarget } from '../../types';
 
@@ -42,11 +43,12 @@ export const PropertiesPanel = ({
   lastTarget,
   onUpdateLastTarget,
 }: PropertiesPanelProps) => {
-  const { nodes, updateNode } = useFlowStore();
+  const { nodes, updateNode, getFlowData } = useFlowStore();
   const [files, setFiles] = useState<File[]>([]);
   const [sheetsByFileId, setSheetsByFileId] = useState<Record<number, string[]>>({});
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
+  const precomputeTimeoutRef = useRef<number | null>(null);
   
   const node = useMemo(() => nodes.find((n) => n.id === selectedNodeId), [nodes, selectedNodeId]);
   
@@ -286,6 +288,14 @@ export const PropertiesPanel = ({
   }, [selectedNodeId, sourceNodeFileIds]);
 
   useEffect(() => {
+    return () => {
+      if (precomputeTimeoutRef.current) {
+        window.clearTimeout(precomputeTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!target.fileId) {
       setColumns([]);
       return;
@@ -349,6 +359,26 @@ export const PropertiesPanel = ({
     });
   }, [node, nodeData, updateNode]);
 
+  const triggerPrecompute = useCallback(() => {
+    const flowData = getFlowData();
+    if (!flowData) {
+      return;
+    }
+    const fileIds = Array.from(sourceNodeFileIds);
+    if (precomputeTimeoutRef.current) {
+      window.clearTimeout(precomputeTimeoutRef.current);
+    }
+    precomputeTimeoutRef.current = window.setTimeout(() => {
+      void transformApi.precompute({
+        file_id: fileIds[0] ?? 0,
+        file_ids: fileIds.length > 0 ? fileIds : undefined,
+        flow_data: flowData,
+      }).catch(() => {
+        // Ignore precompute failures so we don't block configuration changes.
+      });
+    }, 200);
+  }, [getFlowData, sourceNodeFileIds]);
+
   const addOutputFile = () => {
     const nextOutputs = [
       ...outputConfig.outputs,
@@ -361,12 +391,12 @@ export const PropertiesPanel = ({
     updateOutputConfig({ outputs: nextOutputs });
   };
 
-  const updateOutputFile = (index: number, updater: (file: OutputFileConfig) => OutputFileConfig) => {
+  const updateOutputFile = useCallback((index: number, updater: (file: OutputFileConfig) => OutputFileConfig) => {
     const nextOutputs = outputConfig.outputs.map((file, fileIndex) =>
       fileIndex === index ? updater(file) : file
     );
     updateOutputConfig({ outputs: nextOutputs });
-  };
+  }, [outputConfig.outputs, updateOutputConfig]);
 
   const removeOutputFile = (index: number) => {
     const nextOutputs = outputConfig.outputs.filter((_, fileIndex) => fileIndex !== index);
@@ -383,7 +413,7 @@ export const PropertiesPanel = ({
     }));
   };
 
-  const updateOutputSheet = (
+  const updateOutputSheet = useCallback((
     fileIndex: number,
     sheetIndex: number,
     updater: (sheet: OutputSheetMapping) => OutputSheetMapping
@@ -392,7 +422,7 @@ export const PropertiesPanel = ({
       ...file,
       sheets: file.sheets.map((sheet, index) => (index === sheetIndex ? updater(sheet) : sheet)),
     }));
-  };
+  }, [updateOutputFile]);
 
   const removeOutputSheet = (fileIndex: number, sheetIndex: number) => {
     updateOutputFile(fileIndex, (file) => {
@@ -1323,6 +1353,7 @@ export const PropertiesPanel = ({
                 onClick={() => {
                   updateRemoveConfig(removeDraftConfig);
                   setIsRemoveDirty(false);
+                  triggerPrecompute();
                 }}
                 className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
                 disabled={!isRemoveDirty}

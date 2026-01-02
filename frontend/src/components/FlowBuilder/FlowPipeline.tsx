@@ -41,6 +41,7 @@ interface FlowPipelineProps {
   activePreviewNodeIds: Set<string>;
   fileSourceNodeId: string | null;
   viewAction: { type: 'fit' | 'reset'; id: number } | null;
+  isInteractionDisabled: boolean;
   previewFiles: File[];
   previewSheetsByFileId: Record<number, string[]>;
   sourceFileId: number | null;
@@ -83,15 +84,20 @@ const getConfigSummary = (config: Record<string, unknown> | undefined) => {
 };
 
 const formatTarget = (target?: TableTarget) => {
-  if (!target?.fileId) {
-    if (target?.virtualId?.startsWith('output:')) {
-      const label = target.virtualName || target.sheetName || 'Output sheet';
-      return `Target: ${label}`;
+  try {
+    if (!target || !target.fileId) {
+      if (target?.virtualId && typeof target.virtualId === 'string' && target.virtualId.startsWith('output:')) {
+        const label = target.virtualName || target.sheetName || 'Output sheet';
+        return `Target: ${label}`;
+      }
+      return null;
     }
-    return null;
+    const sheetLabel = target.sheetName ? ` / ${target.sheetName}` : '';
+    return `Target: File ${target.fileId}${sheetLabel}`;
+  } catch (err) {
+    console.warn('Error formatting target:', err, target);
+    return 'Target: Error';
   }
-  const sheetLabel = target.sheetName ? ` / ${target.sheetName}` : '';
-  return `Target: File ${target.fileId}${sheetLabel}`;
 };
 
 const formatOutput = (output?: OutputConfig) => {
@@ -125,6 +131,7 @@ export const FlowPipeline = ({
   activePreviewNodeIds,
   fileSourceNodeId,
   viewAction,
+  isInteractionDisabled,
   previewFiles,
   previewSheetsByFileId,
   sourceFileId,
@@ -316,6 +323,8 @@ export const FlowPipeline = ({
         nodeTarget?.fileId ||
         nodeTarget?.virtualId)
   );
+  const hasSelectedSourceFile = sourceFileIds.length > 0 && sourceFileId !== null;
+  const isMissingSourceForPreview = (isSourcePreview || isOutputPreview || isOutputSheetPreview) && !hasSelectedSourceFile;
   const activePreviewFileId = useMemo(() => {
     if (!activePreviewNode) {
       return null;
@@ -370,6 +379,39 @@ export const FlowPipeline = ({
   }, [scale]);
 
   useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+    const handleWheel = (event: WheelEvent) => {
+      if (isInteractionDisabled) {
+        return;
+      }
+      if (!event.ctrlKey && !event.metaKey) {
+        return;
+      }
+      event.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      // Zoom around the cursor so users feel like they're "pointing" at the target.
+      const scaleDelta = event.deltaY > 0 ? -0.1 : 0.1;
+      const nextScale = Math.min(1.6, Math.max(0.6, scale + scaleDelta));
+      const cursorX = event.clientX - rect.left;
+      const cursorY = event.clientY - rect.top;
+      const scaleRatio = nextScale / scale;
+      const nextPan = {
+        x: cursorX - (cursorX - pan.x) * scaleRatio,
+        y: cursorY - (cursorY - pan.y) * scaleRatio,
+      };
+      setScale(nextScale);
+      setPan(nextPan);
+    };
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, [isInteractionDisabled, pan.x, pan.y, scale]);
+
+  useEffect(() => {
     if (!viewAction) {
       return;
     }
@@ -403,6 +445,9 @@ export const FlowPipeline = ({
   }, [viewAction]);
 
   const handleDragEnd = (event: DragEndEvent) => {
+    if (isInteractionDisabled) {
+      return;
+    }
     const { active, over } = event;
 
     // Only reorder when we drop over a different item in the sortable list.
@@ -423,8 +468,11 @@ export const FlowPipeline = ({
   return (
     <div
       ref={canvasRef}
-      className={`h-full overflow-hidden bg-gray-50 ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+      className={`h-full overflow-hidden bg-gray-50 ${isInteractionDisabled ? 'cursor-default' : isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
       onMouseDown={(event) => {
+        if (isInteractionDisabled) {
+          return;
+        }
         if (event.button !== 0) {
           return;
         }
@@ -451,6 +499,9 @@ export const FlowPipeline = ({
         };
       }}
       onMouseMove={(event) => {
+        if (isInteractionDisabled) {
+          return;
+        }
         if (!panStartRef.current) {
           return;
         }
@@ -460,34 +511,18 @@ export const FlowPipeline = ({
         setPan({ x: nextX, y: nextY });
       }}
       onMouseUp={() => {
+        if (isInteractionDisabled) {
+          return;
+        }
         setIsPanning(false);
         panStartRef.current = null;
       }}
       onMouseLeave={() => {
+        if (isInteractionDisabled) {
+          return;
+        }
         setIsPanning(false);
         panStartRef.current = null;
-      }}
-      onWheel={(event) => {
-        if (!event.ctrlKey && !event.metaKey) {
-          return;
-        }
-        event.preventDefault();
-        const rect = canvasRef.current?.getBoundingClientRect();
-        if (!rect) {
-          return;
-        }
-        // Zoom around the cursor so users feel like they're "pointing" at the target.
-        const scaleDelta = event.deltaY > 0 ? -0.1 : 0.1;
-        const nextScale = Math.min(1.6, Math.max(0.6, scale + scaleDelta));
-        const cursorX = event.clientX - rect.left;
-        const cursorY = event.clientY - rect.top;
-        const scaleRatio = nextScale / scale;
-        const nextPan = {
-          x: cursorX - (cursorX - pan.x) * scaleRatio,
-          y: cursorY - (cursorY - pan.y) * scaleRatio,
-        };
-        setScale(nextScale);
-        setPan(nextPan);
       }}
     >
       <div
@@ -538,7 +573,6 @@ export const FlowPipeline = ({
                   .join(' • ');
                 const isSelected = selectedNodeId === node.id;
                 const isPreviewOpen = activePreviewNodeIds.has(node.id);
-                const isOutputNode = node.data?.blockType === 'output' || node.type === 'output';
                 const canPreview = true;
 
                 return (
@@ -546,6 +580,7 @@ export const FlowPipeline = ({
                     key={node.id}
                     node={node}
                     scale={scale}
+                    isInteractionDisabled={isInteractionDisabled}
                     isFileSource={isFileSource}
                     isSelected={isSelected}
                     isPreviewOpen={isPreviewOpen}
@@ -652,7 +687,11 @@ export const FlowPipeline = ({
               </div>
             </div>
             <div className="h-[70vh] p-5">
-              {previewErrors[activePreviewNode.id] ? (
+              {isMissingSourceForPreview ? (
+                <div className="flex h-full items-center justify-center text-sm text-amber-700">
+                  Select a source file to preview.
+                </div>
+              ) : previewErrors[activePreviewNode.id] ? (
                 <div className="flex h-full items-center justify-center text-sm text-red-600">
                   {previewErrors[activePreviewNode.id]}
                 </div>

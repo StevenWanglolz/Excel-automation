@@ -8,6 +8,7 @@ interface SortableNodeProps {
   node: Node;
   scale: number;
   isFileSource: boolean;
+  isInteractionDisabled: boolean;
   isSelected: boolean;
   isPreviewOpen: boolean;
   canPreview?: boolean;
@@ -32,6 +33,7 @@ export const SortableNode = ({
   onTogglePreview,
   onExport,
   scale,
+  isInteractionDisabled,
 }: SortableNodeProps) => {
   const {
     attributes,
@@ -42,7 +44,7 @@ export const SortableNode = ({
     isDragging,
   } = useSortable({
     id: node.id,
-    disabled: isFileSource, // Source node cannot be dragged
+    disabled: isFileSource || isInteractionDisabled, // Source node cannot be dragged
   });
 
   // Compensate for canvas scale so drag offsets stay consistent.

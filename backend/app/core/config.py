@@ -5,7 +5,7 @@ from typing import Optional, Union
 class Settings(BaseSettings):
     # Database connection string - can be overridden via .env file
     # Format: postgresql://user:password@host:port/database
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/sheetpilot"
+    DATABASE_URL: str = "sqlite:///./sql_app.db"
 
     # Security settings
     # SECRET_KEY must be changed in production - used to sign JWT tokens

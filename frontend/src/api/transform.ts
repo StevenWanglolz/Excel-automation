@@ -12,6 +12,12 @@ export interface FlowExecuteRequest {
   };
 }
 
+export interface FlowPrecomputeRequest {
+  file_id?: number;
+  file_ids?: number[];
+  flow_data: FlowData;
+}
+
 export interface StepPreviewRequest {
   file_id: number;
   step_config: {
@@ -30,6 +36,10 @@ export const transformApi = {
   execute: async (request: FlowExecuteRequest): Promise<FlowExecuteResponse> => {
     const response = await apiClient.post('/transform/execute', request);
     return response.data;
+  },
+
+  precompute: async (request: FlowPrecomputeRequest): Promise<void> => {
+    await apiClient.post('/transform/precompute', request);
   },
 
   previewStep: async (request: StepPreviewRequest): Promise<FilePreview> => {

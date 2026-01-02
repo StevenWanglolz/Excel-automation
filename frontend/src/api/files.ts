@@ -2,7 +2,7 @@ import apiClient from './client';
 import type { File, FilePreview } from '../types';
 
 export const filesApi = {
-  upload: async (file: File): Promise<File> => {
+  upload: async (file: globalThis.File): Promise<File> => {
     const formData = new FormData();
     formData.append('file', file);
     
@@ -62,14 +62,14 @@ export const filesApi = {
       }
       
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      const url = globalThis.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      link.remove();
+      globalThis.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('Failed to download file:', error);
       throw error;

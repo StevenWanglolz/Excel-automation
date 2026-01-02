@@ -363,6 +363,31 @@ Content-Type: application/json
 }
 ```
 
+### Precompute Output Previews
+```http
+POST /api/transform/precompute
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "file_id": 123,
+  "file_ids": [123, 456],
+  "flow_data": { ... }
+}
+```
+
+**Notes:**
+- Warms the server-side preview cache for output sheets defined in the Output block.
+- Returns quickly with a count of cache entries populated; failures are non-blocking for the UI.
+
+**Response:** `200 OK`
+```json
+{
+  "status": "ok",
+  "precomputed": 2
+}
+```
+
 ### Preview Step
 ```http
 POST /api/transform/preview-step

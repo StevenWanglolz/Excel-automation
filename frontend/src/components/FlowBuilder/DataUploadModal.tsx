@@ -180,11 +180,6 @@ export const DataUploadModal = ({
 
   if (!isOpen) return null;
   
-  // Log when modal tries to render (minimal, no hooks) - after early return to avoid hooks issues
-  if (typeof window !== 'undefined') {
-    console.log('DataUploadModal rendering with isOpen=true, nodeId=', nodeId);
-  }
-
   return (
     <>
       {/* Overlay */}

@@ -277,6 +277,7 @@ async def get_current_user(
 4. Backend files.py route:
    - Validates user (get_current_user)
    - Calls file_service.upload_file()
+   - Queues background cache warmup for file previews
    ↓
 5. Service layer:
    - Validates file type (.xlsx, .xls, .csv)
@@ -351,10 +352,11 @@ upload: async (file: File): Promise<File> => {
 **Step 4: Backend route**
 
 ```python
-# backend/app/api/routes/files.py (lines 42-51)
+# backend/app/api/routes/files.py (lines 42-55)
 @router.post("/upload", response_model=FileResponse, status_code=201)
 async def upload_file(
     file: UploadFile = FastAPIFile(...),
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -362,7 +364,35 @@ async def upload_file(
     # Delegate to service layer - keeps route thin and business logic testable
     # Service handles validation, file storage, and database record creation
     db_file = await file_service.upload_file(db, current_user.id, file)
+    # Warm file preview cache after upload so the first preview opens quickly.
+    background_tasks.add_task(_precompute_file_previews, current_user.id, db_file)
     return db_file
+```
+
+**Step 4a: Background cache warmup**
+
+```python
+# backend/app/api/routes/files.py (lines 167-210)
+def _precompute_file_previews(user_id: int, db_file: File) -> None:
+    """Build previews for all sheets in a file and cache them."""
+    sheets = file_service.get_excel_sheets(db_file.file_path)
+    sheets = sheets or [None]
+    sheet_options = [sheet for sheet in sheets if sheet is not None]
+    for sheet_name in sheets:
+        cache_key = stable_hash({
+            "type": "file_preview",
+            "user_id": user_id,
+            "file_id": db_file.id,
+            "file_size": db_file.file_size,
+            "sheet_name": sheet_name or "__default__",
+        })
+        df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
+        preview = file_service.get_file_preview(df)
+        preview["sheets"] = sheet_options
+        preview["current_sheet"] = sheet_name if sheet_name is not None else (
+            sheet_options[0] if sheet_options else None
+        )
+        preview_cache.set(cache_key, preview)
 ```
 
 **Step 5: Service validates and saves**
@@ -753,11 +783,65 @@ def execute_flow(
 4. Each downstream step preview runs transformApi.execute() with nodes up to that step
    - Preview target (file/sheet or output sheet) is passed so the backend can select the correct table
    - If a step has no source selected, preview returns a clear error message
+   - Source preview requires a file + sheet when the file has multiple sheets
+   - Output preview requires a selected source file
    ↓
 5. DataPreview renders the preview table in a full-screen modal
    - Empty output sheets render a placeholder grid (columns visible, no data)
    - Output preview uses an output-file selector + per-sheet tabs
    - "Use as source" copies the preview selection into the block target
+```
+
+### Cache Warming (Output Preview)
+
+```
+1. User saves an operation block configuration or opens Preview (or uploads files)
+   ↓
+2. PropertiesPanel / FlowBuilder calls /transform/precompute in the background
+   ↓
+3. Backend executes the flow once and caches output sheet previews
+   ↓
+4. First preview open can reuse the warmed cache
+```
+
+**Step 1: Save triggers precompute**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (lines 1320-1334)
+onClick={() => {
+  updateRemoveConfig(removeDraftConfig);
+  setIsRemoveDirty(false);
+  triggerPrecompute();
+}}
+```
+
+**Step 1b: Preview open + file upload also trigger precompute**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1470-1505)
+if (!isCurrentlyOpen) {
+  queuePreviewPrecompute();
+}
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 730-750)
+if (hasFileIdChanges) {
+  hasUnsavedChangesRef.current = true;
+  setHasUnsavedChanges(true);
+  queuePreviewPrecompute();
+}
+```
+
+**Step 2: Backend warms previews**
+
+```python
+# backend/app/api/routes/transform.py (lines 120-176)
+@router.post("/precompute")
+async def precompute_flow(...):
+    table_map, _ = transform_service.execute_flow(file_paths_by_id, request.flow_data)
+    # Build per-output-sheet previews and store in preview_cache
+    # Cache key includes virtual output id and sheet name to match /transform/execute preview lookups
 ```
 
 **Step 1: Pipeline toggles preview on demand**
@@ -1057,6 +1141,10 @@ When an operation block has an output destination, the preview opens on the outp
 When output sheets are created after a preview is already open, any placeholder output preview target is swapped to the first real output sheet so users see actual results without re-opening the preview.
 
 Empty sheets still render a grid (with placeholder columns) so the preview area stays visually consistent even when no data is present.
+
+Transform previews cache per-step signatures so switching between sheets reuses the last computed preview instead of re-running the full transform each time.
+
+Backend preview responses are cached in-memory per user + flow + preview target to avoid redundant transform execution during sheet switches.
 ```
 
 **Step 2: Get flow data from store**
@@ -1368,6 +1456,7 @@ apiClient.interceptors.response.use(
 2. Frontend calls filesApi.preview(fileId, sheetName?)
    ↓
 3. Backend files.py preview_file():
+   - Checks preview cache for file+sheet
    - Loads file from disk
    - Parses into DataFrame (pandas)
    - Gets first 20 rows
@@ -1400,7 +1489,7 @@ preview: async (fileId: number, sheetName?: string): Promise<FilePreview> => {
 **Step 3: Backend route**
 
 ```python
-// backend/app/api/routes/files.py (lines 118-144)
+// backend/app/api/routes/files.py (lines 118-158)
 @router.get("/{file_id}/preview", response_model=FilePreviewResponse)
 async def preview_file(
     file_id: int,
@@ -1418,6 +1507,17 @@ async def preview_file(
     if not db_file:
         raise HTTPException(status_code=404, detail="File not found")
 
+    cache_key = stable_hash({
+        "type": "file_preview",
+        "user_id": current_user.id,
+        "file_id": db_file.id,
+        "file_size": db_file.file_size,
+        "sheet_name": sheet_name or "__default__",
+    })
+    cached_preview = preview_cache.get(cache_key)
+    if cached_preview is not None:
+        return cached_preview
+
     # Get list of sheets if Excel file
     sheets = []
     if db_file.mime_type in [
@@ -1429,4 +1529,5 @@ async def preview_file(
     # Parse the file (with optional sheet selection)
     df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
     preview = file_service.get_file_preview(df)
+    preview_cache.set(cache_key, preview)
 ```
