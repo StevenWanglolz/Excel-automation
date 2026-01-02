@@ -194,6 +194,7 @@ export const FlowPipeline = ({
   const nodeTarget = activePreviewNode?.data?.target as TableTarget | undefined;
   const nodeDestination = activePreviewNode?.data?.destination as TableTarget | undefined;
   const hasOutputSelection = Boolean(nodeTarget?.virtualId || nodeDestination?.virtualId);
+  const resolvedOutputVirtualId = previewOverride?.virtualId ?? nodeDestination?.virtualId ?? nodeTarget?.virtualId ?? null;
   const isOutputSheetPreview = Boolean(previewOverride?.virtualId?.startsWith('output:')) ||
     (isOutputPreview && !previewOverride?.fileId) ||
     (!isSourcePreview && !previewOverride?.fileId && hasOutputSelection);
@@ -259,12 +260,19 @@ export const FlowPipeline = ({
     if (outputFileOptions.length === 0) {
       return null;
     }
-    const parsed = parseOutputVirtualId(previewOverride?.virtualId);
+    const parsed = parseOutputVirtualId(resolvedOutputVirtualId);
     if (parsed?.outputId) {
       return outputFileOptionByOutputId.get(parsed.outputId) ?? outputFileOptions[0];
     }
-    return isOutputPreview ? outputFileOptions[0] : null;
-  }, [isOutputPreview, outputFileOptionByOutputId, outputFileOptions, parseOutputVirtualId, previewOverride?.virtualId]);
+    return isOutputSheetPreview || isOutputPreview ? outputFileOptions[0] : null;
+  }, [
+    isOutputPreview,
+    isOutputSheetPreview,
+    outputFileOptionByOutputId,
+    outputFileOptions,
+    parseOutputVirtualId,
+    resolvedOutputVirtualId,
+  ]);
 
   const outputSheetLabels = useMemo(() => {
     if (!activeOutputFileOption) {
@@ -279,13 +287,19 @@ export const FlowPipeline = ({
     if (!activeOutputFileOption || outputSheetLabels.length === 0) {
       return null;
     }
-    const parsed = parseOutputVirtualId(previewOverride?.virtualId);
+    const parsed = parseOutputVirtualId(resolvedOutputVirtualId);
     const candidate = previewOverride?.sheetName ?? parsed?.sheetName;
     if (candidate && outputSheetLabels.includes(candidate)) {
       return candidate;
     }
     return outputSheetLabels[0] ?? null;
-  }, [activeOutputFileOption, outputSheetLabels, parseOutputVirtualId, previewOverride?.sheetName, previewOverride?.virtualId]);
+  }, [
+    activeOutputFileOption,
+    outputSheetLabels,
+    parseOutputVirtualId,
+    previewOverride?.sheetName,
+    resolvedOutputVirtualId,
+  ]);
 
   const outputPreviewEnabled = outputFileOptions.some((option) => (option.sheets?.length ?? 0) > 0);
   const canPreviewOutputSheets = true;
@@ -295,20 +309,28 @@ export const FlowPipeline = ({
       return null;
     }
     if (isOutputSheetPreview) {
-      return previewOverride?.virtualId ? previewOverride : null;
+      return previewOverride?.virtualId
+        ? previewOverride
+        : nodeDestination?.virtualId
+          ? nodeDestination
+          : nodeTarget?.virtualId
+            ? nodeTarget
+            : null;
     }
     if (isSourcePreview) {
       return sourceFileId
         ? { fileId: sourceFileId, sheetName: sourceSheetName ?? null }
         : null;
     }
-    const target = previewOverride ?? (activePreviewNode.data?.target as TableTarget | undefined);
+    const target = previewOverride ?? nodeDestination ?? (activePreviewNode.data?.target as TableTarget | undefined);
     return target?.fileId || target?.virtualId ? target : null;
   }, [
     activePreviewNode,
     isOutputSheetPreview,
     isSourcePreview,
     previewOverride,
+    nodeDestination,
+    nodeTarget,
     sourceFileId,
     sourceSheetName,
   ]);
@@ -323,21 +345,27 @@ export const FlowPipeline = ({
         nodeTarget?.fileId ||
         nodeTarget?.virtualId)
   );
-  const hasSelectedSourceFile = sourceFileIds.length > 0 && sourceFileId !== null;
-  const isMissingSourceForPreview = (isSourcePreview || isOutputPreview || isOutputSheetPreview) && !hasSelectedSourceFile;
+  const isMissingSourceForPreview = isSourcePreview && sourceFileIds.length === 0;
   const activePreviewFileId = useMemo(() => {
     if (!activePreviewNode) {
       return null;
     }
     if (isSourcePreview) {
-      return sourceFileId;
+      return sourceFileId ?? sourceFileIds[0] ?? null;
     }
     if (isOutputSheetPreview) {
       return null;
     }
     const target = activePreviewNode.data?.target as TableTarget | undefined;
-    return previewOverride?.fileId ?? target?.fileId ?? null;
-  }, [activePreviewNode, isOutputSheetPreview, isSourcePreview, previewOverride?.fileId, sourceFileId]);
+    return previewOverride?.fileId ?? nodeDestination?.fileId ?? target?.fileId ?? null;
+  }, [
+    activePreviewNode,
+    isOutputSheetPreview,
+    isSourcePreview,
+    nodeDestination?.fileId,
+    previewOverride?.fileId,
+    sourceFileId,
+  ]);
   const previewSheetOptions = activePreviewFileId
     ? previewSheetsByFileId[activePreviewFileId]
     : undefined;
@@ -734,10 +762,11 @@ export const FlowPipeline = ({
                   fileOptions={previewFileOptions}
                   currentFileId={
                     isSourcePreview
-                      ? sourceFileId
+                      ? sourceFileId ?? sourceFileIds[0] ?? null
                       : isOutputSheetPreview
                         ? activeOutputFileOption?.id ?? null
                         : previewOverride?.fileId ??
+                          nodeDestination?.fileId ??
                           (activePreviewNode.data?.target as TableTarget | undefined)?.fileId ??
                           null
                   }
@@ -748,6 +777,7 @@ export const FlowPipeline = ({
                       : isSourcePreview
                         ? sourceSheetName
                         : previewOverride?.sheetName ??
+                          nodeDestination?.sheetName ??
                           (activePreviewNode.data?.target as TableTarget | undefined)?.sheetName ??
                           null
                   }
