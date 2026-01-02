@@ -59,11 +59,11 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `auth.py` - Authentication (login, register, get current user)
 - `files.py` - File operations (upload, list, preview, sheet list, download, delete)
-  - Warms file preview cache after upload and serves cached sheet previews
+  - Warms file preview cache after upload and serves cached sheet previews with sheet lists intact
 - `flows.py` - Flow management (create, read, update, delete)
 - `transform.py` - Flow execution and data transformation
   - Includes an in-memory preview cache to avoid re-running identical previews
-  - `/transform/precompute` warms output-sheet previews after config saves
+  - `/transform/precompute` warms output-sheet previews after config saves using sheet-aware cache keys
 
 #### Services (`app/services/`)
 

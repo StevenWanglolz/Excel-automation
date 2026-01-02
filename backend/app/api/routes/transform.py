@@ -187,7 +187,10 @@ async def precompute_flow(
                 sheets = [{"sheetName": "Sheet 1"}]
             for sheet in sheets:
                 sheet_name = sheet.get("sheetName") or "Sheet 1"
-                preview_target = {"virtual_id": f"output:{output_id}:{sheet_name}"}
+                preview_target = {
+                    "virtual_id": f"output:{output_id}:{sheet_name}",
+                    "sheet_name": sheet_name,
+                }
                 preview_cache_key = stable_hash({
                     "user_id": current_user.id,
                     "files": file_fingerprints,

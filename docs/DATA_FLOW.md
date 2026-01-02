@@ -372,11 +372,12 @@ async def upload_file(
 **Step 4a: Background cache warmup**
 
 ```python
-# backend/app/api/routes/files.py (lines 145-178)
+# backend/app/api/routes/files.py (lines 167-210)
 def _precompute_file_previews(user_id: int, db_file: File) -> None:
     """Build previews for all sheets in a file and cache them."""
     sheets = file_service.get_excel_sheets(db_file.file_path)
     sheets = sheets or [None]
+    sheet_options = [sheet for sheet in sheets if sheet is not None]
     for sheet_name in sheets:
         cache_key = stable_hash({
             "type": "file_preview",
@@ -387,6 +388,10 @@ def _precompute_file_previews(user_id: int, db_file: File) -> None:
         })
         df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
         preview = file_service.get_file_preview(df)
+        preview["sheets"] = sheet_options
+        preview["current_sheet"] = sheet_name if sheet_name is not None else (
+            sheet_options[0] if sheet_options else None
+        )
         preview_cache.set(cache_key, preview)
 ```
 
@@ -836,6 +841,7 @@ if (hasFileIdChanges) {
 async def precompute_flow(...):
     table_map, _ = transform_service.execute_flow(file_paths_by_id, request.flow_data)
     # Build per-output-sheet previews and store in preview_cache
+    # Cache key includes virtual output id and sheet name to match /transform/execute preview lookups
 ```
 
 **Step 1: Pipeline toggles preview on demand**

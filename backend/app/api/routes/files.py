@@ -185,6 +185,8 @@ def _precompute_file_previews(user_id: int, db_file: File) -> None:
     if not sheets:
         sheets = [None]
 
+    sheet_options = [sheet for sheet in sheets if sheet is not None]
+
     for sheet_name in sheets:
         cache_key = stable_hash({
             "type": "file_preview",
@@ -197,9 +199,10 @@ def _precompute_file_previews(user_id: int, db_file: File) -> None:
             continue
         df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
         preview = file_service.get_file_preview(df)
-        preview["sheets"] = [
-            s for s in sheets if s] if sheet_name is not None else []
-        preview["current_sheet"] = sheet_name
+        preview["sheets"] = sheet_options
+        preview["current_sheet"] = sheet_name if sheet_name is not None else (
+            sheet_options[0] if sheet_options else None
+        )
         preview_cache.set(cache_key, preview)
 
 
