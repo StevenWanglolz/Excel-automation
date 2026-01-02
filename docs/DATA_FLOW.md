@@ -785,6 +785,7 @@ def execute_flow(
    - If a step has no source selected, preview returns a clear error message
    - Source preview requires a file + sheet when the file has multiple sheets
    - Output preview requires a selected source file
+   - Cached previews render immediately, then revalidate in the background (SWR)
    ↓
 5. DataPreview renders the preview table in a full-screen modal
    - Empty output sheets render a placeholder grid (columns visible, no data)

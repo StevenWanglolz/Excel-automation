@@ -78,6 +78,7 @@ export const FlowBuilder = () => {
   const [sheetOptionsByFileId, setSheetOptionsByFileId] = useState<Record<number, string[]>>({});
   const [previewOverrides, setPreviewOverrides] = useState<Record<string, TableTarget>>({});
   const [activePreviewNodeIds, setActivePreviewNodeIds] = useState<Set<string>>(new Set());
+  const [previewRefreshTokens, setPreviewRefreshTokens] = useState<Record<string, number>>({});
   const [viewAction, setViewAction] = useState<{ type: 'fit' | 'reset'; id: number } | null>(null);
   const [lastTarget, setLastTarget] = useState<TableTarget>({ fileId: null, sheetName: null });
   const savedFlowDataRef = useRef<string>('');
@@ -86,6 +87,7 @@ export const FlowBuilder = () => {
   const isUndoRedoInProgressRef = useRef(false);
   const hasInitializedRef = useRef(false);
   const previewSignatureRef = useRef<Record<string, string>>({});
+  const previewRefreshTokenRef = useRef<Record<string, number>>({});
   const previewUpdateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRunIdRef = useRef(0);
   const previewPrecomputeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1023,10 +1025,10 @@ export const FlowBuilder = () => {
   );
 
   const fetchFilePreview = useCallback(
-    async (fileId: number, sheetName?: string) => {
+    async (fileId: number, sheetName?: string, forceRefresh = false) => {
       const cacheKey = makePreviewCacheKey(fileId, sheetName);
       const cached = previewCacheRef.current.get(cacheKey);
-      if (cached) {
+      if (cached && !forceRefresh) {
         return cached;
       }
 
@@ -1171,6 +1173,7 @@ export const FlowBuilder = () => {
     // Signature map lets us recompute only when upstream config/order changes.
     const signaturesToUpdate = new Set<string>();
     const signatureMap = { ...previewSignatureRef.current };
+    const forceRefreshNodes = new Set<string>();
 
     activeNodeIds.forEach((nodeId) => {
       const index = nodesSnapshot.findIndex((node) => node.id === nodeId);
@@ -1202,8 +1205,19 @@ export const FlowBuilder = () => {
           destination: node.data?.destination || null,
         })),
       });
+      const refreshToken = previewRefreshTokens[nodeId] ?? 0;
+      const lastRefreshToken = previewRefreshTokenRef.current[nodeId] ?? 0;
+      const shouldRefresh = refreshToken !== lastRefreshToken;
+      if (shouldRefresh) {
+        previewRefreshTokenRef.current[nodeId] = refreshToken;
+        forceRefreshNodes.add(nodeId);
+      }
       if (signatureMap[nodeId] !== signature) {
         signatureMap[nodeId] = signature;
+        signaturesToUpdate.add(nodeId);
+        return;
+      }
+      if (shouldRefresh) {
         signaturesToUpdate.add(nodeId);
       }
     });
@@ -1227,6 +1241,9 @@ export const FlowBuilder = () => {
       }
       const signature = signatureMap[nodeId];
       if (!signature) {
+        return;
+      }
+      if (forceRefreshNodes.has(nodeId)) {
         return;
       }
       const cached = transformPreviewCacheRef.current.get(signature);
@@ -1262,7 +1279,7 @@ export const FlowBuilder = () => {
 
       const nextLoading: Record<string, boolean> = {};
       uncachedNodes.forEach((nodeId) => {
-        nextLoading[nodeId] = true;
+        nextLoading[nodeId] = !stepPreviews[nodeId];
       });
       setPreviewLoading((prev) => ({ ...prev, ...nextLoading }));
 
@@ -1294,7 +1311,11 @@ export const FlowBuilder = () => {
                 }));
                 continue;
               }
-              const preview = await fetchFilePreview(targetFileId, targetSheetName);
+              const preview = await fetchFilePreview(
+                targetFileId,
+                targetSheetName,
+                forceRefreshNodes.has(nodeId)
+              );
               if (previewRunIdRef.current !== runId) {
                 return;
               }
@@ -1411,9 +1432,11 @@ export const FlowBuilder = () => {
     fileSourceNode,
     fetchFilePreview,
     prefetchSheetPreviews,
+    previewRefreshTokens,
     previewOverrides,
     getOutputPreviewTarget,
     sheetOptionsByFileId,
+    stepPreviews,
   ]);
 
   useEffect(() => {
@@ -1507,6 +1530,22 @@ export const FlowBuilder = () => {
 
   const handleTogglePreview = (nodeId: string) => {
     const isCurrentlyOpen = activePreviewNodeIds.has(nodeId);
+    if (!isCurrentlyOpen) {
+      const cachedPreview = stepPreviews[nodeId];
+      if (cachedPreview) {
+        setPreviewLoading((prev) => ({ ...prev, [nodeId]: false }));
+        setPreviewErrors((prev) => ({ ...prev, [nodeId]: null }));
+      }
+      // Force a background refresh so reopened previews stay fresh.
+      setPreviewRefreshTokens((prev) => ({
+        ...prev,
+        [nodeId]: (prev[nodeId] ?? 0) + 1,
+      }));
+      const node = nodes.find((item) => item.id === nodeId);
+      if (node?.data?.blockType === 'output' || node?.type === 'output') {
+        queuePreviewPrecompute();
+      }
+    }
     setActivePreviewNodeIds((prev) => {
       // Full-screen preview is single-instance; toggle replaces the active one.
       if (prev.has(nodeId)) {
@@ -1514,9 +1553,6 @@ export const FlowBuilder = () => {
       }
       return new Set([nodeId]);
     });
-    if (!isCurrentlyOpen) {
-      queuePreviewPrecompute();
-    }
     const node = nodes.find((item) => item.id === nodeId);
     const isOutputNode = node?.data?.blockType === 'output' || node?.type === 'output';
     if (!node) {
