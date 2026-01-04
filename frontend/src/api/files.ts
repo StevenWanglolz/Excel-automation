@@ -1,19 +1,42 @@
 import apiClient from './client';
-import type { File, FilePreview } from '../types';
+import type { Batch, File, FilePreview } from '../types';
 
 export const filesApi = {
-  upload: async (file: globalThis.File): Promise<File> => {
+  upload: async (file: globalThis.File, batchId?: number | null): Promise<File> => {
     const formData = new FormData();
     formData.append('file', file);
+    const params = batchId ? `?batch_id=${batchId}` : '';
     
     // Content-Type will be set automatically by axios for FormData
-    const response = await apiClient.post('/files/upload', formData);
+    const response = await apiClient.post(`/files/upload${params}`, formData);
     return response.data;
   },
 
-  list: async (): Promise<File[]> => {
-    const response = await apiClient.get('/files');
+  list: async (options?: { batchId?: number | null; unbatched?: boolean }): Promise<File[]> => {
+    const params = new URLSearchParams();
+    if (typeof options?.batchId === 'number') {
+      params.set('batch_id', String(options.batchId));
+    }
+    if (options?.unbatched) {
+      params.set('unbatched', 'true');
+    }
+    const query = params.toString();
+    const response = await apiClient.get(`/files${query ? `?${query}` : ''}`);
     return response.data;
+  },
+
+  listBatches: async (): Promise<Batch[]> => {
+    const response = await apiClient.get('/files/batches');
+    return response.data;
+  },
+
+  createBatch: async (payload: { name: string; description?: string | null }): Promise<Batch> => {
+    const response = await apiClient.post('/files/batches', payload);
+    return response.data;
+  },
+
+  deleteBatch: async (batchId: number): Promise<void> => {
+    await apiClient.delete(`/files/batches/${batchId}`);
   },
 
   preview: async (fileId: number, sheetName?: string): Promise<FilePreview> => {

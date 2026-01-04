@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 from fastapi import UploadFile, HTTPException
@@ -14,7 +15,8 @@ class FileService:
     async def upload_file(
         db: Session,
         user_id: int,
-        file: UploadFile
+        file: UploadFile,
+        batch_id: int | None = None
     ) -> File:
         """Upload and parse a file"""
         # Validate file type - prevents malicious file uploads and ensures we can process the file
@@ -65,6 +67,7 @@ class FileService:
         # Stores both generated filename (for disk lookup) and original filename (for user display)
         db_file = File(
             user_id=user_id,
+            batch_id=batch_id,
             filename=filename,
             original_filename=file.filename,
             file_path=file_path,
@@ -76,6 +79,92 @@ class FileService:
         # Refresh to load auto-generated fields (id, created_at) from database
         db.refresh(db_file)
         
+        return db_file
+
+    @staticmethod
+    def resolve_unique_original_name(
+        db: Session,
+        user_id: int,
+        batch_id: int | None,
+        desired_name: str,
+        reserved_names: Optional[set[str]] = None,
+    ) -> str:
+        """
+        Resolve output name conflicts by appending a numbered suffix.
+
+        This prevents overwriting or confusing duplicates in a batch.
+        """
+        reserved_names = reserved_names or set()
+        base_name = desired_name.strip() or "output.xlsx"
+
+        existing = db.query(File.original_filename).filter(
+            File.user_id == user_id,
+            File.batch_id == batch_id,
+        ).all()
+        existing_names = {row[0] for row in existing}.union(reserved_names)
+
+        if base_name not in existing_names:
+            return base_name
+
+        stem, ext = os.path.splitext(base_name)
+        counter = 1
+        while True:
+            candidate = f"{stem} ({counter}){ext}"
+            if candidate not in existing_names:
+                return candidate
+            counter += 1
+
+    @staticmethod
+    def save_generated_file(
+        db: Session,
+        user_id: int,
+        original_filename: str,
+        content: bytes,
+        batch_id: int | None = None,
+    ) -> File:
+        """
+        Persist generated output files so they can be reused in other flows.
+
+        Generated files are saved with a unique on-disk name while keeping
+        a user-friendly original filename for display.
+        """
+        if not content:
+            raise HTTPException(status_code=400, detail="Generated file is empty")
+
+        if len(content) > settings.MAX_FILE_SIZE:
+            max_size_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
+            file_size_mb = len(content) / (1024 * 1024)
+            raise HTTPException(
+                status_code=413,
+                detail=f"File size ({file_size_mb:.2f}MB) exceeds maximum allowed size ({max_size_mb:.0f}MB)"
+            )
+
+        file_path, filename = storage.save_bytes(
+            user_id=user_id,
+            original_filename=original_filename,
+            content=content,
+        )
+
+        file_ext = Path(original_filename).suffix.lower()
+        mime_type_map = {
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xls": "application/vnd.ms-excel",
+            ".csv": "text/csv"
+        }
+        mime_type = mime_type_map.get(file_ext, "application/octet-stream")
+
+        db_file = File(
+            user_id=user_id,
+            batch_id=batch_id,
+            filename=filename,
+            original_filename=original_filename,
+            file_path=file_path,
+            file_size=len(content),
+            mime_type=mime_type
+        )
+        db.add(db_file)
+        db.commit()
+        db.refresh(db_file)
         return db_file
 
     @staticmethod

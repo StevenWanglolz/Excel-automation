@@ -24,6 +24,7 @@ import { flowsApi } from '../../api/flows';
 import { filesApi } from '../../api/files';
 import { transformApi } from '../../api/transform';
 import type {
+  Batch,
   BlockData,
   File,
   FilePreview,
@@ -47,11 +48,6 @@ export const FlowBuilder = () => {
   const [showFlowList, setShowFlowList] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  // #region agent log
-  useEffect(() => {
-    fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:42',message:'isModalOpen state changed',data:{isModalOpen,selectedNodeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-  }, [isModalOpen, selectedNodeId]);
-  // #endregion
   const [isOperationModalOpen, setIsOperationModalOpen] = useState(false);
   const [operationAfterNodeId, setOperationAfterNodeId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -75,12 +71,14 @@ export const FlowBuilder = () => {
   const [sourceFileId, setSourceFileId] = useState<number | null>(null);
   const [sourceSheetByFileId, setSourceSheetByFileId] = useState<Record<number, string | null>>({});
   const [previewFiles, setPreviewFiles] = useState<File[]>([]);
+  const [previewBatches, setPreviewBatches] = useState<Batch[]>([]);
   const [sheetOptionsByFileId, setSheetOptionsByFileId] = useState<Record<number, string[]>>({});
   const [previewOverrides, setPreviewOverrides] = useState<Record<string, TableTarget>>({});
   const [activePreviewNodeIds, setActivePreviewNodeIds] = useState<Set<string>>(new Set());
   const [previewRefreshTokens, setPreviewRefreshTokens] = useState<Record<string, number>>({});
   const [viewAction, setViewAction] = useState<{ type: 'fit' | 'reset'; id: number } | null>(null);
   const [lastTarget, setLastTarget] = useState<TableTarget>({ fileId: null, sheetName: null });
+  const [filesRefreshKey, setFilesRefreshKey] = useState(0);
   const savedFlowDataRef = useRef<string>('');
   const hasUnsavedChangesRef = useRef(false);
   const historyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,11 +100,57 @@ export const FlowBuilder = () => {
   // Cache transform previews by signature so sheet switches can reuse results.
   const transformPreviewCacheRef = useRef<Map<string, FilePreview>>(new Map());
 
+  useEffect(() => {
+    const shouldLockScroll =
+      isModalOpen ||
+      isOperationModalOpen ||
+      showConfirmModal ||
+      activePreviewNodeIds.size > 0;
+    if (!shouldLockScroll) {
+      document.body.style.overflow = '';
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [activePreviewNodeIds.size, isModalOpen, isOperationModalOpen, showConfirmModal]);
+
   // Undo/Redo system
   const { addToHistory, undo, redo, canUndo, canRedo, reset } = useUndoRedo({
     nodes: getFlowData().nodes,
     edges: getFlowData().edges,
   });
+
+  // Source selection is explicit; avoid auto-picking a file from uploads.
+
+  const applySourceTargetSelection = useCallback((nodeId: string, target: TableTarget) => {
+    const currentNode = useFlowStore.getState().nodes.find((node) => node.id === nodeId);
+    if (!currentNode) {
+      return;
+    }
+
+    // Update node data in one place so source selection stays consistent with previews.
+    updateNode(nodeId, {
+      data: {
+        ...currentNode.data,
+        target,
+      },
+    });
+
+    setSourceFileId(target.fileId);
+    if (target.sheetName) {
+      setSourceSheetByFileId((prev) => ({
+        ...prev,
+        [target.fileId as number]: target.sheetName,
+      }));
+      setSourceSheetName(target.sheetName);
+    } else if (sourceFileId !== target.fileId) {
+      // Reset sheet if the file changed and no explicit sheet was chosen.
+      setSourceSheetName(null);
+    }
+  }, [updateNode, sourceFileId]);
 
   const showModal = (type: ModalType, title: string, message: string, onConfirm?: () => void, confirmText?: string) => {
     setConfirmModalConfig({ type, title, message, onConfirm, confirmText });
@@ -633,31 +677,14 @@ export const FlowBuilder = () => {
     });
   };
 
-  const handleNodeClick = (nodeId: string, nodeType: string) => {
-    // #region agent log
-    const shouldOpen = nodeType === 'upload' || nodeType === 'data' || nodeType === 'source';
-    fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:565',message:'handleNodeClick called',data:{nodeId,nodeType,shouldOpenModal:shouldOpen},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    // Set selected node for properties panel
+  const handleNodeClick = (nodeId: string) => {
+    // Set selected node for properties panel.
     setSelectedNodeId(nodeId);
-    
-    // Open modal for upload/data/source nodes (for file upload)
-    if (shouldOpen) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:571',message:'Opening modal - before setState',data:{nodeId,nodeType,currentIsModalOpen:isModalOpen,currentSelectedNodeId:selectedNodeId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      setIsModalOpen(true);
-      // #region agent log
-      // Use setTimeout to log after state update has been scheduled
-      setTimeout(() => {
-        fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:583',message:'After setIsModalOpen(true) scheduled',data:{nodeId,nodeType},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'G'})}).catch(()=>{});
-      }, 0);
-      // #endregion
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/bd312fdf-db3f-4a62-825b-88f171eacd92',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'FlowBuilder.tsx:573',message:'Modal NOT opened - nodeType mismatch',data:{nodeId,nodeType,expectedTypes:['upload','data','source']},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-    }
+  };
+
+  const handleUploadClick = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    setIsModalOpen(true);
   };
 
   const handleClosePropertiesPanel = () => {
@@ -687,6 +714,7 @@ export const FlowBuilder = () => {
       'sheet-manager': { type: 'transform', blockType: 'sheet_manager' },
       'qa-checks': { type: 'transform', blockType: 'qa_checks' },
       'data-entry': { type: 'transform', blockType: 'data_entry' },
+      'mapping-input': { type: 'mapping', blockType: 'mapping' },
       'output': { type: 'output', blockType: 'output' },
     };
     return mapping[operationId] || { type: 'transform', blockType: operationId };
@@ -797,6 +825,8 @@ export const FlowBuilder = () => {
         config: configDefaults[blockType] ?? {},
         target: targetForNode,
         destination: operation.id === 'output' ? undefined : undefined,
+        sourceTargets: operation.id === 'output' ? undefined : [],
+        destinationTargets: operation.id === 'output' ? undefined : [],
         output: outputConfig,
       },
     };
@@ -818,7 +848,7 @@ export const FlowBuilder = () => {
     setHasUnsavedChanges(true);
   };
 
-  const handleFileUploaded = (fileIds: number[]) => {
+  const handleFileUploaded = async (fileIds: number[]) => {
     // Update the node data with the file IDs array
     if (selectedNodeId) {
       const node = nodes.find((n) => n.id === selectedNodeId);
@@ -832,6 +862,7 @@ export const FlowBuilder = () => {
             fileIds: fileIds
           }
         });
+        // Source selection is manual; uploading files should not auto-pick a source.
         // Mark as unsaved changes when files are uploaded
         // This allows the user to save the flow after uploading or deleting files
         if (hasFileIdChanges) {
@@ -839,6 +870,11 @@ export const FlowBuilder = () => {
           setHasUnsavedChanges(true);
           queuePreviewPrecompute();
         }
+      }
+      
+      // Trigger refresh of file list in PropertiesPanel
+      if (hasFileIdChanges) {
+        setFilesRefreshKey((prev) => prev + 1);
       }
     }
   };
@@ -858,6 +894,10 @@ export const FlowBuilder = () => {
   const fileSourceNode = useMemo(() => {
     // Prefer the first node with file IDs so legacy flows still preview correctly.
     const nodeWithFiles = nodes.find((node) => {
+      const blockType = node.data?.blockType || node.type;
+      if (blockType === 'mapping') {
+        return false;
+      }
       const fileIds = getNodeFileIds(node.id);
       return fileIds.length > 0;
     });
@@ -911,32 +951,7 @@ export const FlowBuilder = () => {
     setSourceSheetName(sourceTarget.sheetName);
   }, [fileSourceNode, sourceSheetName]);
 
-  useEffect(() => {
-    if (!resolvedSourceFileId) {
-      return;
-    }
-    const defaultTarget: TableTarget = {
-      fileId: resolvedSourceFileId,
-      sheetName: sourceSheetName ?? null,
-    };
-    // Backfill targets for legacy nodes so multi-sheet execution stays deterministic.
-    nodes.forEach((node) => {
-      const nodeData = node.data || {};
-      const hasConfig = nodeData.config && Object.keys(nodeData.config).length > 0;
-      if (nodeData.target || nodeData.blockType === 'output' || node.type === 'source') {
-        return;
-      }
-      if (!hasConfig) {
-        return;
-      }
-      updateNode(node.id, {
-        data: {
-          ...nodeData,
-          target: defaultTarget,
-        },
-      });
-    });
-  }, [nodes, resolvedSourceFileId, sourceSheetName, updateNode]);
+  // Source targets are chosen per operation; avoid auto-populating defaults.
 
   useEffect(() => {
     if (!fileSourceNode || !resolvedSourceFileId) {
@@ -945,11 +960,13 @@ export const FlowBuilder = () => {
     const sourceTarget: TableTarget = {
       fileId: resolvedSourceFileId,
       sheetName: sourceSheetName ?? null,
+      batchId: (fileSourceNode.data?.target as TableTarget | undefined)?.batchId ?? null,
     };
     const existingTarget = fileSourceNode.data?.target as TableTarget | undefined;
     const hasChanged =
       existingTarget?.fileId !== sourceTarget.fileId ||
-      existingTarget?.sheetName !== sourceTarget.sheetName;
+      existingTarget?.sheetName !== sourceTarget.sheetName ||
+      existingTarget?.batchId !== sourceTarget.batchId;
     if (hasChanged) {
       // Keep the source node target aligned with the active sheet selection.
       updateNode(fileSourceNode.id, {
@@ -961,6 +978,36 @@ export const FlowBuilder = () => {
     }
     setLastTarget(sourceTarget);
   }, [fileSourceNode, resolvedSourceFileId, sourceSheetName, updateNode]);
+
+  useEffect(() => {
+    if (!fileSourceNode) {
+      return;
+    }
+    const sourceTarget = fileSourceNode.data?.target as TableTarget | undefined;
+    const sourceBatchId = sourceTarget?.batchId ?? null;
+    if (!sourceBatchId) {
+      return;
+    }
+    const batchFileIds = previewFiles
+      .filter((file) => file.batch_id === sourceBatchId)
+      .map((file) => file.id);
+    if (batchFileIds.length === 0) {
+      if (sourceFileId !== null) {
+        setSourceFileId(null);
+      }
+      return;
+    }
+    if (sourceTarget?.fileId && batchFileIds.includes(sourceTarget.fileId)) {
+      return;
+    }
+    // Selected file is no longer in the group; clear selection so the user picks again.
+    applySourceTargetSelection(fileSourceNode.id, {
+      fileId: null,
+      sheetName: null,
+      batchId: sourceBatchId,
+    });
+    setSourceFileId(null);
+  }, [applySourceTargetSelection, fileSourceNode, previewFiles, sourceFileId]);
 
   useEffect(() => {
     if (!resolvedSourceFileId) {
@@ -1030,6 +1077,10 @@ export const FlowBuilder = () => {
       if (blockType === 'output' || blockType === 'source' || blockType === 'data' || blockType === 'upload') {
         return;
       }
+      const destinationTargets = node.data?.destinationTargets as TableTarget[] | undefined;
+      if (Array.isArray(destinationTargets)) {
+        return;
+      }
       const destination = node.data?.destination as TableTarget | undefined;
       if (destination?.fileId || destination?.virtualId) {
         return;
@@ -1038,6 +1089,7 @@ export const FlowBuilder = () => {
         data: {
           ...node.data,
           destination: fallbackOutput,
+          destinationTargets: [fallbackOutput],
         },
       });
     });
@@ -1056,6 +1108,30 @@ export const FlowBuilder = () => {
       const target = data.target as TableTarget | undefined;
       if (target?.fileId) {
         fileIds.add(target.fileId);
+      }
+      const sourceTargets = data.sourceTargets as TableTarget[] | undefined;
+      if (Array.isArray(sourceTargets)) {
+        sourceTargets.forEach((sourceTarget) => {
+          if (sourceTarget?.fileId) {
+            fileIds.add(sourceTarget.fileId);
+          }
+        });
+      }
+      const destinationTargets = data.destinationTargets as TableTarget[] | undefined;
+      if (Array.isArray(destinationTargets)) {
+        destinationTargets.forEach((destTarget) => {
+          if (destTarget?.fileId) {
+            fileIds.add(destTarget.fileId);
+          }
+        });
+      }
+      const mappingTargets = data.mappingTargets as { fileId?: number | null }[] | undefined;
+      if (Array.isArray(mappingTargets)) {
+        mappingTargets.forEach((mappingTarget) => {
+          if (mappingTarget?.fileId) {
+            fileIds.add(mappingTarget.fileId);
+          }
+        });
       }
       const output = data.output as OutputConfig | undefined;
       // Handle modern 'outputs' array structure
@@ -1116,6 +1192,7 @@ export const FlowBuilder = () => {
       });
     }, 200);
   }, [collectFileIds, getFlowData, nodes]);
+
 
   const normalizePreviewState = useCallback(() => {
     const nodeIds = new Set(nodes.map((node) => node.id));
@@ -1438,7 +1515,7 @@ export const FlowBuilder = () => {
               const sourceTarget = node.data?.target as TableTarget | undefined;
               const targetFileId = sourceTarget?.fileId ?? fileIdSnapshot ?? sourceFileIds[0];
               const rememberedSheet = targetFileId ? sourceSheetByFileId[targetFileId] : null;
-              const targetSheetName = sourceTarget?.sheetName ?? sheetSnapshot ?? rememberedSheet ?? null;
+              const targetSheetName = sourceTarget?.sheetName ?? sheetSnapshot ?? rememberedSheet ?? undefined;
               if (!targetFileId) {
                 setStepPreviews((prev) => ({ ...prev, [node.id]: null }));
                 setPreviewErrors((prev) => ({
@@ -1585,23 +1662,41 @@ export const FlowBuilder = () => {
   }, []);
 
   const handleSourceSheetChange = useCallback((sheetName: string) => {
-    const targetFileId = resolvedSourceFileId ?? sourceFileIds[0];
+    const targetFileId = resolvedSourceFileId;
     if (!targetFileId) {
       return;
-    }
-    if (!resolvedSourceFileId) {
-      setSourceFileId(targetFileId);
     }
     setSourceSheetByFileId((prev) => ({
       ...prev,
       [targetFileId]: sheetName,
-  }));
+    }));
     setSourceSheetName(sheetName);
-  }, [resolvedSourceFileId, sourceFileIds]);
+  }, [resolvedSourceFileId]);
 
-  const handleSourceFileChange = useCallback((fileId: number) => {
+  const handleSourceFileChange = useCallback((fileId: number, batchId?: number | null) => {
     setSourceFileId(fileId);
-  }, []);
+    if (!fileSourceNode) {
+      return;
+    }
+    const sheetName = sourceSheetByFileId[fileId] ?? null;
+    applySourceTargetSelection(fileSourceNode.id, {
+      fileId,
+      sheetName,
+      batchId: batchId ?? null,
+    });
+  }, [applySourceTargetSelection, fileSourceNode, sourceSheetByFileId]);
+
+  const handleSourceBatchChange = useCallback((batchId: number | null) => {
+    if (!fileSourceNode) {
+      return;
+    }
+    applySourceTargetSelection(fileSourceNode.id, {
+      fileId: null,
+      sheetName: null,
+      batchId: batchId ?? null,
+    });
+    setSourceFileId(null);
+  }, [applySourceTargetSelection, fileSourceNode]);
 
   // Preview selectors should update the target so previews + exports stay consistent.
   const handlePreviewFileChange = useCallback((nodeId: string, fileId: number) => {
@@ -1635,15 +1730,20 @@ export const FlowBuilder = () => {
     const fileIds = collectFileIds(nodes);
     if (fileIds.length === 0) {
       setPreviewFiles([]);
+      setPreviewBatches([]);
       return;
     }
     const fileIdSet = new Set(fileIds);
-    filesApi.list()
-      .then((files) => {
+    Promise.all([filesApi.list(), filesApi.listBatches()])
+      .then(([files, batches]) => {
         const filtered = files.filter((file) => fileIdSet.has(file.id));
         setPreviewFiles(filtered);
+        setPreviewBatches(batches);
       })
-      .catch(() => setPreviewFiles([]));
+      .catch(() => {
+        setPreviewFiles([]);
+        setPreviewBatches([]);
+      });
   }, [collectFileIds, nodes]);
 
   useEffect(() => {
@@ -1792,6 +1892,12 @@ export const FlowBuilder = () => {
     return outputs[0]?.fileName || 'output.xlsx';
   }, [nodes]);
 
+  const getOutputBatchId = useCallback(() => {
+    const outputNode = nodes.find((node) => node.data?.blockType === 'output');
+    const outputBatchId = outputNode?.data?.outputBatchId;
+    return typeof outputBatchId === 'number' ? outputBatchId : null;
+  }, [nodes]);
+
   useEffect(() => {
     const fallbackOutputTarget = getFirstOutputSheetTarget();
     if (!fallbackOutputTarget) {
@@ -1818,6 +1924,7 @@ export const FlowBuilder = () => {
         file_id: fileIds[0] ?? 0,
         file_ids: fileIds,
         flow_data: getFlowData(),
+        output_batch_id: getOutputBatchId(),
       });
       const fileName = getOutputFileName();
       const url = window.URL.createObjectURL(blob);
@@ -1829,9 +1936,10 @@ export const FlowBuilder = () => {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to export flow:', error);
-      showModal('error', 'Export failed', 'We could not export the output file.');
+      const message = error.response?.data?.detail || 'We could not export the output file.';
+      showModal('error', 'Export failed', message);
     }
   };
 
@@ -2072,6 +2180,7 @@ export const FlowBuilder = () => {
           viewAction={viewAction}
           isInteractionDisabled={isModalOpen || isOperationModalOpen}
           previewFiles={previewFiles}
+          previewBatches={previewBatches}
           previewSheetsByFileId={sheetOptionsByFileId}
           sourceFileId={resolvedSourceFileId}
           sourceFileIds={sourceFileIds}
@@ -2086,11 +2195,13 @@ export const FlowBuilder = () => {
           onReorderNodes={handleReorderNodes}
           onSourceSheetChange={handleSourceSheetChange}
           onSourceFileChange={handleSourceFileChange}
+          onSourceBatchChange={handleSourceBatchChange}
           onPreviewFileChange={handlePreviewFileChange}
           onPreviewSheetChange={handlePreviewSheetChange}
           onPreviewTargetChange={handlePreviewTargetChange}
           onTogglePreview={handleTogglePreview}
           onApplyPreviewTarget={handleApplyPreviewTarget}
+          onUpload={handleUploadClick}
           onExport={handleExport}
         />
         </div>
@@ -2102,6 +2213,7 @@ export const FlowBuilder = () => {
         onClose={handleClosePropertiesPanel}
         lastTarget={lastTarget}
         onUpdateLastTarget={setLastTarget}
+        refreshKey={filesRefreshKey}
       />
       
       {/* Data Upload Modal */}
@@ -2111,7 +2223,6 @@ export const FlowBuilder = () => {
           // hasUnsavedChanges is already set in handleFileUploaded when files are uploaded
           // No need to check again here - the useEffect will also detect changes
           setIsModalOpen(false);
-          setSelectedNodeId(null);
           setIsFileUploading(false);
         }}
         nodeId={selectedNodeId || ''}

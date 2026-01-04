@@ -38,6 +38,9 @@ const OPERATIONS: Operation[] = [
   { id: 'lookup-map', label: 'Lookup & Map', type: 'transform', category: 'Multi-File & Lookup', icon: '🧩' },
   { id: 'append-files', label: 'Append Files', type: 'transform', category: 'Multi-File & Lookup', icon: '🧵' },
 
+  // Inputs
+  { id: 'mapping-input', label: 'Mapping Input', type: 'mapping', category: 'Inputs', icon: '🗂️' },
+
   // Sheet & Output Structure
   { id: 'sheet-manager', label: 'Sheet Manager', type: 'transform', category: 'Sheet & Output', icon: '📑' },
 
@@ -68,6 +71,7 @@ export const OperationSelectionModal = ({ isOpen, onClose, onSelect }: Operation
       { id: 'Calculations & Logic', icon: '🧮' },
       { id: 'Split & Merge', icon: '🔀' },
       { id: 'Multi-File & Lookup', icon: '🧩' },
+      { id: 'Inputs', icon: '🗂️' },
       { id: 'Sheet & Output', icon: '📑' },
       { id: 'Validation & QA', icon: '✅' },
       { id: 'Data Entry', icon: '✍️' },

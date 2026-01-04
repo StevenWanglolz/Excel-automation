@@ -73,6 +73,22 @@ class TransformService:
                 if lookup_file_id in file_paths_by_id:
                     next_config["lookup_df"] = load_table(
                         lookup_file_id, lookup_sheet)
+
+            mapping_targets = node_data.get("mappingTargets") or []
+            mapping_dfs: list[pd.DataFrame] = []
+            if isinstance(mapping_targets, list):
+                for mapping_target in mapping_targets:
+                    if not isinstance(mapping_target, dict):
+                        continue
+                    mapping_file_id = mapping_target.get("fileId")
+                    mapping_sheet = mapping_target.get("sheetName")
+                    if mapping_file_id in file_paths_by_id:
+                        mapping_dfs.append(load_table(mapping_file_id, mapping_sheet))
+            if mapping_dfs:
+                next_config["mapping_dfs"] = mapping_dfs
+                if "lookup_df" not in next_config:
+                    next_config["lookup_df"] = mapping_dfs[0]
+
             return next_config
 
         # Process nodes in order - transformations are applied sequentially.
@@ -81,17 +97,28 @@ class TransformService:
             block_type = data.get("blockType")
 
             # Skip non-transform nodes - they are data sources or output metadata.
-            if block_type in {"upload", "source", "data", "output"}:
+            if block_type in {"upload", "source", "data", "output", "mapping"}:
                 continue
 
-            source_target = data.get("target", {}) or {}
-            destination_target = data.get("destination", {}) or source_target
-            if not source_target and destination_target:
-                source_target = destination_target
-            if not source_target and not destination_target:
-                continue
+            source_targets = data.get("sourceTargets", []) or []
+            destination_targets = data.get("destinationTargets", []) or []
 
-            df = load_table_for_target(source_target)
+            if not source_targets:
+                legacy_source = data.get("target", {}) or {}
+                if legacy_source:
+                    source_targets = [legacy_source]
+
+            if not destination_targets:
+                legacy_destination = data.get("destination", {}) or {}
+                if legacy_destination:
+                    destination_targets = [legacy_destination]
+
+            if not source_targets and destination_targets:
+                source_targets = destination_targets
+            if not source_targets and not destination_targets:
+                continue
+            if not destination_targets:
+                destination_targets = source_targets
             config = data.get("config", {}) or {}
 
             # Look up transform class from registry using block type.
@@ -106,19 +133,77 @@ class TransformService:
                 # Validate config before executing - prevents errors from invalid configurations.
                 print(
                     f"[DEBUG] Validating transform {block_type} with config: {transform_config}")
-                is_valid = transform.validate(df, transform_config)
-                print(f"[DEBUG] Validation result: {is_valid}")
-                if is_valid:
+
+                if len(source_targets) > len(destination_targets) and destination_targets:
+                    # Append mode: combine all source results into each destination.
+                    result_frames = []
+                    for source_target in source_targets:
+                        df = load_table_for_target(source_target)
+                        is_valid = transform.validate(df, transform_config)
+                        print(f"[DEBUG] Validation result: {is_valid}")
+                        if not is_valid:
+                            print(
+                                f"[DEBUG] Transform {block_type} validation failed, skipping execution"
+                            )
+                            continue
+                        print(f"[DEBUG] Executing transform {block_type}")
+                        result_df = transform.execute(df, transform_config)
+                        print(
+                            f"[DEBUG] Transform executed. Result shape: {result_df.shape}, columns: {list(result_df.columns)}")
+                        result_frames.append(result_df)
+
+                    if result_frames:
+                        combined_df = pd.concat(result_frames, ignore_index=True, sort=False)
+                        for destination_target in destination_targets:
+                            last_table_key = store_table_for_target(destination_target, combined_df.copy())
+                        print(
+                            f"[DEBUG] Updated last_table_key to: {last_table_key}")
+                    continue
+
+                # Fan-out: one source writes to multiple destinations.
+                if len(source_targets) == 1 and len(destination_targets) > 1:
+                    source_target = source_targets[0]
+                    df = load_table_for_target(source_target)
+                    is_valid = transform.validate(df, transform_config)
+                    print(f"[DEBUG] Validation result: {is_valid}")
+                    if not is_valid:
+                        print(
+                            f"[DEBUG] Transform {block_type} validation failed, skipping execution"
+                        )
+                        continue
                     print(f"[DEBUG] Executing transform {block_type}")
-                    df = transform.execute(df, transform_config)
+                    result_df = transform.execute(df, transform_config)
                     print(
-                        f"[DEBUG] Transform executed. Result shape: {df.shape}, columns: {list(df.columns)}")
-                    last_table_key = store_table_for_target(destination_target, df)
+                        f"[DEBUG] Transform executed. Result shape: {result_df.shape}, columns: {list(result_df.columns)}")
+                    for destination_target in destination_targets:
+                        last_table_key = store_table_for_target(destination_target, result_df.copy())
                     print(
                         f"[DEBUG] Updated last_table_key to: {last_table_key}")
-                else:
+                    continue
+
+                if len(source_targets) != len(destination_targets):
                     print(
-                        f"[DEBUG] Transform {block_type} validation failed, skipping execution")
+                        f"[DEBUG] Source/destination mismatch (sources={len(source_targets)}, destinations={len(destination_targets)}), skipping execution"
+                    )
+                    continue
+
+                pairs = zip(source_targets, destination_targets)
+                for source_target, destination_target in pairs:
+                    df = load_table_for_target(source_target)
+                    is_valid = transform.validate(df, transform_config)
+                    print(f"[DEBUG] Validation result: {is_valid}")
+                    if not is_valid:
+                        print(
+                            f"[DEBUG] Transform {block_type} validation failed, skipping execution"
+                        )
+                        continue
+                    print(f"[DEBUG] Executing transform {block_type}")
+                    result_df = transform.execute(df, transform_config)
+                    print(
+                        f"[DEBUG] Transform executed. Result shape: {result_df.shape}, columns: {list(result_df.columns)}")
+                    last_table_key = store_table_for_target(destination_target, result_df)
+                    print(
+                        f"[DEBUG] Updated last_table_key to: {last_table_key}")
 
         print(f"[DEBUG] Final last_table_key: {last_table_key}")
         return table_map, last_table_key

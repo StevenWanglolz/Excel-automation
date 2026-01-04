@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile, Query, Response, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_serializer
 from datetime import datetime
@@ -9,6 +10,7 @@ from app.core.config import settings
 from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.models.file import File
+from app.models.file_batch import FileBatch
 from app.models.flow import Flow
 from app.services.file_service import file_service
 from app.services.file_reference_service import file_reference_service
@@ -23,6 +25,7 @@ class FileResponse(BaseModel):
     original_filename: str
     file_size: int
     mime_type: str
+    batch_id: Optional[int] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -41,17 +44,44 @@ class FilePreviewResponse(BaseModel):
     current_sheet: Optional[str] = None  # Current sheet being previewed
 
 
+class BatchCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class BatchResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    file_count: int = 0
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_serializer('created_at')
+    def serialize_created_at(self, value: datetime, _info):
+        return value.isoformat() if value else None
+
+
 @router.post("/upload", response_model=FileResponse, status_code=201)
 async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = FastAPIFile(...),
+    batch_id: Optional[int] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Upload a file (Excel or CSV)"""
+    if batch_id is not None:
+        batch = db.query(FileBatch).filter(
+            FileBatch.user_id == current_user.id,
+            FileBatch.id == batch_id
+        ).first()
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
     # Delegate to service layer - keeps route thin and business logic testable
     # Service handles validation, file storage, and database record creation
-    db_file = await file_service.upload_file(db, current_user.id, file)
+    db_file = await file_service.upload_file(db, current_user.id, file, batch_id=batch_id)
     # Warm file preview cache after upload so the first preview opens quickly.
     background_tasks.add_task(
         _precompute_file_previews, current_user.id, db_file)
@@ -60,12 +90,156 @@ async def upload_file(
 
 @router.get("/", response_model=List[FileResponse])
 async def list_files(
+    batch_id: Optional[int] = Query(default=None),
+    unbatched: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """List all files for current user"""
-    files = db.query(File).filter(File.user_id == current_user.id).all()
+    if batch_id is not None and unbatched:
+        raise HTTPException(
+            status_code=400, detail="Choose batch_id or unbatched, not both")
+
+    query = db.query(File).filter(File.user_id == current_user.id)
+    if batch_id is not None:
+        query = query.filter(File.batch_id == batch_id)
+    elif unbatched:
+        query = query.filter(File.batch_id.is_(None))
+    files = query.all()
     return files
+
+
+@router.get("/batches", response_model=List[BatchResponse])
+async def list_batches(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """List file batches for the current user"""
+    counts_subquery = (
+        db.query(File.batch_id, func.count(File.id).label("file_count"))
+        .filter(File.user_id == current_user.id)
+        .group_by(File.batch_id)
+        .subquery()
+    )
+    batches = (
+        db.query(FileBatch, func.coalesce(counts_subquery.c.file_count, 0))
+        .outerjoin(counts_subquery, FileBatch.id == counts_subquery.c.batch_id)
+        .filter(FileBatch.user_id == current_user.id)
+        .all()
+    )
+
+    response = []
+    for batch, file_count in batches:
+        response.append(BatchResponse(
+            id=batch.id,
+            name=batch.name,
+            description=batch.description,
+            file_count=file_count or 0,
+            created_at=batch.created_at
+        ))
+    return response
+
+
+@router.post("/batches", response_model=BatchResponse, status_code=201)
+async def create_batch(
+    payload: BatchCreateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new file batch for grouping uploads"""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Batch name is required")
+
+    existing = db.query(FileBatch).filter(
+        FileBatch.user_id == current_user.id,
+        func.lower(FileBatch.name) == name.lower()
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=400, detail="Batch name already exists")
+
+    batch = FileBatch(
+        user_id=current_user.id,
+        name=name,
+        description=payload.description.strip() if payload.description else None
+    )
+    db.add(batch)
+    db.commit()
+    db.refresh(batch)
+
+    return BatchResponse(
+        id=batch.id,
+        name=batch.name,
+        description=batch.description,
+        file_count=0,
+        created_at=batch.created_at
+    )
+
+
+@router.delete("/batches/{batch_id}")
+async def delete_batch(
+    batch_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a file batch and all its files.
+    """
+    batch = db.query(FileBatch).filter(
+        FileBatch.id == batch_id,
+        FileBatch.user_id == current_user.id
+    ).first()
+
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+
+    # Get all files in the batch
+    files = db.query(File).filter(File.batch_id == batch_id).all()
+
+    # Track cleanup stats
+    deleted_files = 0
+    flows_updated = 0
+
+    # Delete files first (reusing deletion logic would be ideal but circular imports risk)
+    # We'll do it explicitly here for safety
+    from app.storage.local_storage import storage
+
+    # Get all flows to update references once
+    flows = db.query(Flow).filter(Flow.user_id == current_user.id).all()
+
+    for file in files:
+        # Update flow references
+        for flow in flows:
+            if not flow.flow_data:
+                continue
+            updated_flow_data, changed = file_reference_service.remove_file_id_from_flow_data(
+                flow.flow_data,
+                file.id
+            )
+            if changed:
+                flow.flow_data = updated_flow_data
+                flows_updated += 1
+
+        # Delete from disk
+        try:
+            storage.delete_file(current_user.id, file.filename)
+        except Exception as e:
+            print(f"Error deleting file {file.id} from disk: {e}")
+
+        # Delete from DB
+        db.delete(file)
+        deleted_files += 1
+
+    # Delete the batch itself
+    db.delete(batch)
+    db.commit()
+
+    return {
+        "message": "Batch deleted successfully",
+        "deleted_files": deleted_files,
+        "flows_updated": flows_updated
+    }
 
 
 @router.post("/cleanup-orphaned", status_code=200)

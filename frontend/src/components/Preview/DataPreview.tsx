@@ -5,16 +5,25 @@ interface FileOption {
   label: string;
 }
 
+interface BatchOption {
+  id: number | null;
+  label: string;
+}
+
 interface DataPreviewProps {
   preview: FilePreview | null;
   isLoading?: boolean;
   fileId?: number;
   fileOptions?: FileOption[];
+  batchOptions?: BatchOption[];
+  currentBatchId?: number | null;
   currentFileId?: number | null;
   sheetOptions?: string[];
   currentSheet?: string | null;
   onFileChange?: (fileId: number) => void;
+  onBatchChange?: (batchId: number | null) => void;
   onSheetChange?: (sheetName: string) => void;
+  allowEmptyFileSelection?: boolean;
 }
 
 export const DataPreview = ({
@@ -22,11 +31,15 @@ export const DataPreview = ({
   isLoading,
   fileId: _fileId,
   fileOptions,
+  batchOptions,
+  currentBatchId,
   currentFileId,
   sheetOptions,
   currentSheet,
   onFileChange,
+  onBatchChange,
   onSheetChange,
+  allowEmptyFileSelection,
 }: DataPreviewProps) => {
   const handleSheetChange = (sheetName: string) => {
     if (onSheetChange) {
@@ -38,9 +51,26 @@ export const DataPreview = ({
     if (!onFileChange) {
       return;
     }
+    if (value === '') {
+      return;
+    }
     const nextId = Number(value);
     if (Number.isFinite(nextId)) {
       onFileChange(nextId);
+    }
+  };
+
+  const handleBatchChange = (value: string) => {
+    if (!onBatchChange) {
+      return;
+    }
+    if (value === '') {
+      onBatchChange(null);
+      return;
+    }
+    const nextId = Number(value);
+    if (Number.isFinite(nextId)) {
+      onBatchChange(nextId);
     }
   };
 
@@ -60,6 +90,7 @@ export const DataPreview = ({
     );
   }
 
+  const hasBatchSelector = Boolean(batchOptions && batchOptions.length > 1 && onBatchChange);
   const hasMultipleFiles = Boolean(fileOptions && fileOptions.length > 1 && onFileChange);
   const effectiveSheets = sheetOptions ?? preview.sheets ?? [];
   const hasMultipleSheets = effectiveSheets.length > 1;
@@ -78,14 +109,31 @@ export const DataPreview = ({
     <div className="w-full flex flex-col h-full">
       {/* Header with row/column info */}
       <div className="mb-2 flex flex-wrap items-center gap-3">
+        {hasBatchSelector && (
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+            File group
+            <select
+              className="ml-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
+              value={currentBatchId ?? ''}
+              onChange={(event) => handleBatchChange(event.target.value)}
+            >
+              {batchOptions?.map((batch) => (
+                <option key={String(batch.id ?? 'none')} value={batch.id ?? ''}>
+                  {batch.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {hasMultipleFiles && (
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wider">
             File
             <select
               className="ml-2 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm text-gray-700"
-              value={currentFileId ?? fileOptions?.[0]?.id ?? ''}
+              value={allowEmptyFileSelection ? (currentFileId ?? '') : (currentFileId ?? fileOptions?.[0]?.id ?? '')}
               onChange={(event) => handleFileChange(event.target.value)}
             >
+              {allowEmptyFileSelection && <option value="">Select a file</option>}
               {fileOptions?.map((file) => (
                 <option key={file.id} value={String(file.id)}>
                   {file.label}

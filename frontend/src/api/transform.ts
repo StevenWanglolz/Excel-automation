@@ -10,6 +10,7 @@ export interface FlowExecuteRequest {
     sheet_name?: string;
     virtual_id?: string;
   };
+  output_batch_id?: number | null;
 }
 
 export interface FlowPrecomputeRequest {

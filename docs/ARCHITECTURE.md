@@ -59,11 +59,12 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `auth.py` - Authentication (login, register, get current user)
 - `files.py` - File operations (upload, list, preview, sheet list, download, delete)
-  - Warms file preview cache after upload and serves cached sheet previews with sheet lists intact
+  - Warms file preview cache after upload, manages file groups, and serves cached sheet previews with sheet lists intact
 - `flows.py` - Flow management (create, read, update, delete)
 - `transform.py` - Flow execution and data transformation
   - Includes an in-memory preview cache to avoid re-running identical previews
   - `/transform/precompute` warms output-sheet previews after config saves using sheet-aware cache keys
+  - `/transform/export` can persist exports into a selected output group
 
 #### Services (`app/services/`)
 
@@ -75,6 +76,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 **Key Services:**
 
 - `file_service.py` - File upload, parsing, preview generation
+- `file_batch` support is handled in file routes + models so uploads can be grouped and reused
 - `transform_service.py` - Flow execution across targeted file/sheet tables, output previews for export
 - `file_reference_service.py` - Track file usage across flows
 
@@ -88,6 +90,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `User` - User accounts and authentication
 - `File` - Uploaded file metadata
+- `FileBatch` - Named groups of files for group workflows
 - `Flow` - Saved automation flows
 
 #### Transforms (`app/transforms/`)
@@ -122,7 +125,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `Auth/` - Login, Register, ProtectedRoute
 - `Dashboard/` - Main dashboard view
-- `FlowBuilder/` - Sequential pipeline builder, target selection, and output mapping
+- `FlowBuilder/` - Sequential pipeline builder with group/single uploads and output mapping
 - `blocks/` - Legacy block components (node-based UI)
 - `Common/` - Shared components (modals, etc.)
 

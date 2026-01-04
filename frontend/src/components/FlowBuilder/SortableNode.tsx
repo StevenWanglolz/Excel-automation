@@ -12,11 +12,16 @@ interface SortableNodeProps {
   isSelected: boolean;
   isPreviewOpen: boolean;
   canPreview?: boolean;
+  canUpload?: boolean;
+  uploadLabel?: string;
+  uploadHint?: string;
+  uploadCount?: number;
   configSummary: string;
-  onNodeClick: (nodeId: string, nodeType: string) => void;
+  onNodeClick: (nodeId: string) => void;
   onAddOperation: (afterNodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onTogglePreview: (nodeId: string) => void;
+  onUpload: (nodeId: string) => void;
   onExport: () => void;
 }
 
@@ -26,11 +31,16 @@ export const SortableNode = ({
   isSelected,
   isPreviewOpen,
   canPreview,
+  canUpload,
+  uploadLabel,
+  uploadHint,
+  uploadCount,
   configSummary,
   onNodeClick,
   onAddOperation,
   onDeleteNode,
   onTogglePreview,
+  onUpload,
   onExport,
   scale,
   isInteractionDisabled,
@@ -68,11 +78,16 @@ export const SortableNode = ({
         isSelected={isSelected}
         isPreviewOpen={isPreviewOpen}
         canPreview={canPreview}
+        canUpload={canUpload}
+        uploadLabel={uploadLabel}
+        uploadHint={uploadHint}
+        uploadCount={uploadCount}
         configSummary={configSummary}
         onNodeClick={onNodeClick}
         onAddOperation={onAddOperation}
         onDeleteNode={onDeleteNode}
         onTogglePreview={onTogglePreview}
+        onUpload={onUpload}
         onExport={onExport}
         dragAttributes={attributes as unknown as Record<string, unknown>}
         dragListeners={listeners as unknown as Record<string, unknown>}

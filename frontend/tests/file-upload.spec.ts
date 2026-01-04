@@ -53,7 +53,7 @@ test.describe('File Upload Tests', () => {
     }
 
     await page.waitForSelector('text=Flow Builder', { timeout: 15000 });
-    await page.waitForSelector('text=Click to upload a file', { timeout: 15000 });
+    await page.waitForSelector('button:has-text("Upload")', { timeout: 15000 });
   };
 
   const openUploadModal = async (page: any) => {
@@ -61,9 +61,9 @@ test.describe('File Upload Tests', () => {
 
     await page.waitForSelector('text=Flow Builder', { timeout: 15000 });
 
-    const uploadHint = page.locator('text=Click to upload a file').first();
-    await uploadHint.waitFor({ timeout: 15000 });
-    await uploadHint.click();
+    const uploadButton = page.locator('button:has-text("Upload")').first();
+    await uploadButton.waitFor({ timeout: 15000 });
+    await uploadButton.click();
   };
 
   test.beforeEach(async ({ page }) => {
@@ -78,26 +78,24 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open (heading or file input)
-    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 15000 });
+    await page.getByRole('heading', { name: 'Upload Data' }).waitFor({ timeout: 15000 });
     
     // Get the file input
-    const fileInput = page.locator('input[type="file"]');
-    await fileInput.waitFor({ timeout: 5000 });
+    const fileInput = page.locator('label:has-text("Upload individual files") input[type="file"]');
+    await expect(fileInput).toHaveCount(1);
     
     // Check if file input has multiple attribute
     const hasMultiple = await fileInput.getAttribute('multiple');
     expect(hasMultiple).toBeDefined();
     
     // Upload a test file - check if test file exists
-    const testFilePath = path.join(process.cwd(), '../Test Files/example data 1.xlsx');
-    const altTestFilePath = path.join(__dirname, '../../Test Files/example data 1.xlsx');
-    
-    let fileToUpload = '';
-    if (existsSync(testFilePath)) {
-      fileToUpload = testFilePath;
-    } else if (existsSync(altTestFilePath)) {
-      fileToUpload = altTestFilePath;
-    } else {
+    const candidatePaths = [
+      path.join(process.cwd(), '../Test Files/example data 1.xlsx'),
+      path.join(process.cwd(), 'Test Files/example data 1.xlsx'),
+      path.join(process.cwd(), '../../Test Files/example data 1.xlsx'),
+    ];
+    const fileToUpload = candidatePaths.find((candidate) => existsSync(candidate));
+    if (!fileToUpload) {
       test.skip();
       return;
     }
@@ -141,13 +139,13 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 10000 });
+    await page.getByRole('heading', { name: 'Upload Data' }).waitFor({ timeout: 10000 });
     
     // Create a temporary invalid file (text file)
-    const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.locator('label:has-text("Upload individual files") input[type="file"]');
     
     // Try to upload an invalid file type (we'll use a text file if available, or create one)
-    const invalidFilePath = path.join(__dirname, '../../test-invalid.txt');
+    const invalidFilePath = path.join(process.cwd(), '../test-invalid.txt');
     
     // Create a temporary invalid file for testing
     if (!existsSync(invalidFilePath)) {
@@ -176,23 +174,28 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 10000 });
+    await page.getByRole('heading', { name: 'Upload Data' }).waitFor({ timeout: 10000 });
     
     // Upload a file
-    const fileInput = page.locator('input[type="file"]');
-    const testFilePath = path.join(__dirname, '../../Test Files/example data 1.xlsx');
-    await fileInput.setInputFiles(testFilePath);
+    const fileInput = page.locator('label:has-text("Upload individual files") input[type="file"]');
+    const candidatePaths = [
+      path.join(process.cwd(), '../Test Files/example data 1.xlsx'),
+      path.join(process.cwd(), 'Test Files/example data 1.xlsx'),
+      path.join(process.cwd(), '../../Test Files/example data 1.xlsx'),
+    ];
+    const fileToUpload = candidatePaths.find((candidate) => existsSync(candidate));
+    if (!fileToUpload) {
+      test.skip();
+      return;
+    }
+    await fileInput.setInputFiles(fileToUpload);
     
     // Wait for upload to complete
     await page.waitForSelector('text=example data 1.xlsx', { timeout: 10000 });
     
-    // Check that file appears in the preview select dropdown
-    const previewSelect = page.locator('select').first();
-    await expect(previewSelect).toBeVisible();
-    
-    // Check that the uploaded file is in the dropdown options
-    const fileOption = previewSelect.locator('option:has-text("example data 1.xlsx")');
-    await expect(fileOption).toBeVisible();
+    // Check that the uploaded file appears in the individual list
+    const uploadedFile = page.locator('text=example data 1.xlsx');
+    await expect(uploadedFile).toBeVisible();
   });
 
   test('should handle file upload errors gracefully', async ({ page, context }) => {
@@ -207,12 +210,21 @@ test.describe('File Upload Tests', () => {
     await openUploadModal(page);
     
     // Wait for modal to open
-    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 10000 });
+    await page.getByRole('heading', { name: 'Upload Data' }).waitFor({ timeout: 10000 });
     
     // Try to upload a file
-    const fileInput = page.locator('input[type="file"]');
-    const testFilePath = path.join(__dirname, '../../Test Files/example data 1.xlsx');
-    await fileInput.setInputFiles(testFilePath);
+    const fileInput = page.locator('label:has-text("Upload individual files") input[type="file"]');
+    const candidatePaths = [
+      path.join(process.cwd(), '../Test Files/example data 1.xlsx'),
+      path.join(process.cwd(), 'Test Files/example data 1.xlsx'),
+      path.join(process.cwd(), '../../Test Files/example data 1.xlsx'),
+    ];
+    const fileToUpload = candidatePaths.find((candidate) => existsSync(candidate));
+    if (!fileToUpload) {
+      test.skip();
+      return;
+    }
+    await fileInput.setInputFiles(fileToUpload);
     
     // Wait for error message
     await page.waitForSelector('.bg-red-50', { timeout: 10000 });

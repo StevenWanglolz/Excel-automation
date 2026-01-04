@@ -17,11 +17,16 @@ interface PipelineNodeCardProps {
   isSelected: boolean;
   isPreviewOpen: boolean;
   canPreview?: boolean;
+  canUpload?: boolean;
+  uploadLabel?: string;
+  uploadHint?: string;
+  uploadCount?: number;
   configSummary: string;
-  onNodeClick: (nodeId: string, nodeType: string) => void;
+  onNodeClick: (nodeId: string) => void;
   onAddOperation: (afterNodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onTogglePreview: (nodeId: string) => void;
+  onUpload: (nodeId: string) => void;
   onExport: () => void;
   dragAttributes?: Record<string, unknown>;
   dragListeners?: Record<string, unknown>;
@@ -33,11 +38,16 @@ export const PipelineNodeCard = ({
   isSelected,
   isPreviewOpen,
   canPreview = true,
+  canUpload = false,
+  uploadLabel = 'Upload',
+  uploadHint,
+  uploadCount,
   configSummary,
   onNodeClick,
   onAddOperation,
   onDeleteNode,
   onTogglePreview,
+  onUpload,
   onExport,
   dragAttributes,
   dragListeners,
@@ -50,6 +60,9 @@ export const PipelineNodeCard = ({
       outputConfig.outputs.some((outputFile) => outputFile.sheets.length > 0)
   );
 
+  const showUpload = canUpload;
+  const uploadedCount = typeof uploadCount === 'number' ? uploadCount : 0;
+
   return (
     <div className="flex flex-col">
       <div
@@ -59,7 +72,7 @@ export const PipelineNodeCard = ({
             : isSelected ? 'border-indigo-500 bg-white shadow-md' : 'border-gray-200 bg-white hover:shadow-md'
         } px-3 py-2 shadow-sm`}
         onClick={() => {
-          onNodeClick(node.id, node.type || '');
+          onNodeClick(node.id);
         }}
       >
         <div className="flex items-start justify-between gap-3">
@@ -84,16 +97,32 @@ export const PipelineNodeCard = ({
                 {isOutputNode && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-emerald-600 opacity-60">End Node</span>}
               </div>
               <div className={`text-xs ${isOutputNode ? 'text-emerald-700/70' : 'text-gray-500'}`}>{configSummary}</div>
-              {isFileSource && (
+              {showUpload && (
                 <div className="mt-1 text-[11px] text-gray-400">
-                  {Array.isArray(node.data?.fileIds) && node.data.fileIds.length > 0
-                    ? `${node.data.fileIds.length} file(s) uploaded`
-                    : 'Click to upload a file'}
+                  {uploadedCount > 0
+                    ? `${uploadedCount} file(s) uploaded`
+                    : uploadHint || 'Click to upload a file'}
                 </div>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {showUpload && (
+              <button
+                type="button"
+                className="flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-xs font-medium text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onUpload(node.id);
+                }}
+                title="Upload files"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 4v10m0 0l-4-4m4 4l4-4" />
+                </svg>
+                {uploadLabel}
+              </button>
+            )}
             <button
               type="button"
               className={`rounded-md p-1.5 transition ${

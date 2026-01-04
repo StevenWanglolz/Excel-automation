@@ -16,6 +16,8 @@ class File(Base):
     id = Column(Integer, primary_key=True, index=True)
     # Foreign key to user - ensures files are user-specific
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # Optional batch grouping for organizing related files
+    batch_id = Column(Integer, ForeignKey("file_batches.id"), nullable=True)
     # filename is the generated unique filename on disk
     filename = Column(String, nullable=False)
     # original_filename is what the user uploaded (for display purposes)
@@ -31,4 +33,3 @@ class File(Base):
     # Relationship allows accessing user from file: file.user
     # backref creates reverse relationship: user.files (list of user's files)
     user = relationship("User", backref="files")
-
