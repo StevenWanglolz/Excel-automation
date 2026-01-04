@@ -268,239 +268,122 @@ async def get_current_user(
 ## File Upload Flow
 
 ```
-1. User selects file in FileUploader.tsx
+1. User selects a group or single upload in DataUploadModal.tsx
    ↓
-2. Component creates FormData with file
+2. Modal calls filesApi.upload(file, batchId?) → POST /api/files/upload?batch_id=...
    ↓
-3. Calls filesApi.upload(file) → POST /api/files/upload
+3. Backend validates batch ownership (when provided) and saves the file
    ↓
-4. Backend files.py route:
-   - Validates user (get_current_user)
-   - Calls file_service.upload_file()
-   - Queues background cache warmup for file previews
+4. Service stores file metadata with optional batch_id
    ↓
-5. Service layer:
-   - Validates file type (.xlsx, .xls, .csv)
-   - Calls storage.save_file() which validates file size (50MB limit)
-   - If size exceeds limit: returns HTTP 413 error, file not saved
-   - If valid: saves file to disk
-   - Secondary size check in file_service (safety net)
-   - Creates database record in File model
-   ↓
-6. File stored at: uploads/{user_id}/{generated_filename}
-   ↓
-7. Database record created with metadata
-   ↓
-8. File metadata returned to frontend
-   ↓
-9. Component updates UI with uploaded file
+5. Modal recomputes the flow's file IDs from all groups + single files
 ```
 
-**Step 1: User selects file**
+**Step 1: Group or single selection in the modal**
 
 ```typescript
-// frontend/src/components/FileUpload/FileUploader.tsx (lines 12-44)
-const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  // Validate file type
-  const allowedTypes = [
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'application/vnd.ms-excel',
-    'text/csv',
-  ];
-  const allowedExtensions = ['.xlsx', '.xls', '.csv'];
-  const fileExtension = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
-
-  if (
-    !allowedTypes.includes(file.type) &&
-    !allowedExtensions.includes(fileExtension)
-  ) {
-    setError('Please upload a valid Excel (.xlsx, .xls) or CSV file');
-    return;
-  }
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 140-205)
+const handleBatchFileChange = async (
+  batchId: number,
+  e: React.ChangeEvent<HTMLInputElement>
+) => {
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
+  if (!validateFiles(files)) return;
 
   setIsUploading(true);
   setError(null);
+  if (onUploadStart) onUploadStart();
 
   try {
-    const uploadedFile = await filesApi.upload(file);
-    onUploadSuccess(uploadedFile.id);
-  } catch (err: any) {
-    setError(err.response?.data?.detail || 'Failed to upload file');
+    const newFiles = await uploadFiles(files, batchId);
+    setBatchFilesById((prev) => ({
+      ...prev,
+      [batchId]: [...(prev[batchId] || []), ...newFiles],
+    }));
+    emitFileIds(getIncludedFileIds(individualFiles, {
+      ...batchFilesById,
+      [batchId]: [...(batchFilesById[batchId] || []), ...newFiles],
+    }));
   } finally {
     setIsUploading(false);
   }
 };
 ```
 
-**Step 2-3: Create FormData and call API**
+**Step 2: Create FormData and call API (optional batch_id)**
 
 ```typescript
-// frontend/src/api/files.ts (lines 5-12)
-upload: async (file: File): Promise<File> => {
+// frontend/src/api/files.ts (lines 5-16)
+upload: async (file: File, batchId?: number | null): Promise<File> => {
   const formData = new FormData();
   formData.append('file', file);
+  const params = batchId ? `?batch_id=${batchId}` : '';
   
   // Content-Type will be set automatically by axios for FormData
-  const response = await apiClient.post('/files/upload', formData);
+  const response = await apiClient.post(`/files/upload${params}`, formData);
   return response.data;
 },
 ```
 
-**Step 4: Backend route**
+**Step 3: Backend route validates batch and saves**
 
 ```python
-# backend/app/api/routes/files.py (lines 42-55)
+# backend/app/api/routes/files.py (lines 66-88)
 @router.post("/upload", response_model=FileResponse, status_code=201)
 async def upload_file(
+    batch_id: Optional[int] = Query(default=None),
     file: UploadFile = FastAPIFile(...),
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """Upload a file (Excel or CSV)"""
-    # Delegate to service layer - keeps route thin and business logic testable
-    # Service handles validation, file storage, and database record creation
-    db_file = await file_service.upload_file(db, current_user.id, file)
-    # Warm file preview cache after upload so the first preview opens quickly.
-    background_tasks.add_task(_precompute_file_previews, current_user.id, db_file)
-    return db_file
+    if batch_id is not None:
+        batch = db.query(FileBatch).filter(
+            FileBatch.user_id == current_user.id,
+            FileBatch.id == batch_id
+        ).first()
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
+    db_file = await file_service.upload_file(db, current_user.id, file, batch_id=batch_id)
 ```
 
-**Step 4a: Background cache warmup**
+**Step 4: Service stores batch metadata**
 
 ```python
-# backend/app/api/routes/files.py (lines 167-210)
-def _precompute_file_previews(user_id: int, db_file: File) -> None:
-    """Build previews for all sheets in a file and cache them."""
-    sheets = file_service.get_excel_sheets(db_file.file_path)
-    sheets = sheets or [None]
-    sheet_options = [sheet for sheet in sheets if sheet is not None]
-    for sheet_name in sheets:
-        cache_key = stable_hash({
-            "type": "file_preview",
-            "user_id": user_id,
-            "file_id": db_file.id,
-            "file_size": db_file.file_size,
-            "sheet_name": sheet_name or "__default__",
-        })
-        df = file_service.parse_file(db_file.file_path, sheet_name=sheet_name)
-        preview = file_service.get_file_preview(df)
-        preview["sheets"] = sheet_options
-        preview["current_sheet"] = sheet_name if sheet_name is not None else (
-            sheet_options[0] if sheet_options else None
-        )
-        preview_cache.set(cache_key, preview)
+// backend/app/services/file_service.py (lines 31-61)
+db_file = File(
+    user_id=user_id,
+    batch_id=batch_id,
+    filename=filename,
+    original_filename=file.filename,
+    file_path=file_path,
+    file_size=file_size,
+    mime_type=mime_type
+)
+db.add(db_file)
+db.commit()
+db.refresh(db_file)
 ```
 
-**Step 5: Service validates and saves**
+**Step 5: Modal updates the flow's file IDs**
 
-```python
-# backend/app/services/file_service.py (lines 13-59)
-async def upload_file(
-    db: Session,
-    user_id: int,
-    file: UploadFile
-) -> File:
-    """Upload and parse a file"""
-    # Validate file type - prevents malicious file uploads and ensures we can process the file
-    # Without this check, users could upload arbitrary files that break our parsing logic
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Filename is required")
-    
-    allowed_extensions = {".xlsx", ".xls", ".csv"}
-    file_ext = Path(file.filename).suffix.lower()
-    
-    if file_ext not in allowed_extensions:
-        raise HTTPException(
-            status_code=400,
-            detail=f"File type not supported. Allowed: {', '.join(allowed_extensions)}"
-        )
-    
-    # Save file to disk with user-specific directory structure
-    # Returns both the full path and the generated filename (for uniqueness)
-    # Note: save_file() already validates file size before saving
-    file_path, filename = await storage.save_file(file, user_id)
-    
-    # Get file size after saving - needed for database record
-    # Double-check size as safety net (though save_file already validated)
-    file_size = Path(file_path).stat().st_size
-    
-    # Additional validation check (safety net in case size check was bypassed)
-    # If file somehow exceeds limit, delete it and raise error
-    if file_size > settings.MAX_FILE_SIZE:
-        # Clean up: delete the file we just saved
-        storage.delete_file(user_id, filename)
-        max_size_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
-        file_size_mb = file_size / (1024 * 1024)
-        raise HTTPException(
-            status_code=413,  # 413 = Payload Too Large
-            detail=f"File size ({file_size_mb:.2f}MB) exceeds maximum allowed size ({max_size_mb:.0f}MB)"
-        )
-    
-    # Map file extension to MIME type for proper HTTP headers
-    # Used when serving files back to clients
-    mime_type_map = {
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xls": "application/vnd.ms-excel",
-        ".csv": "text/csv"
-    }
-    mime_type = mime_type_map.get(file_ext, "application/octet-stream")
-    
-    # Create database record linking file to user
-    # Stores both generated filename (for disk lookup) and original filename (for user display)
-    db_file = File(
-        user_id=user_id,
-        filename=filename,
-        original_filename=file.filename,
-        file_path=file_path,
-        file_size=file_size,
-        mime_type=mime_type
-    )
-    db.add(db_file)
-    db.commit()
-    # Refresh to load auto-generated fields (id, created_at) from database
-    db.refresh(db_file)
-    
-    return db_file
-```
-
-**Step 5a: Storage validates size and saves**
-
-```python
-# backend/app/storage/local_storage.py (lines 14-43)
-async def save_file(self, file: UploadFile, user_id: int) -> tuple[str, str]:
-    """Save uploaded file and return (file_path, filename)"""
-    # Generate unique filename
-    file_ext = Path(file.filename).suffix
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    user_dir = self.upload_dir / str(user_id)
-    user_dir.mkdir(parents=True, exist_ok=True)
-
-    file_path = user_dir / unique_filename
-
-    # Read file content and check size before saving
-    # This prevents saving large files that exceed the limit
-    content = await file.read()
-    file_size = len(content)
-
-    # Validate file size - prevents disk space issues and ensures reasonable processing times
-    # MAX_FILE_SIZE is defined in config.py (default: 10MB)
-    if file_size > settings.MAX_FILE_SIZE:
-        max_size_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
-        file_size_mb = file_size / (1024 * 1024)
-        raise HTTPException(
-            status_code=413,  # 413 = Payload Too Large
-            detail=f"File size ({file_size_mb:.2f}MB) exceeds maximum allowed size ({max_size_mb:.0f}MB)"
-        )
-
-    # Save file to disk
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    return str(file_path), unique_filename
+```typescript
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 46-73)
+const emitFileIds = useCallback((nextFileIds: number[]) => {
+  if (!onFileUploaded) return;
+  const normalized = [...new Set(nextFileIds)].sort((a, b) => a - b);
+  const previous = lastEmittedFileIdsRef.current;
+  if (
+    previous.length === normalized.length &&
+    previous.every((value, index) => value === normalized[index])
+  ) {
+    return;
+  }
+  lastEmittedFileIdsRef.current = normalized;
+  onFileUploaded(normalized);
+}, [onFileUploaded]);
 ```
 
 ## Initial File Resolution (Flow Builder)
@@ -508,41 +391,61 @@ async def save_file(self, file: UploadFile, user_id: int) -> tuple[str, str]:
 ```
 1. User opens Data Upload modal for a node with saved file IDs
    ↓
-2. Modal fetches the current file list from the API (once per open)
+2. Modal fetches files + groups from the API
    ↓
-3. Modal filters to the saved file IDs
+3. Modal groups files into groups + single lists
    ↓
 4. Missing file IDs are removed from the node data (silent cleanup)
    ↓
-5. Modal shows remaining files without 404s
+5. Modal emits the recalculated file ID list
 ```
 
-**Step 2-4: Resolve file IDs and remove missing entries**
+**Step 2-5: Resolve groups and emit cleaned file IDs**
 
 ```typescript
-// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 40-64)
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 80-135)
 const loadInitialFiles = async () => {
   setIsLoadingFiles(true);
+  setIsLoadingBatches(true);
   try {
-    const allFiles = await filesApi.list();
+    const [allFiles, batchList] = await Promise.all([
+      filesApi.list(),
+      filesApi.listBatches(),
+    ]);
+
     const filesById = new Map(allFiles.map((file) => [file.id, file]));
     const resolvedFiles = initialFileIds
       .map((id) => filesById.get(id))
       .filter((file): file is NonNullable<typeof file> => Boolean(file));
 
-    setUploadedFiles(
-      resolvedFiles.map((file) => ({
+    const nextBatchFiles: Record<number, UploadedFile[]> = {};
+    allFiles.forEach((file) => {
+      if (!file.batch_id) return;
+      if (!nextBatchFiles[file.batch_id]) {
+        nextBatchFiles[file.batch_id] = [];
+      }
+      nextBatchFiles[file.batch_id].push({
         id: file.id,
         name: file.filename,
         originalName: file.original_filename,
-      }))
-    );
+        batchId: file.batch_id,
+      });
+    });
 
-    if (onFileUploaded && resolvedFiles.length !== initialFileIds.length) {
-      onFileUploaded(resolvedFiles.map((file) => file.id));
-    }
+    const nextIndividuals = resolvedFiles
+      .filter((file) => !file.batch_id)
+      .map((file) => ({
+        id: file.id,
+        name: file.filename,
+        originalName: file.original_filename,
+        batchId: null,
+      }));
+
+    setBatches(batchList);
+    emitFileIds(getIncludedFileIds(nextIndividuals, nextBatchFiles));
   } finally {
     setIsLoadingFiles(false);
+    setIsLoadingBatches(false);
   }
 };
 ```
@@ -563,17 +466,26 @@ const loadInitialFiles = async () => {
 5. Database record is deleted and flows are updated in the same request
 ```
 
+**Bulk delete note:** "Delete all" actions in the upload modal call the same delete endpoint for each file in the group or single list, then recompute the node's file IDs from the remaining files.
+
 **Step 1-2: Remove file from the modal and call API**
 
 ```typescript
-// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 140-165)
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 320-345)
 const handleRemoveFile = async (fileId: number) => {
   await filesApi.delete(fileId);
-  const remainingFiles = uploadedFiles.filter(file => file.id !== fileId);
-  setUploadedFiles(remainingFiles);
-  if (onFileUploaded) {
-    onFileUploaded(remainingFiles.map(file => file.id));
-  }
+  const nextIndividuals = individualFiles.filter((file) => file.id !== fileId);
+  const nextBatchFiles = { ...batchFilesById };
+  Object.entries(nextBatchFiles).forEach(([batchId, files]) => {
+    const filtered = files.filter((file) => file.id !== fileId);
+    if (filtered.length !== files.length) {
+      nextBatchFiles[Number(batchId)] = filtered;
+    }
+  });
+
+  setIndividualFiles(nextIndividuals);
+  setBatchFilesById(nextBatchFiles);
+  emitFileIds(getIncludedFileIds(nextIndividuals, nextBatchFiles));
 };
 ```
 
@@ -791,6 +703,7 @@ def execute_flow(
 5. DataPreview renders the preview table in a full-screen modal
    - Empty output sheets render a placeholder grid (columns visible, no data)
    - Output preview uses an output-file selector + per-sheet tabs
+   - Source preview uses a "File group" selector to filter to a group or single files
    - "Use as source" copies the preview selection into the block target
 ```
 
@@ -982,87 +895,94 @@ setStepPreviews((prev) => ({ ...prev, [node.id]: result.preview }));
 ## Output Export Flow
 
 ```
-1. User adds an Output block and defines the output files + sheet names (can be empty)
+1. User selects an output group in PropertiesPanel.tsx (optional)
    ↓
-2. Frontend calls transformApi.export() with flow_data + file_ids
+2. Frontend calls transformApi.export() with flow_data + file_ids + output_batch_id
    ↓
-3. Backend executes the pipeline across all targeted file/sheet tables
+3. Backend validates output batch and resolves output filenames
    ↓
-4. Export uses the output files + sheet names to build workbooks (zips when multiple files)
+4. Backend saves outputs to the batch (numbered if names conflict) and streams the response
    ↓
-5. Server streams an Excel file with one or many sheets
+5. Backend chooses CSV vs Excel based on file extension
 ```
 
-**Step 5: DataPreview renders the table**
+**Step 1: Output group selection**
 
 ```typescript
-// frontend/src/components/Preview/DataPreview.tsx (lines 53-84)
-{preview.preview_rows.map((row, idx) => (
-  <tr key={idx} className="hover:bg-gray-50">
-    {preview.columns.map((column) => (
-      <td key={column} className="px-4 py-3 text-sm text-gray-900">
-        {row[column] !== null && row[column] !== undefined
-          ? String(row[column])
-          : ''}
-      </td>
-    ))}
-  </tr>
-))}
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (lines 1500-1519)
+<select
+  value={outputBatchId ? String(outputBatchId) : ''}
+  onChange={(event) => {
+    const nextBatchId = event.target.value ? Number(event.target.value) : null;
+    updateOutputBatchId(nextBatchId);
+  }}
+>
+  <option value="">Select group (optional)</option>
+  {batches.map((batch) => (
+    <option key={batch.id} value={String(batch.id)}>
+      {batch.name}
+    </option>
+  ))}
+</select>
 ```
 
-**Step 5a: Transform validation**
+**Step 2: Export call includes output_batch_id**
 
-```python
-// backend/app/transforms/filters.py (lines 11-21)
-def validate(self, df: pd.DataFrame, config: Dict[str, Any]) -> bool:
-    # Validate that required config keys exist
-    # Without these, execute() would fail with KeyError or produce incorrect results
-    if "column" not in config:
-        return False
-    # Check that column exists in DataFrame - prevents KeyError during execution
-    if config["column"] not in df.columns:
-        return False
-    if "operator" not in config:
-        return False
-    return True
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 2130-2146)
+const blob = await transformApi.export({
+  file_id: fileIds[0] ?? 0,
+  file_ids: fileIds,
+  flow_data: getFlowData(),
+  output_batch_id: getOutputBatchId(),
+});
 ```
 
-**Step 5b: Transform execution**
+**Step 3: Backend validates output batch**
 
 ```python
-// backend/app/transforms/filters.py (lines 23-54)
-def execute(self, df: pd.DataFrame, config: Dict[str, Any]) -> pd.DataFrame:
-    column = config["column"]
-    operator = config.get("operator", "equals")
-    value = config.get("value")
-    
-    # Apply filter based on operator type
-    # Each operator handles different data types and edge cases
-    if operator == "equals":
-        return df[df[column] == value]
-    elif operator == "not_equals":
-        return df[df[column] != value]
-    elif operator == "contains":
-        # Convert to string for text search - handles numeric columns with text search
-        # na=False excludes NaN values from results (they would cause errors)
-        return df[df[column].astype(str).str.contains(str(value), na=False)]
-    elif operator == "not_contains":
-        # Use ~ to negate the contains condition
-        return df[~df[column].astype(str).str.contains(str(value), na=False)]
-    elif operator == "greater_than":
-        return df[df[column] > value]
-    elif operator == "less_than":
-        return df[df[column] < value]
-    elif operator == "is_blank":
-        # Check both NaN and empty string - covers all "blank" cases
-        return df[df[column].isna() | (df[column] == "")]
-    elif operator == "is_not_blank":
-        # Check that value is not NaN AND not empty string
-        return df[df[column].notna() & (df[column] != "")]
-    else:
-        # Unknown operator - return original DataFrame unchanged
-        # This prevents errors from invalid operator names
-        return df
+# backend/app/api/routes/transform.py (lines 287-302)
+if request.output_batch_id is not None:
+    output_batch = db.query(FileBatch).filter(
+        FileBatch.user_id == current_user.id,
+        FileBatch.id == request.output_batch_id
+    ).first()
+    if not output_batch:
+        raise HTTPException(status_code=404, detail="Output batch not found")
+```
+
+**Step 4: Backend saves numbered outputs**
+
+```python
+# backend/app/api/routes/transform.py (lines 347-372)
+file_name = file_service.resolve_unique_original_name(
+    db=db,
+    user_id=current_user.id,
+    batch_id=output_batch.id,
+    desired_name=file_name,
+    reserved_names=reserved_output_names,
+)
+file_service.save_generated_file(
+    db=db,
+    user_id=current_user.id,
+    original_filename=file_name,
+    content=payload,
+    batch_id=output_batch.id,
+)
+```
+
+**Step 5: Resolve output format by extension**
+
+```python
+# backend/app/api/routes/transform.py (lines 332-370)
+file_extension = Path(file_name).suffix.lower()
+if file_extension == ".csv":
+    result_for_file.to_csv(output, index=False)
+    payload = output.getvalue().encode("utf-8")
+else:
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
+    payload = output.read()
 ```
 
 ## Flow Save Flow
@@ -1134,14 +1054,25 @@ const clearFlowInternal = () => {
 
 ## Operation Destination Defaults
 
-When output files exist, operation blocks auto-select the first output sheet as their destination unless the user has already picked one. This keeps the UI and backend aligned so previewing output sheets reflects the latest operation results.
+Legacy operation blocks that predate multi-source mapping will auto-select the first output sheet as their destination when outputs exist. New blocks start with empty destination lists so users explicitly pick their mapping.
+
+Output blocks can copy the currently selected source file or file group into output files. This populates the output file list with matching filenames so one-to-one mappings stay aligned.
 
 ## Preview Defaults
 
 When an operation block has an output destination, the preview opens on the output sheet by default (users can still toggle to the source file). Preview refreshes are debounced briefly to reduce request spam while editing.
 
-If a source file is uploaded but the user has not selected a specific source file/sheet yet, previews fall back to the first uploaded file so the Data block can still render a preview immediately.
-When the user switches a sheet in preview without a pinned source file, the selected sheet is stored against the first uploaded file and the source file selection is set automatically so sheet tabs remain interactive.
+If a source file is uploaded but the user has not selected a specific source file/sheet yet, previews show a "select a source file" prompt instead of auto-picking a file.
+
+Uploads are triggered from the Source/Data node's Upload button so the properties panel remains visible while configuring source selection.
+Source previews include a group selector so users can preview either a named group or single files, and then choose the specific file within that group.
+
+## Multi-Source Mapping
+
+Operation blocks can target multiple sources and multiple destination output sheets. Targets are stored as arrays on the node (`sourceTargets`, `destinationTargets`), and the first entry is mirrored into `target`/`destination` for previews and backward compatibility.
+
+Selecting a file group in an operation source expands that group into multiple source targets (one per file) so each file can be routed to its own output file.
+If there are more sources than destinations, the operation appends all source results into each destination file. If there is one source and multiple destinations, the operation fans out the same result to each destination. When counts match, the operation runs one-to-one.
 
 When output sheets are created after a preview is already open, any placeholder output preview target is swapped to the first real output sheet so users see actual results without re-opening the preview.
 
@@ -1151,6 +1082,7 @@ Transform previews cache per-step signatures so switching between sheets reuses 
 
 Backend preview responses are cached in-memory per user + flow + preview target to avoid redundant transform execution during sheet switches.
 ```
+
 
 **Step 2: Get flow data from store**
 

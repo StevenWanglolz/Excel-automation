@@ -47,16 +47,16 @@ test('File Upload Test - Check for errors', async ({ page }) => {
   }
 
   await page.waitForSelector('text=Flow Builder', { timeout: 15000 });
-  await page.waitForSelector('text=Click to upload a file', { timeout: 15000 });
+  await page.waitForSelector('button:has-text("Upload")', { timeout: 15000 });
   await page.waitForTimeout(2000); // Give time for canvas to render
   
-  const uploadHint = page.locator('text=Click to upload a file').first();
-  await uploadHint.waitFor({ timeout: 15000 });
-  await uploadHint.click();
+  const uploadButton = page.locator('button:has-text("Upload")').first();
+  await uploadButton.waitFor({ timeout: 15000 });
+  await uploadButton.click();
   
   // Wait for modal to open
   try {
-    await page.waitForSelector('text=Upload Data File, input[type="file"]', { timeout: 15000 });
+    await page.getByRole('heading', { name: 'Upload Data' }).waitFor({ timeout: 15000 });
   } catch (e) {
     // Take screenshot to see what's on screen
     await page.screenshot({ path: 'test-results/modal-not-opened.png', fullPage: true });
@@ -64,7 +64,7 @@ test('File Upload Test - Check for errors', async ({ page }) => {
   }
   
   // Get the file input (it's hidden, so we don't wait for visibility)
-  const fileInput = page.locator('input[type="file"]');
+    const fileInput = page.locator('label:has-text("Upload individual files") input[type="file"]');
   
   // Check if file input exists and has multiple attribute
   const fileInputCount = await fileInput.count();
@@ -150,7 +150,7 @@ test('File Upload Test - Check for errors', async ({ page }) => {
   const uploadedFile = page.locator('button:has-text("example data 1.xlsx")').first();
   await expect(uploadedFile).toBeVisible();
   
-  // Also verify it appears in the select dropdown (options are hidden by default, so just check it exists)
-  const fileInSelect = page.locator('select option:has-text("example data 1.xlsx")').first();
-  await expect(fileInSelect).toHaveCount(1);
+  // Also verify it appears in the individual files list
+  const uploadedFileText = page.locator('text=example data 1.xlsx').first();
+  await expect(uploadedFileText).toBeVisible();
 });

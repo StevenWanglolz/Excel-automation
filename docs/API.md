@@ -60,7 +60,7 @@ username=user@example.com&password=password123
 
 **Notes:**
 - `preview_target` is optional and lets the backend choose a specific file/sheet (or output sheet via `virtual_id`) for the preview response.
-- If the Output block defines multiple files, `/transform/export` returns a `.zip` with one Excel file per output.
+- If the Output block defines multiple files, `/transform/export` returns a `.zip` with one file per output (Excel or CSV based on the filename extension).
 
 ### Get Current User
 ```http
@@ -82,7 +82,7 @@ Authorization: Bearer <token>
 
 ### Upload File
 ```http
-POST /api/files/upload
+POST /api/files/upload?batch_id={batch_id}
 Authorization: Bearer <token>
 Content-Type: multipart/form-data
 
@@ -108,13 +108,15 @@ file: <binary file data>
   "original_filename": "data.xlsx",
   "file_size": 45678,
   "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "batch_id": 10,
   "created_at": "2024-01-01T12:00:00Z"
 }
 ```
 
 ### List Files
 ```http
-GET /api/files
+GET /api/files?batch_id={batch_id}
+GET /api/files?unbatched=true
 Authorization: Bearer <token>
 ```
 
@@ -127,10 +129,44 @@ Authorization: Bearer <token>
     "original_filename": "data.xlsx",
     "file_size": 45678,
     "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "batch_id": 10,
     "created_at": "2024-01-01T12:00:00Z"
   }
 ]
 ```
+
+### List Batches
+```http
+GET /api/files/batches
+Authorization: Bearer <token>
+```
+
+**Response:** `200 OK`
+```json
+[
+  {
+    "id": 10,
+    "name": "Q2 Invoices",
+    "description": null,
+    "file_count": 3,
+    "created_at": "2024-01-01T12:00:00Z"
+  }
+]
+```
+
+### Create Batch
+```http
+POST /api/files/batches
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Q2 Invoices",
+  "description": "Monthly invoice uploads"
+}
+```
+
+**Response:** `201 Created` (same shape as list)
 
 ### Get File
 ```http
@@ -418,18 +454,21 @@ Content-Type: application/json
 {
   "file_id": 123,
   "file_ids": [123, 456],
-  "flow_data": { ... }
+  "flow_data": { ... },
+  "output_batch_id": 10
 }
 ```
 
 **Notes:**
-- If the flow includes an Output block, its sheet mapping is used to build the Excel file.
+- If the flow includes an Output block, its sheet mapping is used to build the output files.
 - Without an Output block, the last modified table is exported as `Sheet1`.
+- Output format comes from the filename extension (`.xlsx` or `.csv`).
+- When `output_batch_id` is provided, the export is saved into that batch with numbered filenames to avoid conflicts.
 
 **Response:** `200 OK`
-- Content-Type: `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
-- Content-Disposition: `attachment; filename=result.xlsx`
-- Body: Binary Excel file data
+- Content-Type: Excel MIME type, `text/csv`, or `application/zip` (when exporting multiple files)
+- Content-Disposition: `attachment; filename=<output filename>`
+- Body: Binary file data
 
 ## Error Responses
 

@@ -42,6 +42,24 @@ class LocalStorage:
 
         return str(file_path), unique_filename
 
+    def save_bytes(self, user_id: int, original_filename: str, content: bytes) -> tuple[str, str]:
+        """
+        Save generated file content to disk and return (file_path, filename).
+
+        This mirrors save_file but accepts bytes instead of an UploadFile.
+        """
+        file_ext = Path(original_filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        user_dir = self.upload_dir / str(user_id)
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        file_path = user_dir / unique_filename
+
+        with open(file_path, "wb") as f:
+            f.write(content)
+
+        return str(file_path), unique_filename
+
     def get_file_path(self, user_id: int, filename: str) -> Path:
         """Get full path to a file"""
         return self.upload_dir / str(user_id) / filename

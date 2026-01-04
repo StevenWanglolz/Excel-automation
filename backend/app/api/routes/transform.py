@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Dict, Any
+from pathlib import Path
 from app.core.database import get_db
 from app.api.dependencies import get_current_user
 from app.models.user import User
@@ -21,6 +22,7 @@ class FlowExecuteRequest(BaseModel):
     file_ids: list[int] | None = None
     flow_data: Dict[str, Any]
     preview_target: Dict[str, Any] | None = None
+    output_batch_id: int | None = None
 
 
 class FlowPrecomputeRequest(BaseModel):
@@ -265,6 +267,16 @@ async def export_result(
 
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
 
+    output_batch = None
+    if request.output_batch_id is not None:
+        from app.models.file_batch import FileBatch
+        output_batch = db.query(FileBatch).filter(
+            FileBatch.user_id == current_user.id,
+            FileBatch.id == request.output_batch_id
+        ).first()
+        if not output_batch:
+            raise HTTPException(status_code=404, detail="Output batch not found")
+
     # Execute flow
     try:
         table_map, last_table_key = transform_service.execute_flow(
@@ -303,32 +315,71 @@ async def export_result(
                 "sheets": [{"sheetName": "Sheet1"}],
             }]
 
-        files_payload = []
+        files_payload: list[dict[str, str | bytes]] = []
+        reserved_output_names: set[str] = set()
         for index, output_file in enumerate(outputs_to_write):
             file_name = output_file.get("fileName") or "output.xlsx"
             sheets = output_file.get("sheets") if isinstance(output_file, dict) else []
             output_id = output_file.get("id") if isinstance(output_file, dict) else None
             if not output_id:
                 output_id = f"output-{index + 1}"
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            file_extension = Path(file_name).suffix.lower()
+            if file_extension == ".csv":
+                # CSV exports only support a single sheet; use the first sheet if defined.
                 if sheets:
-                    for sheet in sheets:
-                        sheet_name = sheet.get("sheetName") or "Sheet1"
-                        virtual_key = f"virtual:output:{output_id}:{sheet_name}"
-                        sheet_df = table_map.get(virtual_key, pd.DataFrame())
-                        sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
+                    sheet_name = sheets[0].get("sheetName") or "Sheet1"
+                    virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                    result_for_file = table_map.get(virtual_key, pd.DataFrame())
                 else:
-                    result_df.to_excel(writer, index=False, sheet_name="Sheet1")
-            output.seek(0)
-            files_payload.append((file_name, output.read()))
+                    result_for_file = result_df
+                output = io.StringIO()
+                result_for_file.to_csv(output, index=False)
+                payload = output.getvalue().encode("utf-8")
+                media_type = "text/csv"
+            else:
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                    if sheets:
+                        for sheet in sheets:
+                            sheet_name = sheet.get("sheetName") or "Sheet1"
+                            virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                            sheet_df = table_map.get(virtual_key, pd.DataFrame())
+                            sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
+                    else:
+                        result_df.to_excel(writer, index=False, sheet_name="Sheet1")
+                output.seek(0)
+                payload = output.read()
+                media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            if output_batch:
+                file_name = file_service.resolve_unique_original_name(
+                    db=db,
+                    user_id=current_user.id,
+                    batch_id=output_batch.id,
+                    desired_name=file_name,
+                    reserved_names=reserved_output_names,
+                )
+                reserved_output_names.add(file_name)
+                file_service.save_generated_file(
+                    db=db,
+                    user_id=current_user.id,
+                    original_filename=file_name,
+                    content=payload,
+                    batch_id=output_batch.id,
+                )
+            files_payload.append({
+                "file_name": file_name,
+                "payload": payload,
+                "media_type": media_type,
+            })
 
         from fastapi.responses import StreamingResponse
         if len(files_payload) == 1:
-            file_name, payload = files_payload[0]
+            file_name = files_payload[0]["file_name"]
+            payload = files_payload[0]["payload"]
+            media_type = files_payload[0]["media_type"]
             return StreamingResponse(
                 io.BytesIO(payload),
-                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                media_type=media_type,
                 headers={
                     "Content-Disposition": f"attachment; filename={file_name}"
                 }
@@ -337,8 +388,8 @@ async def export_result(
         zip_output = io.BytesIO()
         import zipfile
         with zipfile.ZipFile(zip_output, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for file_name, payload in files_payload:
-                zip_file.writestr(file_name, payload)
+            for file_entry in files_payload:
+                zip_file.writestr(file_entry["file_name"], file_entry["payload"])
         zip_output.seek(0)
         return StreamingResponse(
             io.BytesIO(zip_output.read()),

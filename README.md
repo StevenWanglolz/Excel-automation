@@ -2,7 +2,7 @@
 
 ## What this is
 
-SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step selects a source table and writes into a destination output sheet, and the Output block defines one or many export files. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand with file + sheet switching (preview selection doesn’t change targets). Source previews require selecting a sheet for multi-sheet files. Previews are cached server-side and warmed after config saves, preview opens, or file uploads to keep sheet switching snappy, and warmed previews now keep sheet lists visible immediately after uploads. Saving a flow requires a name, and file add/remove actions mark the flow as dirty for saving.
+SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files (as single files or named groups) and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step can select multiple sources and write to one or many output sheets depending on the output configuration. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand with file + sheet switching (preview selection doesn’t change targets). Source previews require selecting a sheet for multi-sheet files. Previews are cached server-side and warmed after config saves, preview opens, or file uploads to keep sheet switching snappy, and warmed previews now keep sheet lists visible immediately after uploads. Output groups persist exports automatically with numbered filenames to avoid conflicts. Saving a flow requires a name, and file add/remove actions mark the flow as dirty for saving.
 
 ## Tech
 
@@ -68,6 +68,7 @@ Access at:
 - `docs/ARCHITECTURE.md` – how things fit together
 - `docs/DATA_FLOW.md` – where data comes from and goes (including upload/file resolution)
 - `docs/FILES.md` – what each file does
+- `docs/USER_MANUAL.md` – how to run each I/O scenario
 - `docs/STATE.md` – state management
 - `docs/API.md` – API endpoints
 - `docs/DECISIONS.md` – why choices were made

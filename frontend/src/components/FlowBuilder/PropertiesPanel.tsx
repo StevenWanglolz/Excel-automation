@@ -15,13 +15,22 @@ import type { ChangeEvent } from 'react';
 import { filesApi } from '../../api/files';
 import { transformApi } from '../../api/transform';
 import { useFlowStore } from '../../store/flowStore';
-import type { BlockData, File, OutputConfig, OutputFileConfig, OutputSheetMapping, TableTarget } from '../../types';
+import type {
+  BlockData,
+  Batch,
+  File,
+  OutputConfig,
+  OutputFileConfig,
+  OutputSheetMapping,
+  TableTarget,
+} from '../../types';
 
 interface PropertiesPanelProps {
   selectedNodeId: string | null;
   onClose: () => void;
   lastTarget: TableTarget;
   onUpdateLastTarget: (target: TableTarget) => void;
+  refreshKey?: number;
 }
 
 // Sentinel for CSV files where sheet selection doesn't apply.
@@ -30,23 +39,53 @@ const SINGLE_SHEET_VALUE = '__single__';
 const normalizeTarget = (target?: TableTarget): TableTarget => ({
   fileId: target?.fileId ?? null,
   sheetName: target?.sheetName ?? null,
+  batchId: target?.batchId ?? null,
   virtualId: target?.virtualId ?? null,
   virtualName: target?.virtualName ?? null,
 });
 
+const emptyTarget: TableTarget = {
+  fileId: null,
+  sheetName: null,
+  batchId: null,
+  virtualId: null,
+  virtualName: null,
+};
+
 const toSheetValue = (sheetName: string | null) => sheetName ?? SINGLE_SHEET_VALUE;
 const fromSheetValue = (value: string) => (value === SINGLE_SHEET_VALUE ? null : value);
+
+const buildUniqueFilename = (name: string, counts: Map<string, number>) => {
+  const normalized = name.trim() || 'output.xlsx';
+  const existingCount = counts.get(normalized);
+  if (!existingCount) {
+    counts.set(normalized, 1);
+    return normalized;
+  }
+  const nextCount = existingCount + 1;
+  counts.set(normalized, nextCount);
+  const dotIndex = normalized.lastIndexOf('.');
+  if (dotIndex === -1) {
+    return `${normalized} (${nextCount})`;
+  }
+  const base = normalized.slice(0, dotIndex);
+  const ext = normalized.slice(dotIndex);
+  return `${base} (${nextCount})${ext}`;
+};
 
 export const PropertiesPanel = ({
   selectedNodeId,
   onClose,
   lastTarget,
   onUpdateLastTarget,
+  refreshKey,
 }: PropertiesPanelProps) => {
   const { nodes, updateNode, getFlowData } = useFlowStore();
   const [files, setFiles] = useState<File[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [sheetsByFileId, setSheetsByFileId] = useState<Record<number, string[]>>({});
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const precomputeTimeoutRef = useRef<number | null>(null);
   
@@ -83,11 +122,35 @@ export const PropertiesPanel = ({
   
   const nodeType = node?.type || '';
   const nodeData = useMemo(() => (node?.data || {}) as unknown as BlockData, [node]);
+  const outputBatchId = typeof nodeData.outputBatchId === 'number' ? nodeData.outputBatchId : null;
   const target = normalizeTarget(nodeData.target);
   const destination = normalizeTarget(nodeData.destination);
+  const sourceTargets = useMemo(() => {
+    if (Array.isArray(nodeData.sourceTargets) && nodeData.sourceTargets.length > 0) {
+      return nodeData.sourceTargets.map(normalizeTarget);
+    }
+    if (target.fileId || target.virtualId) {
+      return [target];
+    }
+    return [];
+  }, [nodeData.sourceTargets, target]);
+  const destinationTargets = useMemo(() => {
+    if (Array.isArray(nodeData.destinationTargets) && nodeData.destinationTargets.length > 0) {
+      return nodeData.destinationTargets.map(normalizeTarget);
+    }
+    if (destination.fileId || destination.virtualId) {
+      return [destination];
+    }
+    return [];
+  }, [nodeData.destinationTargets, destination]);
   const isOutputNode = nodeData.blockType === 'output' || nodeType === 'output';
-  const outputConfig = useMemo<OutputConfig>(() => {
-    const rawOutput = nodeData.output as OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined;
+  const isMappingNode = nodeData.blockType === 'mapping' || nodeType === 'mapping';
+  const isSourceBlock =
+    nodeType === 'source' ||
+    nodeType === 'data' ||
+    nodeData.blockType === 'source' ||
+    nodeData.blockType === 'data';
+  const normalizeOutputConfig = useCallback((rawOutput: OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined) => {
     if (rawOutput && Array.isArray((rawOutput as OutputConfig).outputs)) {
       return rawOutput as OutputConfig;
     }
@@ -106,7 +169,27 @@ export const PropertiesPanel = ({
       };
     }
     return { outputs: [] };
-  }, [nodeData.output]);
+  }, []);
+
+  const outputConfig = useMemo<OutputConfig>(
+    () => normalizeOutputConfig(nodeData.output as OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined),
+    [nodeData.output, normalizeOutputConfig]
+  );
+
+  const buildOutputsFromFiles = useCallback((filesToCopy: File[]) => {
+    const nameCounts = new Map<string, number>();
+    return {
+      outputs: filesToCopy.map((file, index) => ({
+        id: `output-${Date.now()}-${file.id}-${index}`,
+        fileName: buildUniqueFilename(
+          file.original_filename || file.filename || `output-${index + 1}.xlsx`,
+          nameCounts
+        ),
+        sheets: [{ sheetName: 'Sheet 1' }],
+      })),
+    };
+  }, []);
+
 
   const sourceNodeFileIds = useMemo(() => {
     const ids = new Set<number>();
@@ -115,8 +198,62 @@ export const PropertiesPanel = ({
         n.data.fileIds.forEach((id: number) => ids.add(id));
       }
     });
-    return ids;
+    return Array.from(ids).sort((a, b) => a - b);
   }, [nodes]);
+
+  const sourceNodeTarget = useMemo(() => {
+    const sourceNode = nodes.find((candidate) => {
+      const blockType = candidate.data?.blockType || candidate.type;
+      return blockType === 'source' || blockType === 'data';
+    });
+    return normalizeTarget(sourceNode?.data?.target as TableTarget | undefined);
+  }, [nodes]);
+
+  const filesById = useMemo(() => {
+    return new Map(files.map((file) => [file.id, file]));
+  }, [files]);
+
+  const flowSourceTargets = useMemo(() => {
+    const operationNode = nodes.find((candidate) => {
+      const blockType = candidate.data?.blockType || candidate.type;
+      if (blockType === 'output' || blockType === 'source' || blockType === 'data') {
+        return false;
+      }
+      const targets = candidate.data?.sourceTargets;
+      return Array.isArray(targets) && targets.length > 0;
+    });
+    const targets = operationNode?.data?.sourceTargets;
+    if (!Array.isArray(targets)) {
+      return [];
+    }
+    return targets
+      .map((target) => normalizeTarget(target as TableTarget))
+      .filter((target) => target.fileId || target.virtualId);
+  }, [nodes]);
+
+  const sourceGroupFiles = useMemo(() => {
+    if (sourceNodeTarget.batchId) {
+      return files.filter((file) => file.batch_id === sourceNodeTarget.batchId);
+    }
+    const fileTargets = flowSourceTargets.filter((target) => target.fileId).map((target) => target.fileId as number);
+    if (fileTargets.length === 0) {
+      return [];
+    }
+    return fileTargets
+      .map((fileId) => filesById.get(fileId))
+      .filter((file): file is File => Boolean(file));
+  }, [files, filesById, flowSourceTargets, sourceNodeTarget.batchId]);
+
+  const sourceSingleFile = useMemo(() => {
+    if (sourceNodeTarget.fileId) {
+      return filesById.get(sourceNodeTarget.fileId) ?? null;
+    }
+    const singleTarget = flowSourceTargets.find((target) => target.fileId);
+    if (!singleTarget?.fileId) {
+      return null;
+    }
+    return filesById.get(singleTarget.fileId) ?? null;
+  }, [filesById, flowSourceTargets, sourceNodeTarget.fileId]);
 
   const resolvedTargetFile = useMemo(() => {
     if (!target.fileId) {
@@ -172,45 +309,6 @@ export const PropertiesPanel = ({
       return { outputId, sheetName };
     };
   }, []);
-  const activeDestinationFileOption = useMemo(() => {
-    if (!destination.virtualId) {
-      return outputFileOptions[0] ?? null;
-    }
-    const parsed = parseOutputVirtualId(destination.virtualId);
-    if (!parsed?.outputId) {
-      return outputFileOptions[0] ?? null;
-    }
-    return outputFileOptions.find((option) => option.outputId === parsed.outputId) ?? outputFileOptions[0] ?? null;
-  }, [destination.virtualId, outputFileOptions, parseOutputVirtualId]);
-  const destinationSheetOptions = useMemo(() => {
-    if (!activeDestinationFileOption) {
-      return [];
-    }
-    return (activeDestinationFileOption.sheets ?? []).map(
-      (sheet, index) => sheet.sheetName || `Sheet ${index + 1}`
-    );
-  }, [activeDestinationFileOption]);
-
-  const activeSourceOutputFileOption = useMemo(() => {
-    if (!target.virtualId) {
-      return outputFileOptions[0] ?? null;
-    }
-    const parsed = parseOutputVirtualId(target.virtualId);
-    if (!parsed?.outputId) {
-      return outputFileOptions[0] ?? null;
-    }
-    return outputFileOptions.find((option) => option.outputId === parsed.outputId) ?? outputFileOptions[0] ?? null;
-  }, [target.virtualId, outputFileOptions, parseOutputVirtualId]);
-
-  const sourceOutputSheetOptions = useMemo(() => {
-    if (!activeSourceOutputFileOption) {
-      return [];
-    }
-    return (activeSourceOutputFileOption.sheets ?? []).map(
-      (sheet, index) => sheet.sheetName || `Sheet ${index + 1}`
-    );
-  }, [activeSourceOutputFileOption]);
-
   const [columns, setColumns] = useState<string[]>([]);
   const [isLoadingColumns, setIsLoadingColumns] = useState(false);
 
@@ -276,16 +374,20 @@ export const PropertiesPanel = ({
       return;
     }
     setIsLoadingFiles(true);
+    setIsLoadingBatches(true);
     // Load files once when the panel opens so the target dropdown is ready.
     filesApi.list()
       .then((result) => {
-        // Sync the local files list with the files actually referenced in the flow
-        const filtered = result.filter((f) => sourceNodeFileIds.has(f.id));
-        setFiles(filtered);
+        // Keep the full file list so group selections can pull in new files.
+        setFiles(result);
       })
       .catch(() => setFiles([]))
       .finally(() => setIsLoadingFiles(false));
-  }, [selectedNodeId, sourceNodeFileIds]);
+    filesApi.listBatches()
+      .then((result) => setBatches(result))
+      .catch(() => setBatches([]))
+      .finally(() => setIsLoadingBatches(false));
+  }, [selectedNodeId, refreshKey]);
 
   useEffect(() => {
     return () => {
@@ -325,29 +427,99 @@ export const PropertiesPanel = ({
       .finally(() => setIsLoadingSheets(false));
   }, [target.fileId, sheetsByFileId]);
 
+  useEffect(() => {
+    const fileIds = sourceTargets
+      .map((entry) => entry.fileId)
+      .filter((fileId): fileId is number => typeof fileId === 'number');
+    fileIds.forEach((fileId) => {
+      if (sheetsByFileId[fileId]) {
+        return;
+      }
+      setIsLoadingSheets(true);
+      filesApi
+        .sheets(fileId)
+        .then((sheets) => {
+          setSheetsByFileId((prev) => ({ ...prev, [fileId]: sheets }));
+        })
+        .finally(() => setIsLoadingSheets(false));
+    });
+  }, [sourceTargets, sheetsByFileId]);
 
-  const updateTarget = useCallback((nextTarget: TableTarget) => {
+  const updateSourceTargets = useCallback((nextTargets: TableTarget[]) => {
     if (!node) return;
+    const normalized = nextTargets.map(normalizeTarget);
+    const primary = normalized[0] ?? emptyTarget;
     updateNode(node.id, {
       data: {
         ...nodeData,
-        target: nextTarget,
+        sourceTargets: normalized,
+        target: primary.fileId || primary.virtualId ? primary : emptyTarget,
       },
     });
-    if (nextTarget.fileId) {
-      onUpdateLastTarget(nextTarget);
+    if (primary.fileId && !primary.virtualId) {
+      onUpdateLastTarget(primary);
     }
   }, [node, nodeData, onUpdateLastTarget, updateNode]);
 
-  const updateDestination = useCallback((nextDestination: TableTarget) => {
+  useEffect(() => {
+    if (!node || sourceTargets.length === 0) return;
+
+    let changed = false;
+    const nextTargets: TableTarget[] = [];
+    
+    sourceTargets.forEach((target) => {
+      // If we have a batch ID but no file ID, it's a placeholder for a group.
+      if (typeof target.batchId === 'number' && !target.fileId) {
+        const groupFiles = files.filter((f) => f.batch_id === target.batchId);
+        if (groupFiles.length > 0) {
+          // Flatten the group into individual file targets.
+          changed = true;
+          groupFiles.forEach((file) => {
+            nextTargets.push({
+              fileId: file.id,
+              sheetName: null,
+              batchId: target.batchId,
+              virtualId: null,
+              virtualName: null,
+            });
+          });
+        } else {
+          nextTargets.push(target);
+        }
+      } else {
+        nextTargets.push(target);
+      }
+    });
+
+    if (changed) {
+      updateSourceTargets(nextTargets);
+    }
+  }, [files, sourceTargets, updateSourceTargets, node]);
+
+  const updateDestinationTargets = useCallback((nextTargets: TableTarget[]) => {
     if (!node) return;
+    const normalized = nextTargets.map(normalizeTarget);
+    const primary = normalized[0] ?? emptyTarget;
     updateNode(node.id, {
       data: {
         ...nodeData,
-        destination: nextDestination,
+        destinationTargets: normalized,
+        destination: primary.fileId || primary.virtualId ? primary : emptyTarget,
       },
     });
   }, [node, nodeData, updateNode]);
+
+  const buildOutputTarget = useCallback(
+    (fileOption: { outputId: string; label: string }, sheetName: string): TableTarget => ({
+      fileId: null,
+      sheetName,
+      virtualId: `output:${fileOption.outputId}:${sheetName}`,
+      virtualName: `${fileOption.label} / ${sheetName}`,
+    }),
+    []
+  );
+
+
 
   const updateOutputConfig = useCallback((nextConfig: OutputConfig) => {
     if (!node) return;
@@ -358,6 +530,60 @@ export const PropertiesPanel = ({
       },
     });
   }, [node, nodeData, updateNode]);
+
+  const updateOutputBatchId = useCallback((nextBatchId: number | null) => {
+    if (!node) return;
+    updateNode(node.id, {
+      data: {
+        ...nodeData,
+        outputBatchId: nextBatchId,
+      },
+    });
+  }, [node, nodeData, updateNode]);
+
+  const handleCopyGroupToOutput = useCallback(() => {
+    if (!node || !isOutputNode) {
+      return;
+    }
+    if (sourceGroupFiles.length === 0) {
+      return;
+    }
+    updateNode(node.id, {
+      data: {
+        ...nodeData,
+        output: buildOutputsFromFiles(sourceGroupFiles),
+      },
+    });
+  }, [
+    buildOutputsFromFiles,
+    isOutputNode,
+    node,
+    nodeData,
+    sourceGroupFiles,
+    updateNode,
+  ]);
+
+  const handleCopySingleToOutput = useCallback(() => {
+    if (!node || !isOutputNode) {
+      return;
+    }
+    if (!sourceSingleFile) {
+      return;
+    }
+    updateNode(node.id, {
+      data: {
+        ...nodeData,
+        output: buildOutputsFromFiles([sourceSingleFile]),
+      },
+    });
+  }, [
+    buildOutputsFromFiles,
+    isOutputNode,
+    node,
+    nodeData,
+    sourceSingleFile,
+    updateNode,
+  ]);
 
   const triggerPrecompute = useCallback(() => {
     const flowData = getFlowData();
@@ -460,33 +686,26 @@ export const PropertiesPanel = ({
     if (isOutputNode) {
       return;
     }
-    if (!destination.virtualId && destination.fileId === null && destination.sheetName === null) {
+    if (destinationTargets.length === 0) {
       return;
     }
-    if (!outputFileOptions.find((option) => option.outputId === parseOutputVirtualId(destination.virtualId)?.outputId)) {
-      updateDestination({ fileId: null, sheetName: null, virtualId: null, virtualName: null });
-    }
-  }, [destination.fileId, destination.sheetName, destination.virtualId, isOutputNode, outputFileOptions, parseOutputVirtualId, updateDestination]);
-
-  useEffect(() => {
-    if (isOutputNode) {
-      return;
-    }
-    if (destination.virtualId || destination.fileId || destination.sheetName) {
-      return;
-    }
-    const firstOutput = outputFileOptions[0];
-    if (!firstOutput) {
-      return;
-    }
-    const sheetName = firstOutput.sheets?.[0]?.sheetName || 'Sheet 1';
-    updateDestination({
-      fileId: null,
-      sheetName,
-      virtualId: `output:${firstOutput.outputId}:${sheetName}`,
-      virtualName: `${firstOutput.label} / ${sheetName}`,
+    const validTargets = destinationTargets.filter((destTarget) => {
+      const parsed = parseOutputVirtualId(destTarget.virtualId);
+      if (!parsed?.outputId) {
+        return false;
+      }
+      return outputFileOptions.some((option) => option.outputId === parsed.outputId);
     });
-  }, [destination.fileId, destination.sheetName, destination.virtualId, isOutputNode, outputFileOptions, updateDestination]);
+    if (validTargets.length !== destinationTargets.length) {
+      updateDestinationTargets(validTargets);
+    }
+  }, [
+    destinationTargets,
+    isOutputNode,
+    outputFileOptions,
+    parseOutputVirtualId,
+    updateDestinationTargets,
+  ]);
 
   const sourceMode = useMemo(() => {
     if (target.virtualId) {
@@ -527,231 +746,415 @@ export const PropertiesPanel = ({
         </div>
 
         <div className="space-y-5">
-          {!isOutputNode && nodeType !== 'source' && (
+          {!isOutputNode && nodeType !== 'source' && !isMappingNode && (
             <>
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Source</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Sources</h3>
                 <div className="space-y-3">
-                  <div>
-                  <label htmlFor={formIds.sourceType} className="block text-xs font-medium text-gray-500 mb-1">Source type</label>
-                  <select
-                    id={formIds.sourceType}
-                    value={sourceMode}
-                    onChange={(event) => {
-                      const nextMode = event.target.value;
-                      if (nextMode === 'output') {
-                        const fileOption = outputFileOptions[0];
-                        if (!fileOption) {
-                          updateTarget({ fileId: null, sheetName: null, virtualId: null, virtualName: null });
-                            return;
-                          }
-                          const sheetName = fileOption.sheets[0]?.sheetName || 'Sheet 1';
-                          updateTarget({
-                            fileId: null,
-                            sheetName,
-                            virtualId: `output:${fileOption.outputId}:${sheetName}`,
-                            virtualName: `${fileOption.label} / ${sheetName}`,
-                          });
-                          return;
-                        }
-                        const fallback = lastTarget.fileId ? lastTarget : { fileId: null, sheetName: null };
-                        updateTarget({
-                          fileId: fallback.fileId,
-                          sheetName: fallback.sheetName,
-                          virtualId: null,
-                          virtualName: null,
-                        });
-                    }}
-                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                  {sourceTargets.length === 0 && (
+                    <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                      No sources yet. Add one or more sources to run this operation.
+                    </div>
+                  )}
+                  {sourceTargets.map((sourceTarget, index) => {
+                    const isOutputSource = Boolean(sourceTarget.virtualId);
+                    const parsedOutput = parseOutputVirtualId(sourceTarget.virtualId);
+                    const activeOutputOption = parsedOutput
+                      ? outputFileOptions.find((option) => option.outputId === parsedOutput.outputId) ?? outputFileOptions[0] ?? null
+                      : outputFileOptions[0] ?? null;
+                    const outputSheets = activeOutputOption?.sheets?.map((sheet) => sheet.sheetName || 'Sheet 1') ?? [];
+                    const sheetOptionsForSource = sourceTarget.fileId ? (sheetsByFileId[sourceTarget.fileId] ?? []) : [];
+                    const hasSourceSheets = sheetOptionsForSource.length > 0;
+                    const selectedBatchId =
+                      sourceTarget.batchId ??
+                      (sourceTarget.fileId ? filesById.get(sourceTarget.fileId)?.batch_id ?? null : null);
+                    const batchOptions = batches.filter((batch) =>
+                      files.some((file) => file.batch_id === batch.id)
+                    );
+                    const hasIndividualFiles = files.some((file) => !file.batch_id);
+                    const availableFiles = selectedBatchId
+                      ? files.filter((file) => file.batch_id === selectedBatchId)
+                      : files.filter((file) => !file.batch_id);
+                    return (
+                      <div key={`source-${index}`} className="rounded-md border border-gray-200 bg-white p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs font-medium text-gray-500">Source {index + 1}</div>
+                          {sourceTargets.length > 1 && (
+                            <button
+                              type="button"
+                              className="text-xs text-red-600 hover:text-red-700"
+                              onClick={() => {
+                                const nextTargets = sourceTargets.filter((_, targetIndex) => targetIndex !== index);
+                                updateSourceTargets(nextTargets);
+                              }}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">Source type</label>
+                          <select
+                            value={isOutputSource ? 'output' : 'original'}
+                            onChange={(event) => {
+                              const nextTargets = [...sourceTargets];
+                              if (event.target.value === 'output') {
+                                if (!activeOutputOption) {
+                                  nextTargets[index] = emptyTarget;
+                                } else {
+                                  const sheetName = outputSheets[0] || 'Sheet 1';
+                                  nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
+                                }
+                              } else {
+                                nextTargets[index] = emptyTarget;
+                              }
+                              updateSourceTargets(nextTargets);
+                            }}
+                            className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                          >
+                            <option value="original">Original file</option>
+                            <option value="output">Output sheet</option>
+                          </select>
+                        </div>
+                        {isOutputSource ? (
+                          <>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
+                              <select
+                                value={activeOutputOption?.id ?? ''}
+                                onChange={(event) => {
+                                  const fileOption = outputFileOptionById.get(Number(event.target.value));
+                                  if (!fileOption) {
+                                    return;
+                                  }
+                                  const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
+                                  const nextTargets = [...sourceTargets];
+                                  nextTargets[index] = buildOutputTarget(fileOption, sheetName);
+                                  updateSourceTargets(nextTargets);
+                                }}
+                                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                                disabled={outputFileOptions.length === 0}
+                              >
+                                <option value="">Select output file</option>
+                                {outputFileOptions.map((option) => (
+                                  <option key={option.outputId} value={String(option.id)}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">Output sheet</label>
+                              <select
+                                value={sourceTarget.sheetName ?? ''}
+                                onChange={(event) => {
+                                  if (!activeOutputOption) {
+                                    return;
+                                  }
+                                  const sheetName = event.target.value;
+                                  const nextTargets = [...sourceTargets];
+                                  nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
+                                  updateSourceTargets(nextTargets);
+                                }}
+                                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                                disabled={outputSheets.length === 0}
+                              >
+                                {outputSheets.length === 0 ? (
+                                  <option value="">No output sheets</option>
+                                ) : (
+                                  outputSheets.map((sheetName) => (
+                                    <option key={sheetName} value={sheetName}>
+                                      {sheetName}
+                                    </option>
+                                  ))
+                                )}
+                              </select>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">File group</label>
+                              <select
+                                value={selectedBatchId ? String(selectedBatchId) : ''}
+                                onChange={(event) => {
+                                  const nextBatchId = event.target.value ? Number(event.target.value) : null;
+                                  if (nextBatchId) {
+                                    const groupFiles = files.filter((file) => file.batch_id === nextBatchId);
+                                    const groupTargets = groupFiles.map((file) => ({
+                                      fileId: file.id,
+                                      sheetName: null,
+                                      batchId: nextBatchId,
+                                      virtualId: null,
+                                      virtualName: null,
+                                    }));
+                                    
+                                    const nextSourceTargets = [...sourceTargets];
+                                    if (groupTargets.length > 0) {
+                                      nextSourceTargets.splice(index, 1, ...groupTargets);
+                                    } else {
+                                      nextSourceTargets[index] = {
+                                        ...sourceTarget,
+                                        batchId: nextBatchId,
+                                        fileId: null,
+                                        sheetName: null,
+                                        virtualId: null,
+                                        virtualName: null,
+                                      };
+                                    }
+                                    
+                                    // Calculate new destination targets if we have a valid output node
+                                    let nextDestinationTargets = nodeData.destinationTargets?.map(normalizeTarget) || [];
+                                    const outputNode = nodes.find((candidate) => {
+                                      const blockType = candidate.data?.blockType || candidate.type;
+                                      return blockType === 'output';
+                                    });
+
+                                    if (outputNode && groupFiles.length > 0) {
+                                      const outputConfigForGroup = buildOutputsFromFiles(groupFiles);
+                                      // Update the external Output Node
+                                      updateNode(outputNode.id, {
+                                        data: {
+                                          ...outputNode.data,
+                                          output: outputConfigForGroup,
+                                        },
+                                      });
+                                      // Generate corresponding destinations for this node
+                                      const destinationTargetsForGroup = outputConfigForGroup.outputs.map((outputFile) =>
+                                        buildOutputTarget(
+                                          { outputId: outputFile.id, label: outputFile.fileName || 'output.xlsx' },
+                                          outputFile.sheets[0]?.sheetName || 'Sheet 1'
+                                        )
+                                      );
+                                      nextDestinationTargets = destinationTargetsForGroup.map(normalizeTarget);
+                                    }
+
+                                    // Perform a SINGLE update for the current node to avoid race conditions
+                                    const normalizedSources = nextSourceTargets.map(normalizeTarget);
+                                    const primarySource = normalizedSources[0] ?? emptyTarget;
+                                    const primaryDest = nextDestinationTargets[0] ?? emptyTarget;
+
+                                    updateNode(node.id, {
+                                      data: {
+                                        ...nodeData,
+                                        sourceTargets: normalizedSources,
+                                        target: primarySource.fileId || primarySource.virtualId ? primarySource : emptyTarget,
+                                        destinationTargets: nextDestinationTargets,
+                                        destination: primaryDest.fileId || primaryDest.virtualId ? primaryDest : emptyTarget,
+                                      },
+                                    });
+                                    
+                                    if (primarySource.fileId && !primarySource.virtualId) {
+                                      onUpdateLastTarget(primarySource);
+                                    }
+                                    return;
+                                  }
+
+                                  const nextTargets = [...sourceTargets];
+                                  nextTargets[index] = {
+                                    ...sourceTarget,
+                                    batchId: null,
+                                    fileId: null,
+                                    sheetName: null,
+                                    virtualId: null,
+                                    virtualName: null,
+                                  };
+                                  updateSourceTargets(nextTargets);
+                                }}
+                                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                                disabled={batchOptions.length === 0 && !hasIndividualFiles}
+                              >
+                                <option value="">Single files</option>
+                                {batchOptions.map((batch) => (
+                                  <option key={batch.id} value={String(batch.id)}>
+                                    {batch.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                              <>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">File</label>
+                                  <select
+                                    value={sourceTarget.fileId ? String(sourceTarget.fileId) : ''}
+                                    onChange={(event) => {
+                                      const nextFileId = event.target.value ? Number(event.target.value) : null;
+                                      const nextTargets = [...sourceTargets];
+                                      nextTargets[index] = {
+                                        ...sourceTarget,
+                                        batchId: selectedBatchId,
+                                        fileId: nextFileId,
+                                        sheetName: null,
+                                        virtualId: null,
+                                        virtualName: null,
+                                      };
+                                      updateSourceTargets(nextTargets);
+                                    }}
+                                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                                    disabled={isLoadingFiles}
+                                  >
+                                    <option value="">
+                                      {isLoadingFiles
+                                        ? 'Loading files...'
+                                        : availableFiles.length === 0
+                                          ? 'No files in this group'
+                                          : 'Select a file'}
+                                    </option>
+                                    {availableFiles.map((file) => (
+                                      <option key={file.id} value={String(file.id)}>
+                                        {file.original_filename}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-500 mb-1">Sheet</label>
+                                  <select
+                                    value={toSheetValue(sourceTarget.sheetName)}
+                                    onChange={(event) => {
+                                      const nextTargets = [...sourceTargets];
+                                      nextTargets[index] = {
+                                        ...sourceTarget,
+                                        sheetName: fromSheetValue(event.target.value),
+                                        virtualId: null,
+                                        virtualName: null,
+                                      };
+                                      updateSourceTargets(nextTargets);
+                                    }}
+                                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                                    disabled={!sourceTarget.fileId || isLoadingSheets}
+                                  >
+                                    {!hasSourceSheets && (
+                                      <option value={SINGLE_SHEET_VALUE}>
+                                        {isLoadingSheets ? 'Loading sheets...' : 'CSV (single sheet)'}
+                                      </option>
+                                    )}
+                                    {hasSourceSheets && (
+                                      <option value={SINGLE_SHEET_VALUE} disabled>
+                                        Select a sheet
+                                      </option>
+                                    )}
+                                    {sheetOptionsForSource.map((sheet) => (
+                                      <option key={sheet} value={sheet}>
+                                        {sheet}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => updateSourceTargets([...sourceTargets, emptyTarget])}
+                    className="w-full rounded-md border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
                   >
-                    <option value="original">Original file</option>
-                    <option value="output">Output sheet</option>
-                  </select>
-                </div>
-                  {sourceMode === 'output' && (
-                    <>
-                      <div>
-                        <label htmlFor={formIds.sourceOutputFile} className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
-                        <select
-                          id={formIds.sourceOutputFile}
-                          value={activeSourceOutputFileOption?.id ?? ''}
-                          onChange={(event) => {
-                            const fileOption = outputFileOptionById.get(Number(event.target.value));
-                            if (!fileOption) {
-                              return;
-                            }
-                            const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
-                            updateTarget({
-                              fileId: null,
-                              sheetName,
-                              virtualId: `output:${fileOption.outputId}:${sheetName}`,
-                              virtualName: `${fileOption.label} / ${sheetName}`,
-                            });
-                          }}
-                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                          disabled={outputFileOptions.length === 0}
-                        >
-                          <option value="">Select output file</option>
-                          {outputFileOptions.map((option) => (
-                            <option key={option.outputId} value={String(option.id)}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor={formIds.sourceOutputSheet} className="block text-xs font-medium text-gray-500 mb-1">Output sheet</label>
-                        <select
-                          id={formIds.sourceOutputSheet}
-                          value={target.sheetName ?? ''}
-                          onChange={(event) => {
-                            if (!activeSourceOutputFileOption) {
-                              return;
-                            }
-                            const sheetName = event.target.value;
-                            updateTarget({
-                              fileId: null,
-                              sheetName,
-                              virtualId: `output:${activeSourceOutputFileOption.outputId}:${sheetName}`,
-                              virtualName: `${activeSourceOutputFileOption.label} / ${sheetName}`,
-                            });
-                          }}
-                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                          disabled={sourceOutputSheetOptions.length === 0}
-                        >
-                          {sourceOutputSheetOptions.length === 0 ? (
-                            <option value="">No output sheets</option>
-                          ) : (
-                            sourceOutputSheetOptions.map((sheetName) => (
-                              <option key={sheetName} value={sheetName}>
-                                {sheetName}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-                    </>
-                  )}
-                  {sourceMode === 'original' && (
-                    <>
-                      <div>
-                        <label htmlFor={formIds.file} className="block text-xs font-medium text-gray-500 mb-1">File</label>
-                        <select
-                          id={formIds.file}
-                          value={target.fileId ? String(target.fileId) : ''}
-                          onChange={(event) => {
-                            const nextFileId = event.target.value ? Number(event.target.value) : null;
-                            updateTarget({ fileId: nextFileId, sheetName: null });
-                          }}
-                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                          disabled={isLoadingFiles}
-                        >
-                          <option value="">{isLoadingFiles ? 'Loading files...' : 'Select a file'}</option>
-                          {files.map((file) => (
-                            <option key={file.id} value={String(file.id)}>
-                              {file.original_filename}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor={formIds.sheet} className="block text-xs font-medium text-gray-500 mb-1">Sheet</label>
-                        <select
-                          id={formIds.sheet}
-                          value={toSheetValue(target.sheetName)}
-                          onChange={(event) => {
-                            updateTarget({
-                              fileId: target.fileId,
-                              sheetName: fromSheetValue(event.target.value),
-                            });
-                          }}
-                          className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                          disabled={!target.fileId || isLoadingSheets}
-                        >
-                          {!hasSheetList && (
-                            <option value={SINGLE_SHEET_VALUE}>
-                              {isLoadingSheets ? 'Loading sheets...' : 'CSV (single sheet)'}
-                            </option>
-                          )}
-                          {hasSheetList && (
-                            <option value={SINGLE_SHEET_VALUE} disabled>
-                              Select a sheet
-                            </option>
-                          )}
-                          {sheetOptions
-                            .filter((sheet) => sheet !== SINGLE_SHEET_VALUE)
-                            .map((sheet) => (
-                              <option key={sheet} value={sheet}>
-                                {sheet}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
+                    Add source
+                  </button>
                 </div>
               </div>
+
               <div>
-                <h3 className="text-sm font-semibold text-gray-900 mb-3">Destination</h3>
-                {outputFileOptions.length === 0 ? (
+                <h3 className="text-sm font-semibold text-gray-900 mb-3">Destinations</h3>
+                {outputFileOptions.length === 0 && (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                    Add output files in the Output block to set a destination.
+                    Add output files in the Output block to set destinations.
                   </div>
-                ) : (
+                )}
+                {outputFileOptions.length > 0 && (
                   <div className="space-y-3">
-                    <div>
-                      <label htmlFor={formIds.destinationOutputFile} className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
-                      <select
-                        id={formIds.destinationOutputFile}
-                        value={activeDestinationFileOption?.id ?? ''}
-                        onChange={(event) => {
-                          const fileOption = outputFileOptionById.get(Number(event.target.value));
-                          if (!fileOption) {
-                            return;
-                          }
-                          const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
-                          updateDestination({
-                            fileId: null,
-                            sheetName,
-                            virtualId: `output:${fileOption.outputId}:${sheetName}`,
-                            virtualName: `${fileOption.label} / ${sheetName}`,
-                          });
-                        }}
-                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                      >
-                        {outputFileOptions.map((option) => (
-                          <option key={option.outputId} value={String(option.id)}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label htmlFor={formIds.destinationOutputSheet} className="block text-xs font-medium text-gray-500 mb-1">Output sheet</label>
-                      <select
-                        id={formIds.destinationOutputSheet}
-                        value={destination.sheetName ?? ''}
-                        onChange={(event) => {
-                          if (!activeDestinationFileOption) {
-                            return;
-                          }
-                          const sheetName = event.target.value;
-                          updateDestination({
-                            fileId: null,
-                            sheetName,
-                            virtualId: `output:${activeDestinationFileOption.outputId}:${sheetName}`,
-                            virtualName: `${activeDestinationFileOption.label} / ${sheetName}`,
-                          });
-                        }}
-                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                      >
-                        {destinationSheetOptions.map((sheetName) => (
-                          <option key={sheetName} value={sheetName}>
-                            {sheetName}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {destinationTargets.length === 0 && (
+                      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                        No destinations yet. Add one or more output sheets.
+                      </div>
+                    )}
+                    {destinationTargets.map((destTarget, index) => {
+                      const parsedOutput = parseOutputVirtualId(destTarget.virtualId);
+                      const activeOutputOption = parsedOutput
+                        ? outputFileOptions.find((option) => option.outputId === parsedOutput.outputId) ?? outputFileOptions[0] ?? null
+                        : outputFileOptions[0] ?? null;
+                      const outputSheets = activeOutputOption?.sheets?.map((sheet) => sheet.sheetName || 'Sheet 1') ?? [];
+                      return (
+                        <div key={`destination-${index}`} className="rounded-md border border-gray-200 bg-white p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-xs font-medium text-gray-500">Destination {index + 1}</div>
+                            {destinationTargets.length > 1 && (
+                              <button
+                                type="button"
+                                className="text-xs text-red-600 hover:text-red-700"
+                                onClick={() => {
+                                  const nextTargets = destinationTargets.filter((_, targetIndex) => targetIndex !== index);
+                                  updateDestinationTargets(nextTargets);
+                                }}
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
+                            <select
+                              value={activeOutputOption?.id ?? ''}
+                              onChange={(event) => {
+                                const fileOption = outputFileOptionById.get(Number(event.target.value));
+                                if (!fileOption) {
+                                  return;
+                                }
+                                const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
+                                const nextTargets = [...destinationTargets];
+                                nextTargets[index] = buildOutputTarget(fileOption, sheetName);
+                                updateDestinationTargets(nextTargets);
+                              }}
+                              className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                            >
+                              <option value="">Select output file</option>
+                              {outputFileOptions.map((option) => (
+                                <option key={option.outputId} value={String(option.id)}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-500 mb-1">Output sheet</label>
+                            <select
+                              value={destTarget.sheetName ?? ''}
+                              onChange={(event) => {
+                                if (!activeOutputOption) {
+                                  return;
+                                }
+                                const sheetName = event.target.value;
+                                const nextTargets = [...destinationTargets];
+                                nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
+                                updateDestinationTargets(nextTargets);
+                              }}
+                              className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                              disabled={outputSheets.length === 0}
+                            >
+                              {outputSheets.length === 0 ? (
+                                <option value="">No output sheets</option>
+                              ) : (
+                                outputSheets.map((sheetName) => (
+                                  <option key={sheetName} value={sheetName}>
+                                    {sheetName}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => updateDestinationTargets([...destinationTargets, emptyTarget])}
+                      className="w-full rounded-md border border-dashed border-gray-300 px-3 py-2 text-sm text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+                    >
+                      Add destination
+                    </button>
                   </div>
                 )}
               </div>
@@ -1255,6 +1658,54 @@ export const PropertiesPanel = ({
             <div>
               <h3 className="text-sm font-semibold text-gray-900 mb-3">Output</h3>
               <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Output group</label>
+                  <select
+                    value={outputBatchId ? String(outputBatchId) : ''}
+                    onChange={(event) => {
+                      const nextBatchId = event.target.value ? Number(event.target.value) : null;
+                      updateOutputBatchId(nextBatchId);
+                    }}
+                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                    disabled={isLoadingBatches}
+                  >
+                    <option value="">
+                      {isLoadingBatches ? 'Loading groups...' : 'Select group (optional)'}
+                    </option>
+                    {batches.map((batch) => (
+                      <option key={batch.id} value={String(batch.id)}>
+                        {batch.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500">
+                    Exports saved to a group are numbered automatically if names conflict.
+                  </p>
+                </div>
+                <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-3 space-y-2">
+                  <div className="text-xs font-medium text-gray-500">Copy sources to outputs</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleCopyGroupToOutput}
+                      disabled={sourceGroupFiles.length === 0}
+                      className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-300"
+                    >
+                      Copy selected group ({sourceGroupFiles.length || 0})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCopySingleToOutput}
+                      disabled={!sourceSingleFile}
+                      className="rounded-md border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-300"
+                    >
+                      Copy selected file
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Select a file group or file in the source preview or operation sources to enable these actions.
+                  </p>
+                </div>
                 <div className="space-y-3">
                   {outputConfig.outputs.length === 0 && (
                     <div className="rounded-md border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
@@ -1333,16 +1784,18 @@ export const PropertiesPanel = ({
             </div>
           )}
 
-          {nodeType === 'source' && (
-            <div className="mt-2">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Files</h3>
-              {nodeData.fileIds && Array.isArray(nodeData.fileIds) && nodeData.fileIds.length > 0 ? (
-                <div className="text-sm text-gray-600">
-                  {nodeData.fileIds.length} file(s) attached
-                </div>
-              ) : (
-                <div className="text-sm text-gray-400">No files attached</div>
-              )}
+          {isSourceBlock && (
+            <div className="mt-2 space-y-4">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Files</h3>
+                {nodeData.fileIds && Array.isArray(nodeData.fileIds) && nodeData.fileIds.length > 0 ? (
+                  <div className="text-sm text-gray-600">
+                    {nodeData.fileIds.length} file(s) attached
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">No files attached</div>
+                )}
+              </div>
             </div>
           )}
         </div>

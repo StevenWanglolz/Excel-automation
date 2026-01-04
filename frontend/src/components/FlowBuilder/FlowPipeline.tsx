@@ -30,7 +30,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import type { File, FilePreview, OutputConfig, OutputSheetMapping, TableTarget } from '../../types';
+import type { Batch, File, FilePreview, OutputConfig, OutputSheetMapping, TableTarget } from '../../types';
 import { DataPreview } from '../Preview/DataPreview';
 import { PipelineNodeCard } from './PipelineNodeCard';
 import { SortableNode } from './SortableNode';
@@ -43,6 +43,7 @@ interface FlowPipelineProps {
   viewAction: { type: 'fit' | 'reset'; id: number } | null;
   isInteractionDisabled: boolean;
   previewFiles: File[];
+  previewBatches: Batch[];
   previewSheetsByFileId: Record<number, string[]>;
   sourceFileId: number | null;
   sourceFileIds: number[];
@@ -51,17 +52,19 @@ interface FlowPipelineProps {
   previews: Record<string, FilePreview | null>;
   previewLoading: Record<string, boolean>;
   previewErrors: Record<string, string | null>;
-  onNodeClick: (nodeId: string, nodeType: string) => void;
+  onNodeClick: (nodeId: string) => void;
   onAddOperation: (afterNodeId: string) => void;
   onDeleteNode: (nodeId: string) => void;
   onReorderNodes: (nextNodes: Node[]) => void;
   onSourceSheetChange: (sheetName: string) => void;
-  onSourceFileChange: (fileId: number) => void;
+  onSourceFileChange: (fileId: number, batchId?: number | null) => void;
+  onSourceBatchChange: (batchId: number | null) => void;
   onPreviewFileChange: (nodeId: string, fileId: number) => void;
   onPreviewSheetChange: (nodeId: string, sheetName: string) => void;
   onPreviewTargetChange: (nodeId: string, target: TableTarget) => void;
   onTogglePreview: (nodeId: string) => void;
   onApplyPreviewTarget: (nodeId: string, targetOverride?: TableTarget) => void;
+  onUpload: (nodeId: string) => void;
   onExport: () => void;
 }
 
@@ -133,6 +136,7 @@ export const FlowPipeline = ({
   viewAction,
   isInteractionDisabled,
   previewFiles,
+  previewBatches,
   previewSheetsByFileId,
   sourceFileId,
   sourceFileIds,
@@ -147,11 +151,13 @@ export const FlowPipeline = ({
   onReorderNodes,
   onSourceSheetChange,
   onSourceFileChange,
+  onSourceBatchChange,
   onPreviewFileChange,
   onPreviewSheetChange,
   onPreviewTargetChange,
   onTogglePreview,
   onApplyPreviewTarget,
+  onUpload,
   onExport,
 }: FlowPipelineProps) => {
   // Canvas scale/pan are owned here so the pipeline can zoom independently of the app shell.
@@ -345,13 +351,38 @@ export const FlowPipeline = ({
         nodeTarget?.fileId ||
         nodeTarget?.virtualId)
   );
-  const isMissingSourceForPreview = isSourcePreview && sourceFileIds.length === 0;
+  const sourceBatchId = nodeTarget?.batchId ?? null;
+  const filteredSourceFileIds = useMemo(() => {
+    const hasBatchFiles = previewFiles.some((file) => file.batch_id);
+    const hasIndividualFiles = previewFiles.some((file) => !file.batch_id);
+
+    if (sourceBatchId === null && hasBatchFiles && hasIndividualFiles) {
+      const validIds = new Set(
+        previewFiles
+          .filter((file) => !file.batch_id)
+          .map((file) => file.id)
+      );
+      return sourceFileIds.filter((fileId) => validIds.has(fileId));
+    }
+
+    if (sourceBatchId === null) {
+      return sourceFileIds;
+    }
+
+    const validIds = new Set(
+      previewFiles
+        .filter((file) => file.batch_id === sourceBatchId)
+        .map((file) => file.id)
+    );
+    return sourceFileIds.filter((fileId) => validIds.has(fileId));
+  }, [previewFiles, sourceBatchId, sourceFileIds]);
+  const isMissingSourceForPreview = isSourcePreview && !sourceFileId;
   const activePreviewFileId = useMemo(() => {
     if (!activePreviewNode) {
       return null;
     }
     if (isSourcePreview) {
-      return sourceFileId ?? sourceFileIds[0] ?? null;
+      return sourceFileId ?? null;
     }
     if (isOutputSheetPreview) {
       return null;
@@ -365,10 +396,29 @@ export const FlowPipeline = ({
     nodeDestination?.fileId,
     previewOverride?.fileId,
     sourceFileId,
+    filteredSourceFileIds,
   ]);
   const previewSheetOptions = activePreviewFileId
     ? previewSheetsByFileId[activePreviewFileId]
     : undefined;
+
+  const previewBatchOptions = useMemo(() => {
+    if (!isSourcePreview) {
+      return [];
+    }
+    const batchesWithFiles = previewBatches.filter((batch) =>
+      previewFiles.some((file) => file.batch_id === batch.id)
+    );
+    const options = batchesWithFiles.map((batch) => ({
+      id: batch.id,
+      label: batch.name,
+    }));
+    const hasIndividualFiles = previewFiles.some((file) => !file.batch_id);
+    if (hasIndividualFiles) {
+      options.unshift({ id: null, label: 'Single files' });
+    }
+    return options;
+  }, [isSourcePreview, previewBatches, previewFiles]);
 
   const previewFileOptions = useMemo(() => {
     if (!activePreviewNode) {
@@ -377,7 +427,7 @@ export const FlowPipeline = ({
     if (isOutputSheetPreview) {
       return outputFileOptions;
     }
-    const fileIds = isSourcePreview ? sourceFileIds : previewFiles.map((file) => file.id);
+    const fileIds = isSourcePreview ? filteredSourceFileIds : previewFiles.map((file) => file.id);
     if (fileIds.length === 0) {
       return [];
     }
@@ -386,7 +436,7 @@ export const FlowPipeline = ({
       id,
       label: filesById.get(id)?.original_filename ?? `File ${id}`,
     }));
-  }, [activePreviewNode, isOutputSheetPreview, isSourcePreview, outputFileOptions, previewFiles, sourceFileIds]);
+  }, [activePreviewNode, filteredSourceFileIds, isOutputSheetPreview, isSourcePreview, outputFileOptions, previewFiles]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -574,6 +624,9 @@ export const FlowPipeline = ({
                 isSelected={selectedNodeId === pinnedNode.id}
                 isPreviewOpen={activePreviewNodeIds.has(pinnedNode.id)}
                 canPreview={true}
+                canUpload={true}
+                uploadLabel="Upload"
+                uploadCount={Array.isArray(pinnedNode.data?.fileIds) ? pinnedNode.data.fileIds.length : 0}
                 configSummary={[
                   formatTarget(pinnedNode.data?.target as TableTarget | undefined),
                   getConfigSummary(pinnedNode.data?.config as Record<string, unknown> | undefined),
@@ -585,6 +638,7 @@ export const FlowPipeline = ({
                 onAddOperation={onAddOperation}
                 onDeleteNode={onDeleteNode}
                 onTogglePreview={onTogglePreview}
+                onUpload={onUpload}
                 onExport={onExport}
               />
             )}
@@ -592,6 +646,7 @@ export const FlowPipeline = ({
             <SortableContext items={sortableNodes.map((node) => node.id)} strategy={verticalListSortingStrategy}>
               {sortableNodes.map((node) => {
                 const isFileSource = fileSourceNodeId === node.id || node.type === 'source';
+                const isMappingNode = node.data?.blockType === 'mapping' || node.type === 'mapping';
                 const configSummary = [
                   formatTarget(node.data?.target as TableTarget | undefined),
                   getConfigSummary(node.data?.config as Record<string, unknown> | undefined),
@@ -601,7 +656,8 @@ export const FlowPipeline = ({
                   .join(' • ');
                 const isSelected = selectedNodeId === node.id;
                 const isPreviewOpen = activePreviewNodeIds.has(node.id);
-                const canPreview = true;
+                const canPreview = !isMappingNode;
+                const uploadCount = Array.isArray(node.data?.fileIds) ? node.data.fileIds.length : 0;
 
                 return (
                   <SortableNode
@@ -613,11 +669,16 @@ export const FlowPipeline = ({
                     isSelected={isSelected}
                     isPreviewOpen={isPreviewOpen}
                     canPreview={canPreview}
+                    canUpload={isMappingNode}
+                    uploadLabel="Upload mappings"
+                    uploadHint="Click to upload mapping files"
+                    uploadCount={uploadCount}
                     configSummary={configSummary}
                     onNodeClick={onNodeClick}
                     onAddOperation={onAddOperation}
                     onDeleteNode={onDeleteNode}
                     onTogglePreview={onTogglePreview}
+                    onUpload={onUpload}
                     onExport={onExport}
                   />
                 );
@@ -762,7 +823,7 @@ export const FlowPipeline = ({
                   fileOptions={previewFileOptions}
                   currentFileId={
                     isSourcePreview
-                      ? sourceFileId ?? sourceFileIds[0] ?? null
+                      ? sourceFileId ?? null
                       : isOutputSheetPreview
                         ? activeOutputFileOption?.id ?? null
                         : previewOverride?.fileId ??
@@ -796,13 +857,21 @@ export const FlowPipeline = ({
                             virtualName: `${fileOption.label} / ${nextSheet}`,
                           });
                         }
-                      : (fileId) => {
+                        : (fileId) => {
                           if (isSourcePreview) {
-                            onSourceFileChange(fileId);
+                            const selectedFile = previewFiles.find((file) => file.id === fileId);
+                            onSourceFileChange(fileId, selectedFile?.batch_id ?? null);
                             return;
                           }
                           onPreviewFileChange(activePreviewNode.id, fileId);
                         }
+                  }
+                  onBatchChange={
+                    isSourcePreview
+                      ? (batchId) => {
+                          onSourceBatchChange(batchId);
+                        }
+                      : undefined
                   }
                   onSheetChange={
                     isOutputSheetPreview
@@ -821,6 +890,9 @@ export const FlowPipeline = ({
                         ? onSourceSheetChange
                         : (sheetName) => onPreviewSheetChange(activePreviewNode.id, sheetName)
                   }
+                  allowEmptyFileSelection={isSourcePreview}
+                  batchOptions={isSourcePreview ? previewBatchOptions : undefined}
+                  currentBatchId={isSourcePreview ? sourceBatchId : null}
                 />
               )}
             </div>

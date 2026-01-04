@@ -22,7 +22,7 @@ import { TransformBlock } from '../blocks/TransformBlock';
 import { SourceBlock } from '../blocks/SourceBlock';
 
 interface FlowCanvasProps {
-  onNodeClick?: (nodeId: string, nodeType: string) => void;
+  onNodeClick?: (nodeId: string) => void;
   onAddOperation?: (afterNodeId: string) => void;
 }
 
@@ -207,7 +207,7 @@ export const FlowCanvas = ({ onNodeClick, onAddOperation }: FlowCanvasProps) => 
   const handleNodeClick: NodeMouseHandler = useCallback(
     (_, node) => {
       if (onNodeClick) {
-        onNodeClick(node.id, node.type || '');
+        onNodeClick(node.id);
       }
     },
     [onNodeClick]

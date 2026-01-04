@@ -11,6 +11,15 @@ export interface File {
   original_filename: string;
   file_size: number;
   mime_type: string;
+  batch_id?: number | null;
+  created_at: string;
+}
+
+export interface Batch {
+  id: number;
+  name: string;
+  description: string | null;
+  file_count: number;
   created_at: string;
 }
 
@@ -50,15 +59,64 @@ export interface BlockData {
   label?: string;
   target?: TableTarget;
   destination?: TableTarget;
+  sourceTargets?: TableTarget[];
+  destinationTargets?: TableTarget[];
+  mappingTargets?: MappingTarget[];
   output?: OutputConfig;
+  outputBatchId?: number | null;
   fileIds?: number[];
+  sourceRule?: SourceRule;
+}
+
+export type SourceRuleMode =
+  | 'latest'
+  | 'filename'
+  | 'pattern'
+  | 'sheet-name'
+  | 'cell-value'
+  | 'column-value'
+  | 'header-contains';
+
+export interface SourceRule {
+  mode: SourceRuleMode;
+  fileName?: string;
+  pattern?: string;
+  patternIsRegex?: boolean;
+  sheetMatch?: {
+    type: 'equals' | 'contains';
+    value: string;
+  };
+  cellMatch?: {
+    sheetName?: string;
+    cell: string;
+    operator: 'equals' | 'contains';
+    value: string;
+  };
+  columnMatch?: {
+    sheetName?: string;
+    column: string;
+    operator: 'equals' | 'contains';
+    value: string;
+  };
+  headerMatch?: {
+    sheetName?: string;
+    columns: string[];
+    match: 'all' | 'any';
+  };
 }
 
 export interface TableTarget {
   fileId: number | null;
   sheetName: string | null;
+  batchId?: number | null;
   virtualId?: string | null;
   virtualName?: string | null;
+}
+
+export interface MappingTarget {
+  mappingNodeId: string | null;
+  fileId: number | null;
+  sheetName?: string | null;
 }
 
 export interface OutputSheetMapping {

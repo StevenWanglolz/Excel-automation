@@ -48,6 +48,18 @@ This document records important architectural decisions and their rationale. Eac
 
 ## Architecture Decisions
 
+### 2026-01-03 – Added file groups + group-backed exports
+
+**Reason:** Users need to group related uploads and reuse them across flows, and group-backed exports keep generated outputs organized and reusable.
+
+**Revisit if:** Group selection becomes too rigid or we need more granular per-file inclusion controls.
+
+### 2026-01-04 – Added mapping input blocks, removed mapping modes
+
+**Reason:** Lookup tables are easier to manage as dedicated mapping inputs instead of per-step ad-hoc uploads, and a single, predictable source/destination rule avoids confusing mapping mode choices.
+
+**Revisit if:** Users need explicit many-to-many mapping controls that cannot be expressed with the default fan-out/append rules.
+
 ### 2024-12-27 – Registry pattern for transforms
 
 **Reason:** Allows adding new transforms without modifying core code, dynamic lookup, easy to test. Hardcoded if/else would require core changes for each transform.

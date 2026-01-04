@@ -33,6 +33,43 @@ This document explains the purpose of each major file and folder. It is meant fo
 - VS Code tasks to run start/restart/stop scripts
 - Safe to adjust task labels or add new tasks
 
+## docs/
+
+### docs/ARCHITECTURE.md 🟢
+
+- Big-picture system structure and major components
+- Best starting point after the README
+
+### docs/DATA_FLOW.md 🟢
+
+- End-to-end data flow explanations with code snippets
+- Use this when tracing UI or export issues
+
+### docs/FILES.md 🟢
+
+- This file map (orientation guide)
+
+### docs/USER_MANUAL.md 🟢
+
+- Step-by-step usage guide for common I/O scenarios
+- Explains file groups and output behavior
+
+### docs/API.md 🟡
+
+- API endpoints and request/response shapes
+
+### docs/STATE.md 🟡
+
+- Frontend state ownership and update triggers
+
+### docs/DECISIONS.md 🟡
+
+- Why key architectural choices were made
+
+### docs/LEARNING.md 🟢
+
+- Personal learning notes and patterns to reuse
+
 ## backend/
 
 ### backend/app/main.py 🔴
@@ -79,7 +116,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - **auth.py** 🟡 - User registration, login, get current user
 - **files.py** 🟡 - File upload, list, preview, sheet list, download, delete
-  - Caches file preview responses and warms sheet previews after upload
+  - Caches file preview responses, manages file groups, warms sheet previews after upload
 - **flows.py** 🟡 - Create, read, update, delete automation flows
 - **transform.py** 🟡 - Execute flows and export results
   - Uses in-memory preview cache for /transform/execute responses
@@ -97,6 +134,11 @@ This document explains the purpose of each major file and folder. It is meant fo
 - File metadata model (filename, path, size, MIME type)
 - Links files to users
 
+#### file_batch.py 🟡
+
+- Batch model for grouping related files
+- Lets flows reuse named file groups
+
 #### flow.py 🟡
 
 - Flow model (name, description, flow_data JSON)
@@ -109,6 +151,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - File upload, parsing, preview generation
 - Handles Excel/CSV file operations
 - Secondary file size validation (safety net after local_storage validation)
+- Persists generated exports into groups with numbered filenames
 - Used by file routes
 
 #### transform_service.py 🟡
@@ -160,6 +203,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - File storage on local filesystem
 - Saves files to user-specific directories
 - Validates file size before saving (50MB limit, returns 413 if exceeded)
+- Saves generated output bytes for group exports
 - Changing paths affects file access
 
 ## frontend/
@@ -246,11 +290,16 @@ This document explains the purpose of each major file and folder. It is meant fo
   - Highlighted operations are implemented; others are placeholders
 - **FlowBuilder.tsx** 🟡 - Operation defaults + config skeletons for new blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
-  - Handles source file/sheet selection, destination output sheet selection, and output file/sheet structure
+  - Handles source file/sheet selection (with group filtering), destination output sheet selection, and output file/sheet structure
+  - Lets users choose an output group for saved exports
+  - Output block can copy the selected source file or file group into output files
+  - Selecting a file group in Sources expands into one source per file
   - Auto-selects the first output sheet as destination when outputs exist and destination is empty
   - Writes block config into node.data.config; save/reset for Remove Columns/Rows lives here
   - Be careful: changes here directly affect preview execution and export output
-- **DataUploadModal.tsx** 🟡 - Modal for selecting files (previews only via pipeline icon)
+- **DataUploadModal.tsx** 🟡 - Modal for file groups + single uploads tied to a flow
+  - Creates file groups, uploads files into them, and syncs file IDs to the node
+  - Provides delete-all actions for group and single file lists (with confirmation)
 - **OperationSelectionModal.tsx** 🟡 - Modal for selecting transforms
 
 #### blocks/
@@ -261,8 +310,8 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 #### FileUpload/
 
-- **FileUploader.tsx** 🟢 - File upload component
-- Handles file selection and upload
+- **FileUploader.tsx** 🟢 - Legacy single-file uploader
+- Safe to remove once no screens reference it
 
 #### Preview/
 

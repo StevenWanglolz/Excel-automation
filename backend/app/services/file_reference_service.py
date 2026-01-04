@@ -54,6 +54,33 @@ class FileReferenceService:
                 if isinstance(target_file_id, int):
                     file_ids.add(target_file_id)
 
+            source_targets = data.get("sourceTargets", [])
+            if isinstance(source_targets, list):
+                for source_target in source_targets:
+                    if not isinstance(source_target, dict):
+                        continue
+                    source_file_id = source_target.get("fileId")
+                    if isinstance(source_file_id, int):
+                        file_ids.add(source_file_id)
+
+            destination_targets = data.get("destinationTargets", [])
+            if isinstance(destination_targets, list):
+                for destination_target in destination_targets:
+                    if not isinstance(destination_target, dict):
+                        continue
+                    destination_file_id = destination_target.get("fileId")
+                    if isinstance(destination_file_id, int):
+                        file_ids.add(destination_file_id)
+
+            mapping_targets = data.get("mappingTargets", [])
+            if isinstance(mapping_targets, list):
+                for mapping_target in mapping_targets:
+                    if not isinstance(mapping_target, dict):
+                        continue
+                    mapping_file_id = mapping_target.get("fileId")
+                    if isinstance(mapping_file_id, int):
+                        file_ids.add(mapping_file_id)
+
             lookup_target = data.get("lookupTarget", {})
             if isinstance(lookup_target, dict):
                 lookup_file_id = lookup_target.get("fileId")
@@ -176,6 +203,36 @@ class FileReferenceService:
                 target["fileId"] = None
                 target["sheetName"] = None
                 changed = True
+
+            source_targets = data.get("sourceTargets")
+            if isinstance(source_targets, list):
+                for source_target in source_targets:
+                    if not isinstance(source_target, dict):
+                        continue
+                    if source_target.get("fileId") == file_id:
+                        source_target["fileId"] = None
+                        source_target["sheetName"] = None
+                        changed = True
+
+            destination_targets = data.get("destinationTargets")
+            if isinstance(destination_targets, list):
+                for destination_target in destination_targets:
+                    if not isinstance(destination_target, dict):
+                        continue
+                    if destination_target.get("fileId") == file_id:
+                        destination_target["fileId"] = None
+                        destination_target["sheetName"] = None
+                        changed = True
+
+            mapping_targets = data.get("mappingTargets")
+            if isinstance(mapping_targets, list):
+                for mapping_target in mapping_targets:
+                    if not isinstance(mapping_target, dict):
+                        continue
+                    if mapping_target.get("fileId") == file_id:
+                        mapping_target["fileId"] = None
+                        mapping_target["sheetName"] = None
+                        changed = True
 
             lookup_target = data.get("lookupTarget")
             if isinstance(lookup_target, dict) and lookup_target.get("fileId") == file_id:
