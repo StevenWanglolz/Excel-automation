@@ -452,6 +452,75 @@ const loadInitialFiles = async () => {
 
 **Note:** File previews are opened from the pipeline step preview icon, not from the upload modal.
 
+## Group Source Selection (Operation Blocks)
+
+```
+1. User selects a file group in the Sources selector for an operation block
+   ↓
+2. PropertiesPanel expands the group into per-file targets and syncs destinations
+   ↓
+3. PropertiesPanel renders group sources + outputs as a grouped section to keep the UI compact
+```
+
+**Step 1: User chooses a file group**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (Sources section)
+<select
+  value={selectedBatchId ? String(selectedBatchId) : ''}
+  onChange={(event) => {
+    const nextBatchId = event.target.value ? Number(event.target.value) : null;
+    if (nextBatchId) {
+      // Group selection handled below.
+    }
+  }}
+>
+```
+
+**Step 2: Group expands into per-file targets + destinations**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (file group handler)
+const groupFiles = files.filter((file) => file.batch_id === nextBatchId);
+const groupTargets = groupFiles.map((file) => ({
+  fileId: file.id,
+  sheetName: null,
+  batchId: nextBatchId,
+  virtualId: null,
+  virtualName: null,
+}));
+
+if (groupTargets.length > 0) {
+  nextSourceTargets.splice(index, 1, ...groupTargets);
+}
+
+updateNode(node.id, {
+  data: {
+    ...nodeData,
+    sourceTargets: normalizedSources,
+    destinationTargets: nextDestinationTargets,
+  },
+});
+```
+
+**Step 3: Grouped targets render as a single section**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (grouped UI)
+const groupedSourceTargets = useMemo(() => {
+  const grouped = new Map<number, Array<{ target: TableTarget; index: number }>>();
+  sourceTargets.forEach((sourceTarget, index) => {
+    if (!sourceTarget.batchId) return;
+    const groupTargets = grouped.get(sourceTarget.batchId) ?? [];
+    groupTargets.push({ target: sourceTarget, index });
+    grouped.set(sourceTarget.batchId, groupTargets);
+  });
+  return Array.from(grouped.entries())
+    .filter(([, targets]) => targets.length > 1)
+    .map(([batchId, targets]) => ({ batchId, targets }));
+}, [sourceTargets]);
+```
+
 ## File Removal Cleanup
 
 ```

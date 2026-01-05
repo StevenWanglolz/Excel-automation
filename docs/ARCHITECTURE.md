@@ -125,7 +125,7 @@ Local development uses Docker Compose (v2+) to orchestrate the frontend, backend
 
 - `Auth/` - Login, Register, ProtectedRoute
 - `Dashboard/` - Main dashboard view
-- `FlowBuilder/` - Sequential pipeline builder with group/single uploads and output mapping
+- `FlowBuilder/` - Sequential pipeline builder with group/single uploads, grouped source/destination presentation, and output mapping
 - `blocks/` - Legacy block components (node-based UI)
 - `Common/` - Shared components (modals, etc.)
 

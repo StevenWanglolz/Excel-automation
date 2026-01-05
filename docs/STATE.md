@@ -160,6 +160,11 @@ const [isModalOpen, setIsModalOpen] = useState(false);
   - Reads cached flows from `localStorage` (`sheetpilot_flows_cache`) for instant render.
   - Refreshes from the API in the background and updates the cache.
 
+### Properties Panel Local State
+
+- `expandedSourceGroups` and `showGroupedDestinations` live in `frontend/src/components/FlowBuilder/PropertiesPanel.tsx`.
+- These only affect UI presentation (grouped lists expanded/collapsed) and do not change flow data.
+
 ### When to Use Store State (Zustand)
 - **Global state** - needed by multiple components
 - **Persistent state** - should survive component unmount

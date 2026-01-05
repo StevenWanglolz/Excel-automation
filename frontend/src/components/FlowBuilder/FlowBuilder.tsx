@@ -325,17 +325,16 @@ export const FlowBuilder = () => {
       return;
     }
     
-    // Get current flow data and saved flow data
-    const currentFlowData = getFlowData();
+    // Get saved flow data
     const savedFlowData = JSON.parse(savedFlowDataRef.current);
     
     // Compare flow data excluding positions (position changes don't count as unsaved changes)
     const currentForComparison = {
-      nodes: currentFlowData.nodes.map((node: { position: { x: number; y: number }; [key: string]: any }) => {
+      nodes: nodes.map((node) => {
         const { position: _position, ...rest } = node;
         return rest;
       }),
-      edges: currentFlowData.edges,
+      edges: edges,
       flowName: flowName
     };
     
@@ -352,7 +351,7 @@ export const FlowBuilder = () => {
     const hasChanges = JSON.stringify(currentForComparison) !== JSON.stringify(savedForComparison);
     hasUnsavedChangesRef.current = hasChanges;
     setHasUnsavedChanges(hasChanges);
-  }, [nodes, edges, flowName, selectedFlowId, getFlowData]);
+  }, [nodes, edges, flowName, selectedFlowId]);
 
   // Handle browser back/forward and page unload
   useEffect(() => {
@@ -869,12 +868,9 @@ export const FlowBuilder = () => {
           hasUnsavedChangesRef.current = true;
           setHasUnsavedChanges(true);
           queuePreviewPrecompute();
+          // Trigger refresh of file list in PropertiesPanel
+          setFilesRefreshKey((prev) => prev + 1);
         }
-      }
-      
-      // Trigger refresh of file list in PropertiesPanel
-      if (hasFileIdChanges) {
-        setFilesRefreshKey((prev) => prev + 1);
       }
     }
   };
