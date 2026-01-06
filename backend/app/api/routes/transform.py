@@ -11,8 +11,11 @@ from app.services.transform_service import transform_service
 from app.services.file_service import file_service
 from app.services.file_reference_service import file_reference_service
 from app.services.preview_cache import preview_cache, stable_hash
+from app.utils.export_utils import create_zip_archive
 import pandas as pd
 import io
+import re
+
 
 router = APIRouter(prefix="/transform", tags=["transform"])
 
@@ -411,21 +414,9 @@ async def export_result(
                 }
             )
 
-        zip_output = io.BytesIO()
-        import zipfile
-        with zipfile.ZipFile(zip_output, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for file_entry in files_payload:
-                entry_name = file_entry["file_name"]
-                if output_batch:
-                    # Sanitize batch name for file path
-                    import re
-                    safe_batch_name = re.sub(
-                        r'[^a-zA-Z0-9_\- ]', '_', output_batch.name).strip()
-                    entry_name = f"{safe_batch_name}/{entry_name}"
-                zip_file.writestr(entry_name, file_entry["payload"])
-        zip_output.seek(0)
+        zip_content = create_zip_archive(files_payload, output_batch)
         return StreamingResponse(
-            io.BytesIO(zip_output.read()),
+            io.BytesIO(zip_content),
             media_type="application/zip",
             headers={
                 "Content-Disposition": "attachment; filename=outputs.zip"

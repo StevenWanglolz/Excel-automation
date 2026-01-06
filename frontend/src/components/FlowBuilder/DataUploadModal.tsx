@@ -423,6 +423,8 @@ export const DataUploadModal = ({
       confirmText: 'Delete all groups',
       onConfirm: () => {
         (async () => {
+          const allFileIdsInBatches = Object.values(batchFilesById).flat().map(f => f.id);
+
           setIsLoadingBatches(true);
           try {
             await Promise.all(batches.map(batch => filesApi.deleteBatch(batch.id)));
@@ -431,10 +433,7 @@ export const DataUploadModal = ({
             setBatchFilesById({});
             setActiveBatchId(null);
             
-            if (previewFileId) {
-                // We strictly don't know if the preview file was in a batch without checking, 
-                // but safer to close preview if it might have been deleted.
-                // Or checking exact ID match would be better if possible, but batchFilesById is gone.
+            if (previewFileId && allFileIdsInBatches.includes(previewFileId)) {
                 closePreview();
             }
 
