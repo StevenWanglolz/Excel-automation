@@ -111,6 +111,8 @@ export interface TableTarget {
   batchId?: number | null;
   virtualId?: string | null;
   virtualName?: string | null;
+  sourceId?: string | number | null; // ID of the source file this target is mapped to
+  linkedSourceIds?: Array<string | number>;
 }
 
 export interface MappingTarget {

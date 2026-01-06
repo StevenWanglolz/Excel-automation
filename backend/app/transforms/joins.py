@@ -5,6 +5,7 @@ import pandas as pd
 
 
 @register_transform("join_lookup")
+@register_transform("lookup_map")
 class JoinLookupTransform(BaseTransform):
     """Join/lookup with another DataFrame"""
 

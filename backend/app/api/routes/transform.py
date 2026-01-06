@@ -11,8 +11,11 @@ from app.services.transform_service import transform_service
 from app.services.file_service import file_service
 from app.services.file_reference_service import file_reference_service
 from app.services.preview_cache import preview_cache, stable_hash
+from app.utils.export_utils import create_zip_archive
 import pandas as pd
 import io
+import re
+
 
 router = APIRouter(prefix="/transform", tags=["transform"])
 
@@ -44,8 +47,10 @@ async def execute_flow(
 ):
     """Execute a flow on a file"""
     requested_ids = request.file_ids if request.file_ids else [request.file_id]
-    requested_ids = [file_id for file_id in requested_ids if isinstance(file_id, int) and file_id > 0]
-    referenced_ids = list(file_reference_service.extract_file_ids_from_flow_data(request.flow_data))
+    requested_ids = [file_id for file_id in requested_ids if isinstance(
+        file_id, int) and file_id > 0]
+    referenced_ids = list(
+        file_reference_service.extract_file_ids_from_flow_data(request.flow_data))
     effective_ids = requested_ids or referenced_ids
     # Load all referenced files (multi-file flows need more than one).
     db_files = []
@@ -59,7 +64,8 @@ async def execute_flow(
         raise HTTPException(status_code=404, detail="File not found")
 
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
-    file_fingerprints = [{"id": db_file.id, "size": db_file.file_size} for db_file in db_files]
+    file_fingerprints = [
+        {"id": db_file.id, "size": db_file.file_size} for db_file in db_files]
 
     # Execute flow
     try:
@@ -114,7 +120,8 @@ async def execute_flow(
         elif effective_ids:
             # Fallback to the first file in case no transforms ran.
             fallback_file_id = effective_ids[0]
-            result_df = file_service.parse_file(file_paths_by_id[fallback_file_id])
+            result_df = file_service.parse_file(
+                file_paths_by_id[fallback_file_id])
         else:
             result_df = pd.DataFrame()
 
@@ -144,8 +151,10 @@ async def precompute_flow(
     requested_ids = request.file_ids if request.file_ids else []
     if request.file_id:
         requested_ids = requested_ids + [request.file_id]
-    requested_ids = [file_id for file_id in requested_ids if isinstance(file_id, int) and file_id > 0]
-    referenced_ids = list(file_reference_service.extract_file_ids_from_flow_data(request.flow_data))
+    requested_ids = [file_id for file_id in requested_ids if isinstance(
+        file_id, int) and file_id > 0]
+    referenced_ids = list(
+        file_reference_service.extract_file_ids_from_flow_data(request.flow_data))
     effective_ids = requested_ids or referenced_ids
 
     db_files = []
@@ -159,15 +168,19 @@ async def precompute_flow(
         raise HTTPException(status_code=404, detail="File not found")
 
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
-    file_fingerprints = [{"id": db_file.id, "size": db_file.file_size} for db_file in db_files]
+    file_fingerprints = [
+        {"id": db_file.id, "size": db_file.file_size} for db_file in db_files]
 
     nodes = request.flow_data.get("nodes", [])
     output_node = next(
-        (node for node in nodes if node.get("data", {}).get("blockType") == "output"),
+        (node for node in nodes if node.get(
+            "data", {}).get("blockType") == "output"),
         None
     )
-    output_config = output_node.get("data", {}).get("output", {}) if output_node else {}
-    output_files = output_config.get("outputs") if isinstance(output_config, dict) else []
+    output_config = output_node.get("data", {}).get(
+        "output", {}) if output_node else {}
+    output_files = output_config.get(
+        "outputs") if isinstance(output_config, dict) else []
 
     if not output_files:
         return {"status": "skipped", "precomputed": 0}
@@ -181,10 +194,12 @@ async def precompute_flow(
 
         precomputed = 0
         for index, output_file in enumerate(output_files):
-            output_id = output_file.get("id") if isinstance(output_file, dict) else None
+            output_id = output_file.get("id") if isinstance(
+                output_file, dict) else None
             if not output_id:
                 output_id = f"output-{index + 1}"
-            sheets = output_file.get("sheets") if isinstance(output_file, dict) else []
+            sheets = output_file.get("sheets") if isinstance(
+                output_file, dict) else []
             if not sheets:
                 sheets = [{"sheetName": "Sheet 1"}]
             for sheet in sheets:
@@ -275,7 +290,8 @@ async def export_result(
             FileBatch.id == request.output_batch_id
         ).first()
         if not output_batch:
-            raise HTTPException(status_code=404, detail="Output batch not found")
+            raise HTTPException(
+                status_code=404, detail="Output batch not found")
 
     # Execute flow
     try:
@@ -286,24 +302,31 @@ async def export_result(
 
         nodes = request.flow_data.get("nodes", [])
         output_node = next(
-            (node for node in nodes if node.get("data", {}).get("blockType") == "output"),
+            (node for node in nodes if node.get(
+                "data", {}).get("blockType") == "output"),
             None
         )
-        output_config = output_node.get("data", {}).get("output", {}) if output_node else {}
-        output_files = output_config.get("outputs") if isinstance(output_config, dict) else []
-        legacy_file_name = output_config.get("fileName") if isinstance(output_config, dict) else None
-        legacy_sheets = output_config.get("sheets") if isinstance(output_config, dict) else None
+        output_config = output_node.get("data", {}).get(
+            "output", {}) if output_node else {}
+        output_files = output_config.get(
+            "outputs") if isinstance(output_config, dict) else []
+        legacy_file_name = output_config.get(
+            "fileName") if isinstance(output_config, dict) else None
+        legacy_sheets = output_config.get(
+            "sheets") if isinstance(output_config, dict) else None
 
         if last_table_key and last_table_key in table_map:
             result_df = table_map[last_table_key]
         elif effective_ids:
             fallback_file_id = effective_ids[0]
-            result_df = file_service.parse_file(file_paths_by_id[fallback_file_id])
+            result_df = file_service.parse_file(
+                file_paths_by_id[fallback_file_id])
         else:
             result_df = pd.DataFrame()
 
         # Convert to Excel bytes
-        outputs_to_write = output_files if isinstance(output_files, list) else []
+        outputs_to_write = output_files if isinstance(
+            output_files, list) else []
         if not outputs_to_write and (legacy_file_name or legacy_sheets):
             outputs_to_write = [{
                 "fileName": legacy_file_name or "output.xlsx",
@@ -319,8 +342,10 @@ async def export_result(
         reserved_output_names: set[str] = set()
         for index, output_file in enumerate(outputs_to_write):
             file_name = output_file.get("fileName") or "output.xlsx"
-            sheets = output_file.get("sheets") if isinstance(output_file, dict) else []
-            output_id = output_file.get("id") if isinstance(output_file, dict) else None
+            sheets = output_file.get("sheets") if isinstance(
+                output_file, dict) else []
+            output_id = output_file.get("id") if isinstance(
+                output_file, dict) else None
             if not output_id:
                 output_id = f"output-{index + 1}"
             file_extension = Path(file_name).suffix.lower()
@@ -329,7 +354,8 @@ async def export_result(
                 if sheets:
                     sheet_name = sheets[0].get("sheetName") or "Sheet1"
                     virtual_key = f"virtual:output:{output_id}:{sheet_name}"
-                    result_for_file = table_map.get(virtual_key, pd.DataFrame())
+                    result_for_file = table_map.get(
+                        virtual_key, pd.DataFrame())
                 else:
                     result_for_file = result_df
                 output = io.StringIO()
@@ -343,10 +369,13 @@ async def export_result(
                         for sheet in sheets:
                             sheet_name = sheet.get("sheetName") or "Sheet1"
                             virtual_key = f"virtual:output:{output_id}:{sheet_name}"
-                            sheet_df = table_map.get(virtual_key, pd.DataFrame())
-                            sheet_df.to_excel(writer, index=False, sheet_name=sheet_name)
+                            sheet_df = table_map.get(
+                                virtual_key, pd.DataFrame())
+                            sheet_df.to_excel(
+                                writer, index=False, sheet_name=sheet_name)
                     else:
-                        result_df.to_excel(writer, index=False, sheet_name="Sheet1")
+                        result_df.to_excel(
+                            writer, index=False, sheet_name="Sheet1")
                 output.seek(0)
                 payload = output.read()
                 media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -385,14 +414,9 @@ async def export_result(
                 }
             )
 
-        zip_output = io.BytesIO()
-        import zipfile
-        with zipfile.ZipFile(zip_output, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for file_entry in files_payload:
-                zip_file.writestr(file_entry["file_name"], file_entry["payload"])
-        zip_output.seek(0)
+        zip_content = create_zip_archive(files_payload, output_batch)
         return StreamingResponse(
-            io.BytesIO(zip_output.read()),
+            io.BytesIO(zip_content),
             media_type="application/zip",
             headers={
                 "Content-Disposition": "attachment; filename=outputs.zip"

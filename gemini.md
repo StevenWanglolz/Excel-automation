@@ -1,6 +1,20 @@
----
+
 alwaysApply: true
+-----------------
+
+Update the test files when a new feature is added
+-------------------------------------------------
+
+alwaysApply: true
+-----------------
+
+Test the workflow and feature with playwright headed testing after a news feature is implemented
+
 ---
+
+alwaysApply: true
+-----------------
+
 create these when first started.
 
 Always update these docs when you make changes to the code
@@ -25,25 +39,25 @@ Include:
 
 Example outline:
 
-#Project Name
+# Project Name
 
-##What this is
+## What this is
 
 Short description of the system and its goal.
 
-##Tech
+## Tech
 
 - Next.js (React)
 - TypeScript
 - [Other important tools]
 
-##Run locally
+## Run locally
 
 npm install
 
 npm run dev
 
-##Where to look
+## Where to look
 
 - docs/ARCHITECTURE.md – how things fit together
 - docs/DATA_FLOW.md – where data comes from and goes
@@ -702,3 +716,5 @@ I should be able to return after time away and quickly understand what this code
 
 
 ```
+
+---

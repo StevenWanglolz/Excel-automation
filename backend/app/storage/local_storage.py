@@ -13,6 +13,10 @@ class LocalStorage:
 
     async def save_file(self, file: UploadFile, user_id: int) -> tuple[str, str]:
         """Save uploaded file and return (file_path, filename)"""
+        # Ensure filename is present
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+
         # Generate unique filename
         file_ext = Path(file.filename).suffix
         unique_filename = f"{uuid.uuid4()}{file_ext}"

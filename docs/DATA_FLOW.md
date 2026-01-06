@@ -452,6 +452,75 @@ const loadInitialFiles = async () => {
 
 **Note:** File previews are opened from the pipeline step preview icon, not from the upload modal.
 
+## Group Source Selection (Operation Blocks)
+
+```
+1. User selects a file group in the Sources selector for an operation block
+   ↓
+2. PropertiesPanel expands the group into per-file targets and syncs destinations
+   ↓
+3. PropertiesPanel renders group sources + outputs as a grouped section to keep the UI compact
+```
+
+**Step 1: User chooses a file group**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (Sources section)
+<select
+  value={selectedBatchId ? String(selectedBatchId) : ''}
+  onChange={(event) => {
+    const nextBatchId = event.target.value ? Number(event.target.value) : null;
+    if (nextBatchId) {
+      // Group selection handled below.
+    }
+  }}
+>
+```
+
+**Step 2: Group expands into per-file targets + destinations**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (file group handler)
+const groupFiles = files.filter((file) => file.batch_id === nextBatchId);
+const groupTargets = groupFiles.map((file) => ({
+  fileId: file.id,
+  sheetName: null,
+  batchId: nextBatchId,
+  virtualId: null,
+  virtualName: null,
+}));
+
+if (groupTargets.length > 0) {
+  nextSourceTargets.splice(index, 1, ...groupTargets);
+}
+
+updateNode(node.id, {
+  data: {
+    ...nodeData,
+    sourceTargets: normalizedSources,
+    destinationTargets: nextDestinationTargets,
+  },
+});
+```
+
+**Step 3: Grouped targets render as a single section**
+
+```typescript
+// frontend/src/components/FlowBuilder/PropertiesPanel.tsx (grouped UI)
+const groupedSourceTargets = useMemo(() => {
+  const grouped = new Map<number, Array<{ target: TableTarget; index: number }>>();
+  sourceTargets.forEach((sourceTarget, index) => {
+    if (!sourceTarget.batchId) return;
+    const groupTargets = grouped.get(sourceTarget.batchId) ?? [];
+    groupTargets.push({ target: sourceTarget, index });
+    grouped.set(sourceTarget.batchId, groupTargets);
+  });
+  return Array.from(grouped.entries())
+    .filter(([, targets]) => targets.length > 1)
+    .map(([batchId, targets]) => ({ batchId, targets }));
+}, [sourceTargets]);
+```
+
 ## File Removal Cleanup
 
 ```
@@ -794,13 +863,60 @@ async def precompute_flow(...):
   }
   onFileChange={(fileId) => {
     if (activePreviewNode.id === fileSourceNodeId || activePreviewNode.type === 'source') {
-      onSourceFileChange(fileId);
+      const selectedFile = previewFiles.find((file) => file.id === fileId);
+      const nextBatchId = selectedFile?.batch_id ?? sourceBatchId ?? null;
+      onSourceFileChange(fileId, nextBatchId);
       return;
     }
     onPreviewFileChange(activePreviewNode.id, fileId);
   }}
   onSheetChange={(sheetName) => onPreviewSheetChange(activePreviewNode.id, sheetName)}
 />;
+```
+
+**Step 1b: Preview group selection auto-picks the first file**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1697-1724)
+// Selecting a group immediately picks a file so previews never go blank.
+const firstBatchFile = previewFiles.find((file) => file.batch_id === batchId) ?? null;
+applySourceTargetSelection(fileSourceNode.id, {
+  fileId: firstBatchFile?.id ?? null,
+  sheetName: firstBatchFile ? sourceSheetByFileId[firstBatchFile.id] ?? null : null,
+  batchId,
+});
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1726-1746)
+// If files arrive after a group selection, backfill the first file once available.
+if (!sourceTarget?.fileId && sourceTarget?.batchId) {
+  const firstBatchFile = previewFiles.find((file) => file.batch_id === sourceTarget.batchId) ?? null;
+  if (firstBatchFile) {
+    applySourceTargetSelection(fileSourceNode.id, {
+      fileId: firstBatchFile.id,
+      sheetName: sourceSheetByFileId[firstBatchFile.id] ?? null,
+      batchId: sourceTarget.batchId,
+    });
+  }
+}
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 980-1006)
+// Don't clear group selections while the preview file list is still loading.
+if (previewFiles.length === 0) {
+  return;
+}
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1670-1710)
+// File/group changes bump a refresh token so previews re-run even when IDs stay the same.
+setPreviewRefreshTokens((prev) => ({
+  ...prev,
+  [fileSourceNode.id]: (prev[fileSourceNode.id] ?? 0) + 1,
+}));
 ```
 
 ```typescript
@@ -1074,6 +1190,8 @@ Operation blocks can target multiple sources and multiple destination output she
 Selecting a file group in an operation source expands that group into multiple source targets (one per file) so each file can be routed to its own output file.
 If there are more sources than destinations, the operation appends all source results into each destination file. If there is one source and multiple destinations, the operation fans out the same result to each destination. When counts match, the operation runs one-to-one.
 
+Destinations now include a `Linked sources` multi-select, and clicking “Create destination from this file” automatically fills that list with the invoking source. These UI hooks drive the `sourceId`/`linkedSourceIds` metadata stored on each node so the backend knows whether a destination is tied to one source, several inputs, or a full batch when executing g2g/g2m/m2m flows.
+
 When output sheets are created after a preview is already open, any placeholder output preview target is swapped to the first real output sheet so users see actual results without re-opening the preview.
 
 Empty sheets still render a grid (with placeholder columns) so the preview area stays visually consistent even when no data is present.
@@ -1294,6 +1412,72 @@ Output DataFrame:
 | Alice | 25  | NYC  |
 | Carol | 25  | NYC  |
 ```
+
+### Row Filter Sources & Destinations
+
+1. **Source selection:** Every row in the row filter properties panel now includes the grouped `Source` dropdown (`renderSourceOptions`). It lists every batch (with a “Use all {Batch}” option), the standalone files, and the processed streams that upstream nodes expose (`flowSourceTargets`). Selecting `file:<id>` binds that entry to `filesById.get(<id>)`, selecting `group:<batchId>` expands the entry into one target per batch file, and choosing a processed stream applies the virtual target.
+
+    ```typescript
+    const handleSourceEntrySelect = useCallback(
+      (index: number, optionValue: string) => {
+        if (!optionValue) {
+          return;
+        }
+        const [type, rawId] = optionValue.split(':');
+        const nextTargets = [...sourceTargets];
+        if (type === 'file') {
+          const fileId = Number(rawId);
+          const file = filesById.get(fileId);
+          nextTargets[index] = {
+            ...nextTargets[index],
+            fileId,
+            batchId: file?.batch_id ?? nextTargets[index].batchId ?? null,
+            sheetName: null,
+            virtualId: null,
+            virtualName: file?.original_filename ?? null,
+          };
+        } else if (type === 'group') {
+          const batchId = Number(rawId);
+          const groupTargets = files
+            .filter((file) => file.batch_id === batchId)
+            .map((file) => ({
+              fileId: file.id,
+              sheetName: null,
+              batchId,
+              virtualId: null,
+              virtualName: file.original_filename,
+            }));
+          nextTargets.splice(index, 1, ...groupTargets);
+        } else if (type === 'stream') {
+          const streamIndex = Number(rawId);
+          const streamTarget = flowSourceTargets[streamIndex];
+          if (streamTarget) {
+            nextTargets[index] = streamTarget;
+          }
+        }
+        updateSourceTargets(nextTargets);
+      },
+      [files, filesById, flowSourceTargets, sourceTargets, updateSourceTargets]
+    );
+    ```
+
+2. **Sheet loading & row previews:** Once a file is bound to a source entry, the panel fetches sheet names via `filesApi.sheets` and previews via `filesApi.preview`. The sheet select is disabled until those calls resolve, preventing empty previews from wiping the list.
+
+3. **Preview filtering:** The operation preview header exposes batch/individual/all toggles so the `DataPreview` file dropdown only lists the files that were explicitly added to the block. This keeps g2g/g2m/m2m previews aligned with the configured sources even when the global file list contains additional uploads. When multiple batches feed the block, the header also exposes a File group dropdown (labelled by batch name) so you can zoom in on just one group at a time while keeping the toggle state intact.
+
+4. **Linked destinations:** Every destination row renders `renderLinkedSourcesControl`, which surfaces a multi-select bound to `destinationTargets[index].linkedSourceIds`. The `Create destination from this file` helper pre-populates the destination’s `sourceId` and linked sources so run-time execution can map inputs to outputs with g2g, g2m, or m2m semantics.
+
+    ```tsx
+    <select multiple value={linkedSources} onChange={(event) => handleLinkedSourcesChange(index, event)}>
+      {sourceLinkOptions.map((option) => (
+        <option key={option.value} value={String(option.value)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+    ```
+
+5. **Execution contract:** The backend receives the normalized `sourceTargets` and `destinationTargets` arrays in the flow payload. Linked source IDs propagate through the transform APIs so each destination can apply the correct filtered stream (batch-preserving, append, or one-to-one as configured in the UI).
 
 ## State Synchronization
 

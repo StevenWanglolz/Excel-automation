@@ -41,7 +41,7 @@ const blockTemplates = [
 
 export const BlockPalette = () => {
   const { addNode } = useFlowStore();
-  const implementedBlocks = useMemo(() => new Set(['filter_rows']), []);
+  const implementedBlocks = useMemo(() => new Set(['filter_rows', 'append_files', 'lookup_map']), []);
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [devFilter, setDevFilter] = useState<'all' | 'implemented' | 'unimplemented'>('all');

@@ -1,0 +1,60 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] › tests/scenarios_full_flow.spec.ts:21:3 › Full End-to-End Workflow › E2E: Upload Group -> Preview -> Filter G2G -> Export
+[1A[2K[chromium] › tests/scenarios_full_flow.spec.ts:21:3 › Full End-to-End Workflow › E2E: Upload Group -> Preview -> Filter G2G -> Export
+DEBUG: Preview modal visible? [33mtrue[39m
+
+[1A[2KDEBUG: Body text: Flow Builder
+📋 Saved Flows
+1
+Save Flow
+Clear
+Data
+No configuration
+Click to upload a file
+Upload
+OutputEND NODE
+No configuration • Output: no files
+Export
+Full Screen Preview
+Data
+Select a source file to preview.
+
+[1A[2K  1) [chromium] › tests/scenarios_full_flow.spec.ts:21:3 › Full End-to-End Workflow › E2E: Upload Group -> Preview -> Filter G2G -> Export 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('select').last()
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('select').last()[22m
+
+
+      85 |      const fileSelector = page.locator('select').last();
+      86 |      try {
+    > 87 |        await expect(fileSelector).toBeVisible({ timeout: 5000 });
+         |                                   ^
+      88 |      } catch (e) {
+      89 |        console.log('DEBUG: Preview modal visible?', await page.locator('.fixed.inset-0.z-50').isVisible());
+      90 |        console.log('DEBUG: Body text:', await page.locator('body').innerText());
+        at /Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/scenarios_full_flow.spec.ts:87:35
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/scenarios_full_flow-Full-E-aa962-eview---Filter-G2G---Export-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/scenarios_full_flow-Full-E-aa962-eview---Filter-G2G---Export-chromium/error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] › tests/scenarios_full_flow.spec.ts:21:3 › Full End-to-End Workflow › E2E: Upload Group -> Preview -> Filter G2G -> Export 
+
+To open last HTML report run:
+[36m[39m
+[36m  npx playwright show-report[39m
+[36m[39m

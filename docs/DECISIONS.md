@@ -158,6 +158,18 @@ This document records important architectural decisions and their rationale. Eac
 
 **Revisit if:** Need different access patterns (shared files, etc.).
 
+
+### 2026-01-05 – Adopted Stream-Centric Architecture
+
+**Reason:** Complex flows (branching, merging) created ambiguity about which "Source" was being used (Original vs Modified).
+**Decision:**
+- **Graph Topology as Truth:** Availability is determined by edges.
+- **Visual Grouping:** Properties Panel groups inputs by "Parent Node".
+- **Source-Dest Pairs:** Manual destinations now strictly pair a Source Stream to an Output.
+- **Merged Logic:** Implicit "Virtual Streams" replaced confusing "Source/Destination" naming.
+
+**Reference:** See [STREAM_ARCHITECTURE.md](./STREAM_ARCHITECTURE.md) for full design.
+
 ## Performance Decisions
 
 ### 2024-12-27 – No caching layer initially

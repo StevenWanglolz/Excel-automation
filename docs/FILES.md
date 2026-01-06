@@ -45,6 +45,11 @@ This document explains the purpose of each major file and folder. It is meant fo
 - End-to-end data flow explanations with code snippets
 - Use this when tracing UI or export issues
 
+### docs/STREAM_ARCHITECTURE.md 🟢
+
+- Design document for Stream-Centric data flow
+- explains "Virtual Streams" and Source-Destination pairing
+
 ### docs/FILES.md 🟢
 
 - This file map (orientation guide)
@@ -290,10 +295,10 @@ This document explains the purpose of each major file and folder. It is meant fo
   - Highlighted operations are implemented; others are placeholders
 - **FlowBuilder.tsx** 🟡 - Operation defaults + config skeletons for new blocks
 - **PropertiesPanel.tsx** 🟡 - Panel for editing block config
-  - Handles source file/sheet selection (with group filtering), destination output sheet selection, and output file/sheet structure
+  - Handles source file/sheet selection (with grouped sources in the UI), destination output sheet selection, and output file/sheet structure
   - Lets users choose an output group for saved exports
   - Output block can copy the selected source file or file group into output files
-  - Selecting a file group in Sources expands into one source per file
+  - Selecting a file group in Sources expands into one source per file (rendered as a grouped section)
   - Auto-selects the first output sheet as destination when outputs exist and destination is empty
   - Writes block config into node.data.config; save/reset for Remove Columns/Rows lives here
   - Be careful: changes here directly affect preview execution and export output
@@ -362,6 +367,8 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - Playwright end-to-end tests for the UI flow
 - Focus on file upload and flow builder interactions
+- Includes grouped export scenarios covering group-to-group, group-to-many, and many-to-many flows
+- Full-flow spec covers upload modal seeding plus preview/export smoke checks (including sources panel, full-screen preview close, add-step flows, and empty-preview messaging)
 
 ### docker-compose.yml 🟡
 

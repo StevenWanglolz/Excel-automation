@@ -414,6 +414,44 @@ export const DataUploadModal = ({
     }
   };
 
+  const handleDeleteAllBatches = async () => {
+    if (batches.length === 0) return;
+
+    setConfirmModal({
+      title: 'Delete all groups?',
+      message: `This will delete ${batches.length} group(s) and all files inside them. This cannot be undone.`,
+      confirmText: 'Delete all groups',
+      onConfirm: () => {
+        (async () => {
+          const allFileIdsInBatches = Object.values(batchFilesById).flat().map(f => f.id);
+
+          setIsLoadingBatches(true);
+          try {
+            await Promise.all(batches.map(batch => filesApi.deleteBatch(batch.id)));
+            
+            setBatches([]);
+            setBatchFilesById({});
+            setActiveBatchId(null);
+            
+            if (previewFileId && allFileIdsInBatches.includes(previewFileId)) {
+                closePreview();
+            }
+
+            // Only individual files remain
+            const nextFileIds = getIncludedFileIds(individualFiles, {});
+            emitFileIds(nextFileIds);
+          } catch (error: any) {
+            console.error('Failed to delete all groups:', error);
+            setAlertMessage(error.response?.data?.detail || 'Failed to delete all groups');
+            setShowAlertModal(true);
+          } finally {
+            setIsLoadingBatches(false);
+          }
+        })();
+      }
+    });
+  };
+
   const handleDeleteAllIndividualFiles = async () => {
     if (individualFiles.length === 0) {
       return;
@@ -506,6 +544,16 @@ export const DataUploadModal = ({
                       Group related uploads and reuse them together.
                     </p>
                   </div>
+                  {batches.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeleteAllBatches}
+                      className="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                      disabled={isUploading || isLoadingBatches}
+                    >
+                      Delete all groups
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
