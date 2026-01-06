@@ -7,12 +7,15 @@ This guide walks through the three advanced scenarios (group-to-group, group-to-
    - Click the **Data** block and upload files. Use the grouped upload area to create a batch when you want multiple files to stay together and the single-file uploader for individual inputs.
    - Once files finish uploading the page will show the batch name plus any single files in the source panel.
 2. **Open the Row Filter block**
-   - Add a **Row Filter** block from the **Selection & Rows** category and click it so the properties panel slides in.
-   - At the top of the panel there is now a **Source** picker that lets you quickly add original files (grouped by batch) as well as processed streams (they include `(processed)` in the label).
-   - Use the picker to append a source entry. Each source entry can be tuned later (select the file, sheet, or remove the source entirely).
+- Add a **Row Filter** block from the **Selection & Rows** category and click it so the properties panel slides in.
+- Use the **Add source** button to append a row. Each row now includes the grouped **Source** dropdown (single files, batches with a “Use all {Batch}” option, or processed streams) plus its sheet selector right below.
+- Destinations show a `Linked sources` multi-select so the same output file can reference several inputs, making manual rerouting or append-style exports easy without leaving the panel.
+- Once a row is configured you can use **Create destination from this file** to immediately create a linked destination with the matching source.
 3. **Configure the operation**
    - The **Operation** section appears between Sources and Destinations.
-   - Select a **Column** (drop-down is populated from the first source preview), pick an **Operator**, and enter the comparison **Value** (skipped automatically for blank checks).
+- Select a **Column** (drop-down is populated from the first source preview), pick an **Operator**, and enter the comparison **Value** (skipped automatically for blank checks).
+- While previewing the block, use the batch/individual/all toggles in the preview header so the file selector only lists the source files added to this block. This keeps the preview aligned with the actual g2g/g2m/m2m routing you just configured.
+- When several batches feed the block, use the File group dropdown above the file list to pick the specific batch you want to inspect.
 4. **Review destinations**
    - The **Destinations** section shows output files you can write to. Add destinations as needed; when groups are present we auto-generate matching slots and surface the `Auto-generating N destinations` banner.
    - The new “Create destination from this file” link on each source helps you jump directly to the matching destination row.
@@ -22,25 +25,25 @@ This guide walks through the three advanced scenarios (group-to-group, group-to-
 ## Scenario 1: Group-to-Group (1:1)
 - **Goal**: Keep each file inside a batch paired with a corresponding destination so each exported file mirrors one input.
 - Upload a batch of files into a named group.
-- Use the source picker to add the batch files to the Row Filter block. The banner `Auto-generating X destinations` confirms we detected the batch and will auto-create the matching outputs.
+- Use the Add source button, then pick the batch files via each row’s Source dropdown. The banner `Auto-generating X destinations` confirms we detected the batch and will auto-create the matching outputs.
 - Do not consolidate destinations; leave one auto-generated destination per file. Each destination keeps the origin in the `Source` drop-down so the backend can match the streams 1:1.
 - Export and the system writes one output per original file with the same ordering.
 
 ## Scenario 2: Group-to-Many (append)
 - **Goal**: Take the whole batch, run the row filter once, and append the results into one or two output files.
-- Upload a batch and add the files through the Source picker as above. Add fewer destinations than sources so the pipeline knows to append (the opposite of the 1:1 case).
+- Upload a batch, add rows with **Add source**, and use each row’s Source dropdown to grab the batch files. Add fewer destinations than sources so the pipeline knows to append (the opposite of the 1:1 case).
 - Explicitly choose the destination file(s) you want to write to and keep the `Source` column set to “From Row Filter” so the system knows which stream to append.
 - The backend detects the append pattern and writes the filtered rows from every source file into each configured destination file.
 
 ## Scenario 3: Many-to-Many (single files)
 - **Goal**: Select individual files (not a batch) and map each to its own output file.
-- Upload files using the single-file area. The Source picker filters to unbatched files under the “Single files” optgroup.
+- Upload files using the single-file area. Each new source row exposes the “Single files” optgroup so you can pick the unbatched files you want.
 - Add a Row Filter source entry for each file; the per-entry file selector now only shows single (unbatched) files so you cannot accidentally mix them with grouped inputs.
 - Create destinations with one-to-one mapping (source-to-destination pair) and run Export. The system zips the multiple outputs when more than one file is created.
 
 ## Notes & tips
-- The new **Source** picker in Properties keeps the list short and grouped by batch. Processed streams inherit the `(processed)` suffix so you can tell which sources were generated by earlier transforms.
+- Each source row in the Properties panel keeps the list short and grouped by batch. Processed streams inherit the `(processed)` suffix so you can tell which sources were generated by earlier transforms.
 - The `Export Batch` banner only appears when you are working with a batch. It shows how many destinations will be created automatically; clicking **Add destination** lets you override that if the automatic behavior is not what you need.
 - When a column list is empty, upload/select a source to load columns before picking an operator.
 - Use the **Create destination from this file** action on a source entry to quickly add a destination row that is already paired to that source (the UI drops you into the destination editor with the same source selected).
-
+- The `Linked sources` multi-select inside each destination allows you to tie that output to one or more sources after it is created. Select multiple entries (Shift/Cmd) to mark a destination as reusing the same output for different inputs or append-friendly flows.

@@ -1190,6 +1190,8 @@ Operation blocks can target multiple sources and multiple destination output she
 Selecting a file group in an operation source expands that group into multiple source targets (one per file) so each file can be routed to its own output file.
 If there are more sources than destinations, the operation appends all source results into each destination file. If there is one source and multiple destinations, the operation fans out the same result to each destination. When counts match, the operation runs one-to-one.
 
+Destinations now include a `Linked sources` multi-select, and clicking “Create destination from this file” automatically fills that list with the invoking source. These UI hooks drive the `sourceId`/`linkedSourceIds` metadata stored on each node so the backend knows whether a destination is tied to one source, several inputs, or a full batch when executing g2g/g2m/m2m flows.
+
 When output sheets are created after a preview is already open, any placeholder output preview target is swapped to the first real output sheet so users see actual results without re-opening the preview.
 
 Empty sheets still render a grid (with placeholder columns) so the preview area stays visually consistent even when no data is present.
@@ -1410,6 +1412,72 @@ Output DataFrame:
 | Alice | 25  | NYC  |
 | Carol | 25  | NYC  |
 ```
+
+### Row Filter Sources & Destinations
+
+1. **Source selection:** Every row in the row filter properties panel now includes the grouped `Source` dropdown (`renderSourceOptions`). It lists every batch (with a “Use all {Batch}” option), the standalone files, and the processed streams that upstream nodes expose (`flowSourceTargets`). Selecting `file:<id>` binds that entry to `filesById.get(<id>)`, selecting `group:<batchId>` expands the entry into one target per batch file, and choosing a processed stream applies the virtual target.
+
+    ```typescript
+    const handleSourceEntrySelect = useCallback(
+      (index: number, optionValue: string) => {
+        if (!optionValue) {
+          return;
+        }
+        const [type, rawId] = optionValue.split(':');
+        const nextTargets = [...sourceTargets];
+        if (type === 'file') {
+          const fileId = Number(rawId);
+          const file = filesById.get(fileId);
+          nextTargets[index] = {
+            ...nextTargets[index],
+            fileId,
+            batchId: file?.batch_id ?? nextTargets[index].batchId ?? null,
+            sheetName: null,
+            virtualId: null,
+            virtualName: file?.original_filename ?? null,
+          };
+        } else if (type === 'group') {
+          const batchId = Number(rawId);
+          const groupTargets = files
+            .filter((file) => file.batch_id === batchId)
+            .map((file) => ({
+              fileId: file.id,
+              sheetName: null,
+              batchId,
+              virtualId: null,
+              virtualName: file.original_filename,
+            }));
+          nextTargets.splice(index, 1, ...groupTargets);
+        } else if (type === 'stream') {
+          const streamIndex = Number(rawId);
+          const streamTarget = flowSourceTargets[streamIndex];
+          if (streamTarget) {
+            nextTargets[index] = streamTarget;
+          }
+        }
+        updateSourceTargets(nextTargets);
+      },
+      [files, filesById, flowSourceTargets, sourceTargets, updateSourceTargets]
+    );
+    ```
+
+2. **Sheet loading & row previews:** Once a file is bound to a source entry, the panel fetches sheet names via `filesApi.sheets` and previews via `filesApi.preview`. The sheet select is disabled until those calls resolve, preventing empty previews from wiping the list.
+
+3. **Preview filtering:** The operation preview header exposes batch/individual/all toggles so the `DataPreview` file dropdown only lists the files that were explicitly added to the block. This keeps g2g/g2m/m2m previews aligned with the configured sources even when the global file list contains additional uploads. When multiple batches feed the block, the header also exposes a File group dropdown (labelled by batch name) so you can zoom in on just one group at a time while keeping the toggle state intact.
+
+4. **Linked destinations:** Every destination row renders `renderLinkedSourcesControl`, which surfaces a multi-select bound to `destinationTargets[index].linkedSourceIds`. The `Create destination from this file` helper pre-populates the destination’s `sourceId` and linked sources so run-time execution can map inputs to outputs with g2g, g2m, or m2m semantics.
+
+    ```tsx
+    <select multiple value={linkedSources} onChange={(event) => handleLinkedSourcesChange(index, event)}>
+      {sourceLinkOptions.map((option) => (
+        <option key={option.value} value={String(option.value)}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+    ```
+
+5. **Execution contract:** The backend receives the normalized `sourceTargets` and `destinationTargets` arrays in the flow payload. Linked source IDs propagate through the transform APIs so each destination can apply the correct filtered stream (batch-preserving, append, or one-to-one as configured in the UI).
 
 ## State Synchronization
 

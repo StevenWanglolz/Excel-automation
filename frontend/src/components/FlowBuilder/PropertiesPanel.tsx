@@ -42,6 +42,8 @@ const normalizeTarget = (target?: TableTarget): TableTarget => ({
   batchId: target?.batchId ?? null,
   virtualId: target?.virtualId ?? null,
   virtualName: target?.virtualName ?? null,
+  sourceId: target?.sourceId ?? null,
+  linkedSourceIds: target?.linkedSourceIds ?? [],
 });
 
 const emptyTarget: TableTarget = {
@@ -50,6 +52,8 @@ const emptyTarget: TableTarget = {
   batchId: null,
   virtualId: null,
   virtualName: null,
+  sourceId: null,
+  linkedSourceIds: [],
 };
 
 const toSheetValue = (sheetName: string | null) => sheetName ?? SINGLE_SHEET_VALUE;
@@ -140,8 +144,6 @@ export const PropertiesPanel = ({
   
   // Generate unique IDs for form elements based on selectedNodeId
   const formIds = useMemo(() => ({
-    sourceType: `source-type-${selectedNodeId}`,
-    sourcePicker: `source-picker-${selectedNodeId}`,
     outputFile: `output-file-${selectedNodeId}`,
     outputSheet: `output-sheet-${selectedNodeId}`,
     sourceOutputFile: `source-output-file-${selectedNodeId}`,
@@ -168,6 +170,8 @@ export const PropertiesPanel = ({
     removeRowsRuleValue: (index: number) => `remove-rows-rule-value-${selectedNodeId}-${index}`,
     outputFileName: (fileIndex: number) => `output-file-name-${selectedNodeId}-${fileIndex}`,
     outputSheetName: (fileIndex: number, sheetIndex: number) => `output-sheet-name-${selectedNodeId}-${fileIndex}-${sheetIndex}`,
+    sourceEntrySheet: (index: number) => `source-sheet-${selectedNodeId ?? 'source'}-${index}`,
+    sourceEntrySelect: (index: number) => `source-entry-select-${selectedNodeId ?? 'source'}-${index}`,
   }), [selectedNodeId]);
   
   const nodeType = node?.type || '';
@@ -338,19 +342,84 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     }
     updateDestinationTargets([
       ...destinationTargets,
-      { ...emptyTarget, sourceId: sourceIndex },
+      {
+        ...emptyTarget,
+        sourceId: sourceIndex,
+        linkedSourceIds: [sourceIndex],
+      },
     ]);
   }, [destinationTargets, node, updateDestinationTargets]);
 
   const buildOutputTarget = useCallback(
-    (fileOption: { outputId: string; label: string }, sheetName: string): TableTarget => ({
+    (
+      fileOption: { outputId: string; label: string },
+      sheetName: string,
+      prev?: TableTarget
+    ): TableTarget => ({
       fileId: null,
       sheetName,
       virtualId: `output:${fileOption.outputId}:${sheetName}`,
       virtualName: `${fileOption.label} / ${sheetName}`,
+      sourceId: prev?.sourceId ?? null,
+      linkedSourceIds: prev?.linkedSourceIds ?? [],
     }),
     []
   );
+
+  const handleLinkedSourcesChange = useCallback(
+    (destIndex: number, event: ChangeEvent<HTMLSelectElement>) => {
+      const selectedValues = Array.from(event.target.selectedOptions)
+        .map((option) => Number(option.value))
+        .filter((value) => !Number.isNaN(value));
+      const nextTargets = [...destinationTargets];
+      const target = nextTargets[destIndex];
+      nextTargets[destIndex] = {
+        ...target,
+        linkedSourceIds: selectedValues,
+        sourceId: selectedValues[0] ?? null,
+      };
+      updateDestinationTargets(nextTargets);
+    },
+    [destinationTargets, updateDestinationTargets]
+  );
+
+  const renderLinkedSourcesControl = (destTarget: TableTarget, index: number) => {
+    if (sourceLinkOptions.length === 0) {
+      return null;
+    }
+    const selectedValues = (destTarget.linkedSourceIds ?? [])
+      .map((value) => Number(value))
+      .filter((value) => !Number.isNaN(value))
+      .map((value) => String(value));
+    const size = Math.max(2, Math.min(4, sourceLinkOptions.length));
+    const controlId = `linked-sources-${selectedNodeId ?? 'link'}-${index}`;
+    return (
+      <div>
+        <label
+          htmlFor={controlId}
+          className="block text-xs font-medium text-gray-500 mb-1"
+        >
+          Linked sources
+        </label>
+        <select
+          id={controlId}
+          multiple
+          size={size}
+          className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+          value={selectedValues}
+          onChange={(event) => handleLinkedSourcesChange(index, event)}
+          data-testid={`linked-sources-${index}`}
+        >
+          {sourceLinkOptions.map((option) => (
+            <option key={option.value} value={String(option.value)}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <p className="text-[10px] text-gray-400 mt-1">Select all sources forwarded to this destination.</p>
+      </div>
+    );
+  };
 
   const sourceNodeFileIds = useMemo(() => {
     const ids = new Set<number>();
@@ -374,6 +443,17 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     return new Map(files.map((file) => [file.id, file]));
   }, [files]);
 
+  const getSourceLabel = useCallback((target: TableTarget, index: number) => {
+    const file = target.fileId ? filesById.get(target.fileId) : null;
+    if (file?.original_filename) {
+      return file.original_filename;
+    }
+    if (target.virtualName) {
+      return target.virtualName;
+    }
+    return `Source ${index + 1}`;
+  }, [filesById]);
+
   const batchesById = useMemo(() => {
     return new Map(batches.map((batch) => [batch.id, batch]));
   }, [batches]);
@@ -390,15 +470,15 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
         singles.push(file);
       }
     });
-    const result: Array<{ label: string; files: File[] }> = [];
+    const result: Array<{ label: string; files: File[]; batchId: number | null }> = [];
     Array.from(groupedFiles.entries())
       .sort((a, b) => a[0] - b[0])
       .forEach(([batchId, groupFiles]) => {
         const label = batchesById.get(batchId)?.name ?? `Batch ${batchId}`;
-        result.push({ label, files: groupFiles });
+        result.push({ label, files: groupFiles, batchId });
       });
     if (singles.length > 0) {
-      result.push({ label: 'Single files', files: singles });
+      result.push({ label: 'Single files', files: singles, batchId: null });
     }
     return result;
   }, [files, batchesById]);
@@ -420,6 +500,16 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
       .map((target) => normalizeTarget(target as TableTarget))
       .filter((target) => target.fileId || target.virtualId);
   }, [nodes]);
+
+  const sourceLinkOptions = useMemo(
+    () =>
+      sourceTargets.map((target, index) => ({
+        value: index,
+        label: getSourceLabel(target, index),
+      })),
+    [getSourceLabel, sourceTargets]
+  );
+
 
   const processedSourceOptions = useMemo(() => (
     flowSourceTargets.map((target, index) => ({
@@ -859,11 +949,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                             if (!fileOption) return;
                             const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
                             const nextTargets = [...destinationTargets];
-                            // Preserve sourceId when changing destination file
-                            nextTargets[index] = { 
-                                ...buildOutputTarget(fileOption, sheetName),
-                                sourceId: destTarget.sourceId 
-                            };
+                            nextTargets[index] = buildOutputTarget(fileOption, sheetName, destTarget);
                             updateDestinationTargets(nextTargets);
                           }}
                           className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
@@ -885,7 +971,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                             if (!activeOutputOption) return;
                             const sheetName = event.target.value;
                             const nextTargets = [...destinationTargets];
-                            nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
+                            nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName, destTarget);
                             updateDestinationTargets(nextTargets);
                           }}
                           className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
@@ -902,6 +988,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                           )}
                         </select>
                       </div>
+                      {renderLinkedSourcesControl(destTarget, index)}
                     </div>
                   );
                 })}
@@ -941,7 +1028,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                   if (!fileOption) return;
                   const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
                   const nextTargets = [...destinationTargets];
-                  nextTargets[index] = buildOutputTarget(fileOption, sheetName);
+                  nextTargets[index] = buildOutputTarget(fileOption, sheetName, destTarget);
                   updateDestinationTargets(nextTargets);
                 }}
                 className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
@@ -963,7 +1050,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                   if (!activeOutputOption) return;
                   const sheetName = event.target.value;
                   const nextTargets = [...destinationTargets];
-                  nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
+                  nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName, destTarget);
                   updateDestinationTargets(nextTargets);
                 }}
                 className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
@@ -980,6 +1067,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                 )}
               </select>
             </div>
+            {renderLinkedSourcesControl(destTarget, index)}
           </div>
         );
       }
@@ -1138,42 +1226,120 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     }
   }, [node, nodeData, onUpdateLastTarget, updateNode]);
 
-  const handleSourcePickerChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const selectedValue = event.target.value;
-    if (!selectedValue) {
-      return;
-    }
-    const [type, rawId] = selectedValue.split(':');
-    if (type === 'file') {
-      const fileId = Number(rawId);
-      if (Number.isNaN(fileId)) {
+  const getSourceEntrySelectValue = useCallback(
+    (target: TableTarget) => {
+      if (target.virtualId) {
+        const streamIndex = flowSourceTargets.findIndex(
+          (stream) => stream.virtualId === target.virtualId && stream.sheetName === target.sheetName
+        );
+        if (streamIndex >= 0) {
+          return `stream:${streamIndex}`;
+        }
+      }
+      if (target.fileId) {
+        return `file:${target.fileId}`;
+      }
+      if (target.batchId) {
+        return `group:${target.batchId}`;
+      }
+      return '';
+    },
+    [flowSourceTargets]
+  );
+
+  const handleSourceEntrySelect = useCallback(
+    (index: number, optionValue: string) => {
+      if (!optionValue) {
         return;
       }
-      const file = filesById.get(fileId);
-      const nextTargets = [
-        ...sourceTargets,
-        {
+      const [type, rawId] = optionValue.split(':');
+      const nextTargets = [...sourceTargets];
+      if (type === 'file') {
+        const fileId = Number(rawId);
+        if (Number.isNaN(fileId)) {
+          return;
+        }
+        const file = filesById.get(fileId);
+        nextTargets[index] = {
+          ...nextTargets[index],
           fileId,
+          batchId: file?.batch_id ?? nextTargets[index].batchId ?? null,
           sheetName: null,
-          batchId: file?.batch_id ?? null,
           virtualId: null,
           virtualName: file?.original_filename ?? null,
-        },
-      ];
-      updateSourceTargets(nextTargets);
-    } else if (type === 'stream') {
-      const streamIndex = Number(rawId);
-      if (Number.isNaN(streamIndex)) {
-        return;
+        };
+        updateSourceTargets(nextTargets);
+      } else if (type === 'group') {
+        const batchId = Number(rawId);
+        if (Number.isNaN(batchId)) {
+          return;
+        }
+        const groupFiles = files.filter((file) => file.batch_id === batchId);
+        const existingFileIds = new Set<number>(
+          sourceTargets
+            .map((target) => target.fileId)
+            .filter((fileId): fileId is number => typeof fileId === 'number')
+        );
+        const newFiles = groupFiles.filter((file) => !existingFileIds.has(file.id));
+        if (newFiles.length === 0) {
+          return;
+        }
+        const groupTargets = newFiles.map((file) => ({
+          fileId: file.id,
+          sheetName: null,
+          batchId,
+          virtualId: null,
+          virtualName: file.original_filename,
+        }));
+        nextTargets.splice(index, 1, ...groupTargets);
+        updateSourceTargets(nextTargets);
+      } else if (type === 'stream') {
+        const streamIndex = Number(rawId);
+        if (Number.isNaN(streamIndex)) {
+          return;
+        }
+        const streamTarget = flowSourceTargets[streamIndex];
+        if (!streamTarget) {
+          return;
+        }
+        nextTargets[index] = streamTarget;
+        updateSourceTargets(nextTargets);
       }
-      const streamTarget = flowSourceTargets[streamIndex];
-      if (!streamTarget) {
-        return;
-      }
-      updateSourceTargets([...sourceTargets, streamTarget]);
-    }
-    event.target.value = '';
-  }, [filesById, flowSourceTargets, sourceTargets, updateSourceTargets]);
+    },
+    [files, filesById, flowSourceTargets, sourceTargets, updateSourceTargets]
+  );
+
+  const renderSourceOptions = useCallback(
+    () => (
+      <>
+        <option value="">Select source...</option>
+        {sourcePickerGroups.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {typeof group.batchId === 'number' && (
+              <option value={`group:${group.batchId}`}>
+                Use all {group.label}
+              </option>
+            )}
+            {group.files.map((file) => (
+              <option key={file.id} value={`file:${file.id}`}>
+                {file.original_filename}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+        {processedSourceOptions.length > 0 && (
+          <optgroup label="Processed streams">
+            {processedSourceOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </>
+    ),
+    [processedSourceOptions, sourcePickerGroups]
+  );
 
 
 
@@ -1442,35 +1608,9 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                       </div>
                     )}
                     <div className="rounded-md border border-gray-200 bg-white px-3 py-2 space-y-2">
-                      <label htmlFor={formIds.sourcePicker} className="block text-xs font-medium text-gray-500">
-                        Source
-                      </label>
-                      <select
-                        id={formIds.sourcePicker}
-                        onChange={handleSourcePickerChange}
-                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                        defaultValue=""
-                      >
-                        <option value="">Select source...</option>
-                        {sourcePickerGroups.map((group) => (
-                          <optgroup key={group.label} label={group.label}>
-                            {group.files.map((file) => (
-                              <option key={file.id} value={`file:${file.id}`}>
-                                {file.original_filename}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                        {processedSourceOptions.length > 0 && (
-                          <optgroup label="Processed streams">
-                            {processedSourceOptions.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </optgroup>
-                        )}
-                      </select>
+                      <p className="text-xs text-gray-500">
+                        Use “Add source” to append a row, then pick a file or stream in that row’s dropdown below.
+                      </p>
                       {sourceGroupFiles.length > 0 && (
                         <div className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs text-gray-700">
                           <div className="text-[10px] uppercase tracking-wide text-gray-500">Batch info</div>
@@ -1650,25 +1790,11 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                         } else {
                           // Render Single Item
                           const { target, index } = item;
+                          const sheetSelectId = formIds.sourceEntrySheet(index);
+                          const sourceSelectId = formIds.sourceEntrySelect(index);
                           const sourceTarget = target;
-                          const isOutputSource = Boolean(sourceTarget.virtualId);
-                          const parsedOutput = parseOutputVirtualId(sourceTarget.virtualId);
-                          const activeOutputOption = parsedOutput
-                            ? outputFileOptions.find((option) => option.outputId === parsedOutput.outputId) ?? outputFileOptions[0] ?? null
-                            : outputFileOptions[0] ?? null;
-                          const outputSheets = activeOutputOption?.sheets?.map((sheet) => sheet.sheetName || 'Sheet 1') ?? [];
                           const sheetOptionsForSource = sourceTarget.fileId ? (sheetsByFileId[sourceTarget.fileId] ?? []) : [];
                           const hasSourceSheets = sheetOptionsForSource.length > 0;
-                          const selectedBatchId =
-                            sourceTarget.batchId ??
-                            (sourceTarget.fileId ? filesById.get(sourceTarget.fileId)?.batch_id ?? null : null);
-                          const batchOptions = batches.filter((batch) =>
-                            files.some((file) => file.batch_id === batch.id)
-                          );
-                          const hasIndividualFiles = files.some((file) => !file.batch_id);
-                          const availableFiles = selectedBatchId
-                            ? files.filter((file) => file.batch_id === selectedBatchId)
-                            : files.filter((file) => !file.batch_id);
 
                           return (
                             <div key={item.id} className="rounded-md border border-gray-200 bg-white p-3 space-y-2">
@@ -1686,177 +1812,34 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                                 </button>
                               </div>
                               <div>
-                                <label className="block text-xs font-medium text-gray-500 mb-1">Source type</label>
+                                <label
+                                  htmlFor={sourceSelectId}
+                                  className="block text-xs font-medium text-gray-500 mb-1"
+                                >
+                                  Source
+                                </label>
                                 <select
-                                  value={isOutputSource ? 'output' : 'original'}
-                                  onChange={(event) => {
-                                    const nextTargets = [...sourceTargets];
-                                    if (event.target.value === 'output') {
-                                      if (!activeOutputOption) {
-                                        nextTargets[index] = emptyTarget;
-                                      } else {
-                                        const sheetName = outputSheets[0] || 'Sheet 1';
-                                        nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
-                                      }
-                                    } else {
-                                      nextTargets[index] = emptyTarget;
-                                    }
-                                    updateSourceTargets(nextTargets);
-                                  }}
+                                  id={sourceSelectId}
+                                  data-testid={`source-entry-select-${index}`}
+                                  value={getSourceEntrySelectValue(sourceTarget)}
+                                  onChange={(event) =>
+                                    handleSourceEntrySelect(index, event.target.value)
+                                  }
                                   className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
                                 >
-                                  <option value="original">Original file</option>
-                                  <option value="output">Output sheet</option>
+                                  {renderSourceOptions()}
                                 </select>
                               </div>
-                              {isOutputSource ? (
-                                <>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
-                                    <select
-                                      value={activeOutputOption?.id ?? ''}
-                                      onChange={(event) => {
-                                        const fileOption = outputFileOptionById.get(Number(event.target.value));
-                                        if (!fileOption) {
-                                          return;
-                                        }
-                                        const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
-                                        const nextTargets = [...sourceTargets];
-                                        nextTargets[index] = buildOutputTarget(fileOption, sheetName);
-                                        updateSourceTargets(nextTargets);
-                                      }}
-                                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                                      disabled={outputFileOptions.length === 0}
+                              <div>
+                                <label
+                                  htmlFor={sheetSelectId}
+                                      className="block text-xs font-medium text-gray-500 mb-1"
                                     >
-                                      <option value="">Select output file</option>
-                                      {outputFileOptions.map((option) => (
-                                        <option key={option.outputId} value={String(option.id)}>
-                                          {option.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Output sheet</label>
+                                      Sheet
+                                    </label>
                                     <select
-                                      value={sourceTarget.sheetName ?? ''}
-                                      onChange={(event) => {
-                                        if (!activeOutputOption) {
-                                          return;
-                                        }
-                                        const sheetName = event.target.value;
-                                        const nextTargets = [...sourceTargets];
-                                        nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName);
-                                        updateSourceTargets(nextTargets);
-                                      }}
-                                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                                      disabled={outputSheets.length === 0}
-                                    >
-                                      {outputSheets.length === 0 ? (
-                                        <option value="">No output sheets</option>
-                                      ) : (
-                                        outputSheets.map((sheetName) => (
-                                          <option key={sheetName} value={sheetName}>
-                                            {sheetName}
-                                          </option>
-                                        ))
-                                      )}
-                                    </select>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">File group</label>
-                                    <select
-                                      value={selectedBatchId ? String(selectedBatchId) : ''}
-                                      onChange={(event) => {
-                                        const nextBatchId = event.target.value ? Number(event.target.value) : null;
-                                        if (nextBatchId) {
-                                          const groupFiles = files.filter((file) => file.batch_id === nextBatchId);
-                                          const groupTargets = groupFiles.map((file) => ({
-                                            fileId: file.id,
-                                            sheetName: null,
-                                            batchId: nextBatchId,
-                                            virtualId: null,
-                                            virtualName: null,
-                                          }));
-                                          const nextSourceTargets = [...sourceTargets];
-                                          if (groupTargets.length > 0) {
-                                            nextSourceTargets.splice(index, 1, ...groupTargets);
-                                          } else {
-                                            nextSourceTargets[index] = {
-                                              ...sourceTarget,
-                                              batchId: nextBatchId,
-                                              fileId: null,
-                                              sheetName: null,
-                                              virtualId: null,
-                                              virtualName: null,
-                                            };
-                                          }
-                                          // Note: Omitted complex destination propagation logic for brevity/safety in this view
-                                          updateSourceTargets(nextSourceTargets);
-                                          return;
-                                        }
-                                        const nextTargets = [...sourceTargets];
-                                        nextTargets[index] = {
-                                          ...sourceTarget,
-                                          batchId: null,
-                                          fileId: null,
-                                          sheetName: null,
-                                          virtualId: null,
-                                          virtualName: null,
-                                        };
-                                        updateSourceTargets(nextTargets);
-                                      }}
-                                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                                      disabled={batchOptions.length === 0 && !hasIndividualFiles}
-                                    >
-                                      <option value="">Single files</option>
-                                      {batchOptions.map((batch) => (
-                                        <option key={batch.id} value={String(batch.id)}>
-                                          {batch.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">File</label>
-                                    <select
-                                      value={sourceTarget.fileId ? String(sourceTarget.fileId) : ''}
-                                      onChange={(event) => {
-                                        const nextFileId = event.target.value ? Number(event.target.value) : null;
-                                        const nextTargets = [...sourceTargets];
-                                        nextTargets[index] = {
-                                          ...sourceTarget,
-                                          batchId: selectedBatchId,
-                                          fileId: nextFileId,
-                                          sheetName: null,
-                                          virtualId: null,
-                                          virtualName: null,
-                                        };
-                                        updateSourceTargets(nextTargets);
-                                      }}
-                                      className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                                      disabled={isLoadingFiles}
-                                    >
-                                      <option value="">
-                                        {isLoadingFiles
-                                          ? 'Loading files...'
-                                          : availableFiles.length === 0
-                                            ? 'No files in this group'
-                                            : 'Select a file'}
-                                      </option>
-                                      {availableFiles.map((file) => (
-                                        <option key={file.id} value={String(file.id)}>
-                                          {file.original_filename}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Sheet</label>
-                                    <select
+                                      id={sheetSelectId}
+                                      data-testid={`source-sheet-${index}`}
                                       value={toSheetValue(sourceTarget.sheetName)}
                                       onChange={(event) => {
                                         const nextTargets = [...sourceTargets];
@@ -1901,8 +1884,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                                       Opens the destination editor for this source.
                                     </span>
                                   </div>
-                                </>
-                              )}
                             </div>
                           );
                         }

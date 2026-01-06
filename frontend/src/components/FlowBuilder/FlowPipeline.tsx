@@ -164,6 +164,7 @@ export const FlowPipeline = ({
   const [scale, setScale] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [previewBatchId, setPreviewBatchId] = useState<number | null>(null);
   const panStartRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
@@ -204,6 +205,16 @@ export const FlowPipeline = ({
   const isOutputSheetPreview = Boolean(previewOverride?.virtualId?.startsWith('output:')) ||
     (isOutputPreview && !previewOverride?.fileId) ||
     (!isSourcePreview && !previewOverride?.fileId && hasOutputSelection);
+  const activePreviewSourceTargets = useMemo<TableTarget[]>(() => {
+    if (!activePreviewNode) {
+      return [];
+    }
+    const payload = activePreviewNode.data?.sourceTargets;
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+    return payload as TableTarget[];
+  }, [activePreviewNode]);
   const outputConfig = useMemo(() => {
     const outputNode = nodes.find((candidate) =>
       candidate.data?.blockType === 'output' || candidate.type === 'output'
@@ -346,10 +357,7 @@ export const FlowPipeline = ({
   );
   const hasSelectedSource = Boolean(
     isOperationPreview &&
-      (previewOverride?.fileId ||
-        previewOverride?.virtualId ||
-        nodeTarget?.fileId ||
-        nodeTarget?.virtualId)
+      activePreviewSourceTargets.some((target) => Boolean(target?.fileId || target?.virtualId))
   );
   const sourceBatchId = nodeTarget?.batchId ?? null;
   const filteredSourceFileIds = useMemo(() => {
@@ -403,9 +411,6 @@ export const FlowPipeline = ({
     : undefined;
 
   const previewBatchOptions = useMemo(() => {
-    if (!isSourcePreview) {
-      return [];
-    }
     const batchesWithFiles = previewBatches.filter((batch) =>
       previewFiles.some((file) => file.batch_id === batch.id)
     );
@@ -418,7 +423,74 @@ export const FlowPipeline = ({
       options.unshift({ id: null, label: 'Single files' });
     }
     return options;
-  }, [isSourcePreview, previewBatches, previewFiles]);
+  }, [previewBatches, previewFiles]);
+  const operationBatchOptions = useMemo(() => {
+    const actualBatches = previewBatchOptions.filter((option) => option.id !== null);
+    if (actualBatches.length <= 1) {
+      return [];
+    }
+    return [{ id: null, label: 'All batches' }, ...actualBatches];
+  }, [previewBatchOptions]);
+
+  const previewSourceFileIds = useMemo(
+    () =>
+      activePreviewSourceTargets
+        .map((target) => target.fileId)
+        .filter((fileId): fileId is number => typeof fileId === 'number'),
+    [activePreviewSourceTargets]
+  );
+  const previewBatchSourceFileIds = useMemo(
+    () =>
+      new Set(
+        activePreviewSourceTargets
+          .filter((target) => typeof target.batchId === 'number')
+          .map((target) => target.fileId)
+          .filter((fileId): fileId is number => typeof fileId === 'number')
+      ),
+    [activePreviewSourceTargets]
+  );
+  const previewIndividualSourceFileIds = useMemo(
+    () =>
+      new Set(
+        activePreviewSourceTargets
+          .filter((target) => target.batchId == null)
+          .map((target) => target.fileId)
+          .filter((fileId): fileId is number => typeof fileId === 'number')
+      ),
+    [activePreviewSourceTargets]
+  );
+  const hasBatchPreviewSources = previewBatchSourceFileIds.size > 0;
+  const hasIndividualPreviewSources = previewIndividualSourceFileIds.size > 0;
+  const [previewSourceFilter, setPreviewSourceFilter] = useState<'all' | 'batch' | 'individual'>('all');
+
+  useEffect(() => {
+    setPreviewSourceFilter('all');
+    setPreviewBatchId(null);
+  }, [activePreviewSourceTargets]);
+
+  useEffect(() => {
+    if (previewSourceFilter === 'individual') {
+      setPreviewBatchId(null);
+    }
+  }, [previewSourceFilter]);
+
+  useEffect(() => {
+    if (operationBatchOptions.length <= 1) {
+      setPreviewBatchId(null);
+      return;
+    }
+    setPreviewBatchId((prev) => {
+      if (prev === null) {
+        return prev;
+      }
+      const exists = operationBatchOptions.some((option) => option.id === prev);
+      return exists ? prev : null;
+    });
+  }, [operationBatchOptions]);
+
+  useEffect(() => {
+    setPreviewBatchId(null);
+  }, [activePreviewNodeId]);
 
   const previewFileOptions = useMemo(() => {
     if (!activePreviewNode) {
@@ -428,8 +500,30 @@ export const FlowPipeline = ({
       return outputFileOptions;
     }
     const fileIds = (() => {
-      if (!isSourcePreview) {
-        return previewFiles.map((file) => file.id);
+      if (isOperationPreview) {
+        let ids: number[] = [];
+        if (previewSourceFilter === 'batch') {
+          ids = Array.from(previewBatchSourceFileIds);
+        } else if (previewSourceFilter === 'individual') {
+          ids = Array.from(previewIndividualSourceFileIds);
+        } else {
+          ids = previewSourceFileIds;
+        }
+        if (ids.length === 0) {
+          return [];
+        }
+        if (previewBatchId !== null) {
+          const batchSet = new Set(
+            previewFiles
+              .filter((file) => file.batch_id === previewBatchId)
+              .map((file) => file.id)
+          );
+          ids = ids.filter((fileId) => batchSet.has(fileId));
+          if (ids.length === 0) {
+            return [];
+          }
+        }
+        return ids;
       }
       if (sourceBatchId !== null) {
         return previewFiles
@@ -457,7 +551,21 @@ export const FlowPipeline = ({
     outputFileOptions,
     previewFiles,
     sourceBatchId,
+    previewSourceFilter,
+    previewSourceFileIds,
+    previewBatchSourceFileIds,
+    previewIndividualSourceFileIds,
+    previewBatchId,
   ]);
+
+  const showPreviewSourceToggle =
+    isOperationPreview && (hasBatchPreviewSources || hasIndividualPreviewSources);
+  const previewBatchDropdownOptions = isSourcePreview
+    ? previewBatchOptions
+    : previewSourceFilter === 'individual'
+      ? []
+      : operationBatchOptions;
+  const showPreviewBatchDropdown = previewBatchDropdownOptions.length > 1;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -667,6 +775,7 @@ export const FlowPipeline = ({
             <SortableContext items={sortableNodes.map((node) => node.id)} strategy={verticalListSortingStrategy}>
               {sortableNodes.map((node) => {
                 const isFileSource = fileSourceNodeId === node.id || node.type === 'source';
+                const isOutputNode = node.data?.blockType === 'output' || node.type === 'output';
                 const isMappingNode = node.data?.blockType === 'mapping' || node.type === 'mapping';
                 const configSummary = [
                   formatTarget(node.data?.target as TableTarget | undefined),
@@ -677,7 +786,14 @@ export const FlowPipeline = ({
                   .join(' • ');
                 const isSelected = selectedNodeId === node.id;
                 const isPreviewOpen = activePreviewNodeIds.has(node.id);
-                const canPreview = !isMappingNode;
+                const nodeSourceTargets = Array.isArray(node.data?.sourceTargets)
+                  ? (node.data?.sourceTargets as TableTarget[])
+                  : [];
+                const hasOperationSources = nodeSourceTargets.some((target) =>
+                  Boolean(target?.fileId || target?.virtualId)
+                );
+                const isOperationNode = !isFileSource && !isOutputNode && !isMappingNode;
+                const canPreview = !isMappingNode && (!isOperationNode || hasOperationSources);
                 const uploadCount = Array.isArray(node.data?.fileIds) ? node.data.fileIds.length : 0;
 
                 return (
@@ -815,108 +931,157 @@ export const FlowPipeline = ({
                   No output sheets available yet.
                 </div>
               ) : (
-                <DataPreview
-                  preview={(() => {
-                    const EMPTY_SHEET_COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-                    const emptyPreview = {
-                      columns: EMPTY_SHEET_COLUMNS,
-                      row_count: 0,
-                      preview_rows: [],
-                      dtypes: {},
-                      is_placeholder: true,
-                      current_sheet: activeOutputSheetName ?? null,
-                    };
-                    const basePreview = previews[activePreviewNode.id] || null;
-                    if (!isOutputSheetPreview) {
-                      return basePreview;
-                    }
-                    if (!outputPreviewEnabled) {
-                      return null;
-                    }
-                    if (!basePreview) {
-                      return emptyPreview;
-                    }
-                    if (basePreview.columns.length === 0 && basePreview.preview_rows.length === 0) {
-                      return emptyPreview;
-                    }
-                    return basePreview;
-                  })()}
-                  isLoading={previewLoading[activePreviewNode.id] || false}
-                  fileOptions={previewFileOptions}
-                  currentFileId={
-                    isSourcePreview
-                      ? sourceFileId ?? null
-                      : isOutputSheetPreview
-                        ? activeOutputFileOption?.id ?? null
-                        : previewOverride?.fileId ??
-                          nodeDestination?.fileId ??
-                          (activePreviewNode.data?.target as TableTarget | undefined)?.fileId ??
-                          null
-                  }
-                  sheetOptions={isOutputSheetPreview ? outputSheetLabels : previewSheetOptions}
-                  currentSheet={
-                    isOutputSheetPreview
-                      ? activeOutputSheetName
-                      : isSourcePreview
-                        ? sourceSheetName
-                        : previewOverride?.sheetName ??
-                          nodeDestination?.sheetName ??
-                          (activePreviewNode.data?.target as TableTarget | undefined)?.sheetName ??
-                          null
-                  }
-                  onFileChange={
-                    isOutputSheetPreview
-                      ? (fileId) => {
-                          const fileOption = outputFileOptionById.get(fileId);
-                          if (!fileOption) {
-                            return;
+                <div className="space-y-3 h-full flex flex-col">
+                  {showPreviewSourceToggle && (
+                    <div className="flex flex-wrap gap-2 text-[11px] font-semibold uppercase text-gray-500">
+                      {hasBatchPreviewSources && (
+                        <button
+                          type="button"
+                          className={`rounded-full px-3 py-1 transition ${
+                            previewSourceFilter === 'batch'
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                          onClick={() => setPreviewSourceFilter('batch')}
+                        >
+                          Batch files
+                        </button>
+                      )}
+                      {hasIndividualPreviewSources && (
+                        <button
+                          type="button"
+                          className={`rounded-full px-3 py-1 transition ${
+                            previewSourceFilter === 'individual'
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                          onClick={() => setPreviewSourceFilter('individual')}
+                        >
+                          Individual files
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className={`rounded-full px-3 py-1 transition ${
+                          previewSourceFilter === 'all'
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                        onClick={() => setPreviewSourceFilter('all')}
+                      >
+                        All selected
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex-1 overflow-hidden">
+                    <DataPreview
+                      preview={(() => {
+                        const EMPTY_SHEET_COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+                        const emptyPreview = {
+                          columns: EMPTY_SHEET_COLUMNS,
+                          row_count: 0,
+                          preview_rows: [],
+                          dtypes: {},
+                          is_placeholder: true,
+                          current_sheet: activeOutputSheetName ?? null,
+                        };
+                        const basePreview = previews[activePreviewNode.id] || null;
+                        if (!isOutputSheetPreview) {
+                          return basePreview;
+                        }
+                        if (!outputPreviewEnabled) {
+                          return null;
+                        }
+                        if (!basePreview) {
+                          return emptyPreview;
+                        }
+                        if (basePreview.columns.length === 0 && basePreview.preview_rows.length === 0) {
+                          return emptyPreview;
+                        }
+                        return basePreview;
+                      })()}
+                      isLoading={previewLoading[activePreviewNode.id] || false}
+                      fileOptions={previewFileOptions}
+                      currentFileId={
+                        isSourcePreview
+                          ? sourceFileId ?? null
+                          : isOutputSheetPreview
+                            ? activeOutputFileOption?.id ?? null
+                            : previewOverride?.fileId ??
+                              nodeDestination?.fileId ??
+                              (activePreviewNode.data?.target as TableTarget | undefined)?.fileId ??
+                              null
+                      }
+                      sheetOptions={isOutputSheetPreview ? outputSheetLabels : previewSheetOptions}
+                      currentSheet={
+                        isOutputSheetPreview
+                          ? activeOutputSheetName
+                          : isSourcePreview
+                            ? sourceSheetName
+                            : previewOverride?.sheetName ??
+                              nodeDestination?.sheetName ??
+                              (activePreviewNode.data?.target as TableTarget | undefined)?.sheetName ??
+                              null
+                      }
+                      onFileChange={
+                        isOutputSheetPreview
+                          ? (fileId) => {
+                              const fileOption = outputFileOptionById.get(fileId);
+                              if (!fileOption) {
+                                return;
+                              }
+                              const nextSheet = fileOption.sheets[0]?.sheetName || 'Sheet 1';
+                              onPreviewTargetChange(activePreviewNode.id, {
+                                fileId: null,
+                                sheetName: nextSheet,
+                                virtualId: `output:${fileOption.outputId}:${nextSheet}`,
+                                virtualName: `${fileOption.label} / ${nextSheet}`,
+                              });
+                            }
+                          : (fileId) => {
+                            if (isSourcePreview) {
+                              const selectedFile = previewFiles.find((file) => file.id === fileId);
+                              const nextBatchId = selectedFile?.batch_id ?? sourceBatchId ?? null;
+                              onSourceFileChange(fileId, nextBatchId);
+                              return;
+                            }
+                            onPreviewFileChange(activePreviewNode.id, fileId);
                           }
-                          const nextSheet = fileOption.sheets[0]?.sheetName || 'Sheet 1';
-                          onPreviewTargetChange(activePreviewNode.id, {
-                            fileId: null,
-                            sheetName: nextSheet,
-                            virtualId: `output:${fileOption.outputId}:${nextSheet}`,
-                            virtualName: `${fileOption.label} / ${nextSheet}`,
-                          });
-                        }
-                        : (fileId) => {
-                          if (isSourcePreview) {
-                            const selectedFile = previewFiles.find((file) => file.id === fileId);
-                            const nextBatchId = selectedFile?.batch_id ?? sourceBatchId ?? null;
-                            onSourceFileChange(fileId, nextBatchId);
-                            return;
-                          }
-                          onPreviewFileChange(activePreviewNode.id, fileId);
-                        }
-                  }
-                  onBatchChange={
-                    isSourcePreview
-                      ? (batchId) => {
-                          onSourceBatchChange(batchId);
-                        }
-                      : undefined
-                  }
-                  onSheetChange={
-                    isOutputSheetPreview
-                      ? (sheetName) => {
-                          if (!activeOutputFileOption) {
-                            return;
-                          }
-                          onPreviewTargetChange(activePreviewNode.id, {
-                            fileId: null,
-                            sheetName,
-                            virtualId: `output:${activeOutputFileOption.outputId}:${sheetName}`,
-                            virtualName: `${activeOutputFileOption.label} / ${sheetName}`,
-                          });
-                        }
-                      : isSourcePreview
-                        ? onSourceSheetChange
-                        : (sheetName) => onPreviewSheetChange(activePreviewNode.id, sheetName)
-                  }
-                  allowEmptyFileSelection={isSourcePreview}
-                  batchOptions={isSourcePreview ? previewBatchOptions : undefined}
-                  currentBatchId={isSourcePreview ? sourceBatchId : null}
-                />
+                      }
+                      onBatchChange={
+                        isSourcePreview
+                          ? (batchId) => {
+                              onSourceBatchChange(batchId);
+                            }
+                          : showPreviewBatchDropdown
+                            ? (batchId) => {
+                                setPreviewBatchId(batchId ?? null);
+                              }
+                            : undefined
+                      }
+                      onSheetChange={
+                        isOutputSheetPreview
+                          ? (sheetName) => {
+                              if (!activeOutputFileOption) {
+                                return;
+                              }
+                              onPreviewTargetChange(activePreviewNode.id, {
+                                fileId: null,
+                                sheetName,
+                                virtualId: `output:${activeOutputFileOption.outputId}:${sheetName}`,
+                                virtualName: `${activeOutputFileOption.label} / ${sheetName}`,
+                              });
+                            }
+                          : isSourcePreview
+                            ? onSourceSheetChange
+                            : (sheetName) => onPreviewSheetChange(activePreviewNode.id, sheetName)
+                      }
+                      allowEmptyFileSelection={isSourcePreview}
+                      batchOptions={showPreviewBatchDropdown ? previewBatchDropdownOptions : undefined}
+                      currentBatchId={isSourcePreview ? sourceBatchId : previewBatchId}
+                    />
+                  </div>
+                </div>
               )}
             </div>
           </div>

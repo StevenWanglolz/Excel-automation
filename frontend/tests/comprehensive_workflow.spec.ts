@@ -238,7 +238,17 @@ test.describe('Comprehensive Workflow & Preview', () => {
         await expect(opNode).toContainText('Value');
         await expect(opNode).toContainText('10');
         
-        // 4. Preview Operation Block
+        // 4. Configure a source so preview is available
+        const panel = page.locator('#properties-panel');
+        await expect(panel).toBeVisible();
+        const addSourceBtn = panel.getByRole('button', { name: 'Add source' });
+        await addSourceBtn.click();
+        const sourceSelect = panel.locator('[data-testid^="source-entry-select-"]').first();
+        await sourceSelect.selectOption('file:101');
+        const sheetSelect = panel.locator('[data-testid^="source-sheet-"]').first();
+        await sheetSelect.selectOption('Sheet1');
+
+        // 5. Preview Operation Block
         const previewBtn = opNode.locator('button[title*="preview"]');
         await expect(previewBtn).toBeVisible();
         await previewBtn.click({ force: true });

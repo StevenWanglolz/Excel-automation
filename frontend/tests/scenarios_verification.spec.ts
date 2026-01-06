@@ -156,7 +156,7 @@ test.describe('Advanced Data Flow Scenarios', () => {
         
         // Since Op-1 is "previous", we expect to see sources from Op-1.
         // Op-1 has 2 outputs.
-        const sourceSelect = panel.locator('select').first();  
+        const sourceSelect = panel.locator('select[data-testid^="source-entry-select-"]').first();  
         
         // We might need to find the SPECIFIC select for "Source"
         // PropertiesPanel renders: <label>Source</label> followed by <select>

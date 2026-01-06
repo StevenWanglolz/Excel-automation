@@ -17,9 +17,12 @@ test.describe('Filter Scenarios with Groups', () => {
   
   // Simulate a batch of 3 files
   const mockBatch = { id: 1, name: 'Test Batch', file_count: 3, created_at: new Date().toISOString() };
+  const mockBatch2 = { id: 2, name: 'Second Batch', file_count: 2, created_at: new Date().toISOString() };
   const mockFile1 = { id: 101, original_filename: 'sales_q1.xlsx', batch_id: 1, created_at: new Date().toISOString() };
   const mockFile2 = { id: 102, original_filename: 'sales_q2.xlsx', batch_id: 1, created_at: new Date().toISOString() };
   const mockFile3 = { id: 103, original_filename: 'sales_q3.xlsx', batch_id: 1, created_at: new Date().toISOString() };
+  const mockBatch2File1 = { id: 104, original_filename: 'batch2-file1.xlsx', batch_id: 2, created_at: new Date().toISOString() };
+  const mockBatch2File2 = { id: 105, original_filename: 'batch2-file2.xlsx', batch_id: 2, created_at: new Date().toISOString() };
   const mockFiles = [mockFile1, mockFile2, mockFile3];
 
   // Individual files (not in batch) for Many-to-Many testing
@@ -388,5 +391,117 @@ test.describe('Filter Scenarios with Groups', () => {
       operator: 'contains',
       value: 'Item',
     });
+  });
+
+  test('Create destination from a source automatically links the pair', async ({ page }) => {
+    await page.goto('/flow-builder');
+    await expect(page.getByText('Data', { exact: true })).toBeVisible({ timeout: 10000 });
+    await addBlockViaModal(page, 'Selection', 'Row Filter');
+
+    const outputBlock = page.locator('.pipeline-block').filter({ hasText: 'Output' }).first();
+    await outputBlock.click({ force: true });
+    const outputPanel = page.locator('#properties-panel');
+    await outputPanel.getByRole('button', { name: 'Add output file' }).click();
+
+    const filterBlock = page.locator('.pipeline-block').nth(1);
+    await filterBlock.click({ force: true });
+    const panel = page.locator('#properties-panel');
+
+    await panel.getByRole('button', { name: 'Add source' }).click();
+    const fileSelect = panel.locator('[data-testid^="source-entry-select-"]').first();
+    await fileSelect.selectOption('file:201');
+
+    const createDestButton = panel.getByRole('button', { name: 'Create destination from this file' }).last();
+    await expect(createDestButton).toBeEnabled();
+    await createDestButton.click();
+
+    const linkedSelect = panel.locator('[data-testid^="linked-sources-"]').first();
+    await expect(linkedSelect).toBeVisible();
+    const linkedText = await linkedSelect.evaluate((select) =>
+      Array.from(select.selectedOptions).map((opt) => opt.textContent ?? '').join(',')
+    );
+    expect(linkedText).toContain('report_a.xlsx');
+  });
+
+  test('Manual linking lets one destination point to multiple sources', async ({ page }) => {
+    await page.goto('/flow-builder');
+    await expect(page.getByText('Data', { exact: true })).toBeVisible({ timeout: 10000 });
+    await addBlockViaModal(page, 'Selection', 'Row Filter');
+
+    const outputBlock = page.locator('.pipeline-block').filter({ hasText: 'Output' }).first();
+    await outputBlock.click({ force: true });
+    const outputPanel = page.locator('#properties-panel');
+    await outputPanel.getByRole('button', { name: 'Add output file' }).click();
+
+    const filterBlock = page.locator('.pipeline-block').nth(1);
+    await filterBlock.click({ force: true });
+    const panel = page.locator('#properties-panel');
+
+    const addSource = panel.getByRole('button', { name: 'Add source' });
+    await addSource.click();
+    await addSource.click();
+    const fileSelects = panel.locator('[data-testid^="source-entry-select-"]');
+    await fileSelects.nth(0).selectOption('file:201');
+    await fileSelects.nth(1).selectOption('file:202');
+
+    const createDestButton = panel.getByRole('button', { name: 'Create destination from this file' }).last();
+    await createDestButton.click();
+    const linkedSelect = panel.locator('[data-testid^="linked-sources-"]').last();
+    await linkedSelect.selectOption([{ value: '0' }, { value: '1' }]);
+
+    const linkedSummary = await linkedSelect.evaluate((select) =>
+      Array.from(select.selectedOptions).map((opt) => opt.textContent ?? '').join(',')
+    );
+    expect(linkedSummary).toContain('report_a.xlsx');
+    expect(linkedSummary).toContain('report_b.xlsx');
+  });
+
+  test('Preview batch dropdown scopes the file list to the selected group', async ({ page }) => {
+    const multiBatchFiles = [...mockFiles, mockBatch2File1, mockBatch2File2];
+    const multiBatches = [mockBatch, mockBatch2];
+    await page.route(`${API_BASE}/files`, (route) => mockJson(route, multiBatchFiles));
+    await page.route(`${API_BASE}/files/batches`, (route) => mockJson(route, multiBatches));
+
+    await page.goto('/flow-builder');
+    await addBlockViaModal(page, 'Selection', 'Row Filter');
+
+    const filterBlock = page.locator('.pipeline-block').nth(1);
+    await filterBlock.click({ force: true });
+    const panel = page.locator('#properties-panel');
+    const addSource = panel.getByRole('button', { name: 'Add source' });
+    await addSource.click();
+    const sourceSelects = panel.locator('[data-testid^="source-entry-select-"]');
+    await sourceSelects.first().selectOption('group:1');
+    await addSource.click();
+    await expect(sourceSelects.last()).toBeVisible({ timeout: 5000 });
+    await sourceSelects.last().selectOption('group:2');
+
+    await filterBlock.locator('button[title*="preview"]').click({ force: true });
+
+    const batchSelect = page.getByLabel('File group');
+    const fileSelect = page.getByLabel('File').nth(1);
+
+    await expect(batchSelect).toBeVisible();
+    await expect(fileSelect).toBeVisible({ timeout: 10000 });
+    await expect(batchSelect).toHaveValue('');
+    await expect(batchSelect.locator('option')).toHaveCount(3);
+    await expect.poll(
+      () => fileSelect.locator('option').count(),
+      { timeout: 10000 }
+    ).toBeGreaterThanOrEqual(3);
+    const initialFileOptions = await fileSelect.locator('option').allTextContents();
+    expect(initialFileOptions).toContain('sales_q1.xlsx');
+    expect(initialFileOptions).toContain('batch2-file1.xlsx');
+
+    await batchSelect.selectOption(String(mockBatch2.id));
+    await expect(batchSelect).toHaveValue(String(mockBatch2.id));
+    await expect.poll(
+      () => fileSelect.locator('option').count(),
+      { timeout: 10000 }
+    ).toBeGreaterThanOrEqual(2);
+    const secondBatchOptions = await fileSelect.locator('option').allTextContents();
+    expect(secondBatchOptions).toContain('batch2-file1.xlsx');
+    expect(secondBatchOptions).toContain('batch2-file2.xlsx');
+    expect(secondBatchOptions).not.toContain('sales_q1.xlsx');
   });
 });

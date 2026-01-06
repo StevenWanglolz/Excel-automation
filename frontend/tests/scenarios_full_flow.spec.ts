@@ -178,11 +178,14 @@ test.describe('Full End-to-End Workflow', () => {
      
      // Verify Sources section is available for configuration
      await expect(propsPanel.getByRole('heading', { name: 'Sources' })).toBeVisible();
-     await expect(propsPanel.getByRole('button', { name: 'Add source' })).toBeVisible();
-     
+     const addSourceBtn = propsPanel.getByRole('button', { name: 'Add source' });
+     await expect(addSourceBtn).toBeVisible();
+     await addSourceBtn.click();
+     const sourceSelect = propsPanel.locator('[data-testid^="source-entry-select-"]').first();
+     await sourceSelect.selectOption('file:1');
      // 6. Preview Operation Block
      await filterBlock.locator('button[title="Show preview"]').click();
-     await expect(page.getByText('No data source selected for this block.')).toBeVisible();
+     await expect(page.getByText('Full Screen Preview')).toBeVisible();
      await page.getByRole('button', { name: 'Close preview' }).click();
      await expect(page.getByText('Full Screen Preview')).not.toBeVisible();
      
