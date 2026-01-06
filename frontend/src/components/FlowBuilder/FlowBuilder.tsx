@@ -101,6 +101,7 @@ export const FlowBuilder = () => {
   const transformPreviewCacheRef = useRef<Map<string, FilePreview>>(new Map());
 
   useEffect(() => {
+    // If a batch is selected before previewFiles load, pick the first batch file once available.
     const shouldLockScroll =
       isModalOpen ||
       isOperationModalOpen ||
@@ -918,6 +919,7 @@ export const FlowBuilder = () => {
     }
     const sourceTarget = fileSourceNode.data?.target as TableTarget | undefined;
     const targetFileId = sourceTarget?.fileId ?? null;
+
     setSourceFileId((prev) => {
       if (prev && sourceFileIds.includes(prev)) {
         return prev;
@@ -925,9 +927,13 @@ export const FlowBuilder = () => {
       if (targetFileId && sourceFileIds.includes(targetFileId)) {
         return targetFileId;
       }
+      // Fallback: Default to first available file if no target is explicitly set
+      if (sourceFileIds.length > 0) {
+          return sourceFileIds[0];
+      }
       return null;
     });
-  }, [fileSourceNode, sourceFileIds]);
+  }, [fileSourceNode, sourceFileIds.join(',')]);
 
   useEffect(() => {
     if (!fileSourceNode) {
@@ -984,6 +990,10 @@ export const FlowBuilder = () => {
     if (!sourceBatchId) {
       return;
     }
+    // Avoid clearing batch selection while preview files are still loading.
+    if (previewFiles.length === 0) {
+      return;
+    }
     const batchFileIds = previewFiles
       .filter((file) => file.batch_id === sourceBatchId)
       .map((file) => file.id);
@@ -994,6 +1004,11 @@ export const FlowBuilder = () => {
       return;
     }
     if (sourceTarget?.fileId && batchFileIds.includes(sourceTarget.fileId)) {
+      return;
+    }
+    // Prevent infinite loop if already cleared
+    if (!sourceTarget?.fileId && !sourceTarget?.sheetName) {
+      if (sourceFileId !== null) setSourceFileId(null);
       return;
     }
     // Selected file is no longer in the group; clear selection so the user picks again.
@@ -1063,6 +1078,7 @@ export const FlowBuilder = () => {
     };
   }, [nodes]);
 
+  /*
   useEffect(() => {
     const fallbackOutput = getFirstOutputSheetTarget();
     if (!fallbackOutput) {
@@ -1090,6 +1106,7 @@ export const FlowBuilder = () => {
       });
     });
   }, [nodes, getFirstOutputSheetTarget, updateNode]);
+  */
 
   const collectFileIds = useCallback((subset: Node[]) => {
     const fileIds = new Set<number>();
@@ -1669,6 +1686,13 @@ export const FlowBuilder = () => {
     setSourceSheetName(sheetName);
   }, [resolvedSourceFileId]);
 
+  const bumpPreviewRefresh = useCallback((nodeId: string) => {
+    setPreviewRefreshTokens((prev) => ({
+      ...prev,
+      [nodeId]: (prev[nodeId] ?? 0) + 1,
+    }));
+  }, []);
+
   const handleSourceFileChange = useCallback((fileId: number, batchId?: number | null) => {
     setSourceFileId(fileId);
     if (!fileSourceNode) {
@@ -1680,19 +1704,57 @@ export const FlowBuilder = () => {
       sheetName,
       batchId: batchId ?? null,
     });
-  }, [applySourceTargetSelection, fileSourceNode, sourceSheetByFileId]);
+    bumpPreviewRefresh(fileSourceNode.id);
+  }, [applySourceTargetSelection, bumpPreviewRefresh, fileSourceNode, sourceSheetByFileId]);
 
   const handleSourceBatchChange = useCallback((batchId: number | null) => {
     if (!fileSourceNode) {
       return;
     }
+
+    if (batchId === null) {
+      applySourceTargetSelection(fileSourceNode.id, {
+        fileId: null,
+        sheetName: null,
+        batchId: null,
+      });
+      setSourceFileId(null);
+      return;
+    }
+
+    // Selecting a group should immediately pick a file so previews don't blank out.
+    const firstBatchFile = previewFiles.find((file) => file.batch_id === batchId) ?? null;
+    const sheetName = firstBatchFile ? sourceSheetByFileId[firstBatchFile.id] ?? null : null;
+
     applySourceTargetSelection(fileSourceNode.id, {
-      fileId: null,
-      sheetName: null,
-      batchId: batchId ?? null,
+      fileId: firstBatchFile?.id ?? null,
+      sheetName,
+      batchId,
     });
-    setSourceFileId(null);
-  }, [applySourceTargetSelection, fileSourceNode]);
+    setSourceFileId(firstBatchFile?.id ?? null);
+    bumpPreviewRefresh(fileSourceNode.id);
+  }, [applySourceTargetSelection, bumpPreviewRefresh, fileSourceNode, previewFiles, sourceSheetByFileId]);
+
+  useEffect(() => {
+    if (!fileSourceNode) {
+      return;
+    }
+    const sourceTarget = fileSourceNode.data?.target as TableTarget | undefined;
+    if (!sourceTarget?.batchId || sourceTarget.fileId) {
+      return;
+    }
+    const firstBatchFile = previewFiles.find((file) => file.batch_id === sourceTarget.batchId) ?? null;
+    if (!firstBatchFile) {
+      return;
+    }
+    applySourceTargetSelection(fileSourceNode.id, {
+      fileId: firstBatchFile.id,
+      sheetName: sourceSheetByFileId[firstBatchFile.id] ?? null,
+      batchId: sourceTarget.batchId,
+    });
+    setSourceFileId(firstBatchFile.id);
+    bumpPreviewRefresh(fileSourceNode.id);
+  }, [applySourceTargetSelection, bumpPreviewRefresh, fileSourceNode, previewFiles, sourceSheetByFileId]);
 
   // Preview selectors should update the target so previews + exports stay consistent.
   const handlePreviewFileChange = useCallback((nodeId: string, fileId: number) => {

@@ -863,13 +863,60 @@ async def precompute_flow(...):
   }
   onFileChange={(fileId) => {
     if (activePreviewNode.id === fileSourceNodeId || activePreviewNode.type === 'source') {
-      onSourceFileChange(fileId);
+      const selectedFile = previewFiles.find((file) => file.id === fileId);
+      const nextBatchId = selectedFile?.batch_id ?? sourceBatchId ?? null;
+      onSourceFileChange(fileId, nextBatchId);
       return;
     }
     onPreviewFileChange(activePreviewNode.id, fileId);
   }}
   onSheetChange={(sheetName) => onPreviewSheetChange(activePreviewNode.id, sheetName)}
 />;
+```
+
+**Step 1b: Preview group selection auto-picks the first file**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1697-1724)
+// Selecting a group immediately picks a file so previews never go blank.
+const firstBatchFile = previewFiles.find((file) => file.batch_id === batchId) ?? null;
+applySourceTargetSelection(fileSourceNode.id, {
+  fileId: firstBatchFile?.id ?? null,
+  sheetName: firstBatchFile ? sourceSheetByFileId[firstBatchFile.id] ?? null : null,
+  batchId,
+});
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1726-1746)
+// If files arrive after a group selection, backfill the first file once available.
+if (!sourceTarget?.fileId && sourceTarget?.batchId) {
+  const firstBatchFile = previewFiles.find((file) => file.batch_id === sourceTarget.batchId) ?? null;
+  if (firstBatchFile) {
+    applySourceTargetSelection(fileSourceNode.id, {
+      fileId: firstBatchFile.id,
+      sheetName: sourceSheetByFileId[firstBatchFile.id] ?? null,
+      batchId: sourceTarget.batchId,
+    });
+  }
+}
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 980-1006)
+// Don't clear group selections while the preview file list is still loading.
+if (previewFiles.length === 0) {
+  return;
+}
+```
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 1670-1710)
+// File/group changes bump a refresh token so previews re-run even when IDs stay the same.
+setPreviewRefreshTokens((prev) => ({
+  ...prev,
+  [fileSourceNode.id]: (prev[fileSourceNode.id] ?? 0) + 1,
+}));
 ```
 
 ```typescript

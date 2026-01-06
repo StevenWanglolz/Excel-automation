@@ -1,0 +1,49 @@
+
+Running 10 tests using 7 workers
+
+[1A[2K[1/10] [chromium] › tests/file-upload.spec.ts:171:3 › File Upload Tests › should show file in select dropdown after upload
+[1A[2K[2/10] [chromium] › tests/file-upload-batch-preview.spec.ts:5:1 › File Upload Batch & Individual Preview Test
+[1A[2K[3/10] [chromium] › tests/file-upload-simple.spec.ts:5:1 › File Upload Test - Check for errors
+[1A[2K[4/10] [chromium] › tests/file-upload.spec.ts:199:3 › File Upload Tests › should handle file upload errors gracefully
+[1A[2K[5/10] [chromium] › tests/file-upload.spec.ts:74:3 › File Upload Tests › should upload a file successfully
+[1A[2K[6/10] [chromium] › tests/file-upload.spec.ts:137:3 › File Upload Tests › should display error for invalid file type
+[1A[2K[7/10] [chromium] › tests/file-upload-preview.spec.ts:5:1 › File Upload Preview Test
+[1A[2K[chromium] › tests/file-upload-batch-preview.spec.ts:5:1 › File Upload Batch & Individual Preview Test
+Testing Individual Preview...
+
+[1A[2K[8/10] [chromium] › tests/source-preview-batch.spec.ts:5:1 › source preview supports batch and individual selection
+[1A[2K[chromium] › tests/file-upload.spec.ts:74:3 › File Upload Tests › should upload a file successfully
+Error during upload: 
+
+[1A[2K[9/10] [chromium] › tests/verify-stream-ui-interactive.spec.ts:3:1 › verify Source Type Radio and Auto-Generation
+[1A[2K  1) [chromium] › tests/file-upload.spec.ts:74:3 › File Upload Tests › should upload a file successfully 
+
+    Error: Upload failed with error: 
+
+      128 |       const errorText = await errorMessage.first().textContent();
+      129 |       console.error('Error during upload:', errorText);
+    > 130 |       throw new Error(`Upload failed with error: ${errorText}`);
+          |             ^
+      131 |     }
+      132 |     
+      133 |     // Take screenshot for documentation
+        at /Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/file-upload.spec.ts:130:13
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/file-upload-File-Upload-Te-b118a--upload-a-file-successfully-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/file-upload-File-Upload-Te-b118a--upload-a-file-successfully-chromium/error-context.md
+
+
+[1A[2K[chromium] › tests/file-upload-batch-preview.spec.ts:5:1 › File Upload Batch & Individual Preview Test
+✅ Individual Preview Passed
+
+[1A[2KTesting Batch Preview...
+
+[1A[2K[10/10] [chromium] › tests/verify-stream-ui.spec.ts:3:1 › verify "From Previous Block" appears in source dropdown
+[1A[2K[chromium] › tests/file-upload-simple.spec.ts:5:1 › File Upload Test - Check for errors
+File input has multiple attribute: [33mtrue[39m
+
+[1A[2KUploading file: /Users/stevenwang/Documents/Coding/startup/Excel-automation/Test Files/example data 1.xlsx
+

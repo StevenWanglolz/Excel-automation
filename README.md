@@ -2,7 +2,7 @@
 
 ## What this is
 
-SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files (as single files or named groups) and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step can select multiple sources and write to one or many output sheets depending on the output configuration, with group sources shown as a single section in the Properties panel to keep long lists manageable. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand with file + sheet switching (preview selection doesn’t change targets). Source previews require selecting a sheet for multi-sheet files. Previews are cached server-side and warmed after config saves, preview opens, or file uploads to keep sheet switching snappy, and warmed previews now keep sheet lists visible immediately after uploads. Output groups persist exports automatically with numbered filenames to avoid conflicts. Saving a flow requires a name, and file add/remove actions mark the flow as dirty for saving.
+SheetPilot is a low-code Excel automation platform that lets users upload Excel/CSV files (as single files or named groups) and build sequential data transformation pipelines with drag-and-drop reordering. Users can filter rows, rename columns, remove duplicates, join data, and more - all without writing code. Each step can select multiple sources and write to one or many output sheets depending on the output configuration, with group sources shown as a single section in the Properties panel to keep long lists manageable. The pipeline canvas supports pan/zoom with a compact floating undo/redo/zoom reset bar, and each step can render a preview on demand with file + sheet switching (preview selection doesn’t change targets). Source previews require selecting a sheet for multi-sheet files, and selecting a file group auto-picks the first file (even if the group list loads later) so previews never blank out or clear while files load. Switching files in a grouped preview keeps the active group selection so the dropdown stays in sync with the chosen batch. Preview selection changes force a refresh even if the same file stays selected. Previews are cached server-side and warmed after config saves, preview opens, or file uploads to keep sheet switching snappy, and warmed previews now keep sheet lists visible immediately after uploads. Output groups persist exports automatically with numbered filenames to avoid conflicts. Saving a flow requires a name, and file add/remove actions mark the flow as dirty for saving.
 
 ## Tech
 
@@ -44,6 +44,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Dev note: if the Vite overlay appears, fix the reported compile error before the UI will load.
 
 ## Test
 

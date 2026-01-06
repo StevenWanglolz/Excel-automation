@@ -82,24 +82,17 @@ export const DataPreview = ({
     );
   }
 
-  if (!preview) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">No preview available</div>
-      </div>
-    );
-  }
 
   const hasBatchSelector = Boolean(batchOptions && batchOptions.length > 1 && onBatchChange);
-  const hasMultipleFiles = Boolean(fileOptions && fileOptions.length > 1 && onFileChange);
-  const effectiveSheets = sheetOptions ?? preview.sheets ?? [];
+  const hasMultipleFiles = Boolean(fileOptions && onFileChange && (fileOptions.length > 1 || (fileOptions.length > 0 && !currentFileId)));
+  const effectiveSheets = sheetOptions ?? preview?.sheets ?? [];
   const hasMultipleSheets = effectiveSheets.length > 1;
-  const activeSheet = currentSheet ?? preview.current_sheet ?? (effectiveSheets.length > 0 ? effectiveSheets[0] : null);
-  const rowCountLabel = preview.is_placeholder ? 0 : preview.row_count;
+  const activeSheet = currentSheet ?? preview?.current_sheet ?? (effectiveSheets.length > 0 ? effectiveSheets[0] : null);
+  const rowCountLabel = preview?.is_placeholder ? 0 : (preview?.row_count ?? 0);
   // Keep a visible grid even when the sheet has no data or columns yet.
   const fallbackColumns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-  const effectiveColumns = preview.columns.length > 0 ? preview.columns : fallbackColumns;
-  const displayRows = preview.preview_rows.length > 0
+  const effectiveColumns = preview && preview.columns.length > 0 ? preview.columns : fallbackColumns;
+  const displayRows = preview && preview.preview_rows.length > 0
     ? preview.preview_rows
     : Array.from({ length: 20 }, () =>
         Object.fromEntries(effectiveColumns.map((column) => [column, '']))
@@ -151,39 +144,47 @@ export const DataPreview = ({
       {/* Table container - takes available space with proper scrollbar placement */}
       {/* Vertical scrollbar inside table area, horizontal scrollbar always visible when needed */}
       <div className={`flex-1 overflow-x-auto overflow-y-auto border-l border-r border-t border-gray-300 ${hasMultipleSheets ? 'rounded-t-lg' : 'rounded-lg border-b'}`}>
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              {effectiveColumns.map((column) => (
-                <th
-                  key={column}
-                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200 border-r last:border-r-0"
-                >
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {displayRows.map((row, idx) => {
-              // Create a unique key from row data and index
-              const rowKey = preview.columns.length > 0 
-                ? `${idx}-${String(row[preview.columns[0]] ?? '')}`
-                : `row-${idx}`;
-              return (
-              <tr key={rowKey} className="hover:bg-gray-50">
+        {!preview ? (
+          <div className="flex items-center justify-center h-full min-h-[200px] bg-gray-50">
+             <div className="text-gray-500">
+               {allowEmptyFileSelection && !currentFileId ? 'Select a file to preview' : 'No preview available'}
+             </div>
+          </div>
+        ) : (
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 sticky top-0 z-10">
+              <tr>
                 {effectiveColumns.map((column) => (
-                  <td key={column} className="px-4 py-3 text-sm text-gray-900 border-b border-gray-200 border-r last:border-r-0">
-                    {row[column] !== null && row[column] !== undefined
-                      ? String(row[column])
-                      : ''}
-                  </td>
+                  <th
+                    key={column}
+                    className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b border-gray-200 border-r last:border-r-0"
+                  >
+                    {column}
+                  </th>
                 ))}
               </tr>
-              );
-            })}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {displayRows.map((row, idx) => {
+                // Create a unique key from row data and index
+                const rowKey = preview.columns.length > 0 
+                  ? `${idx}-${String(row[preview.columns[0]] ?? '')}`
+                  : `row-${idx}`;
+                return (
+                <tr key={rowKey} className="hover:bg-gray-50">
+                  {effectiveColumns.map((column) => (
+                    <td key={column} className="px-4 py-3 text-sm text-gray-900 border-b border-gray-200 border-r last:border-r-0">
+                      {row[column] !== null && row[column] !== undefined
+                        ? String(row[column])
+                        : ''}
+                    </td>
+                  ))}
+                </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* Sheet tabs at the bottom (Excel-style) - horizontal scroll only */}

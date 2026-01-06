@@ -367,6 +367,8 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - Playwright end-to-end tests for the UI flow
 - Focus on file upload and flow builder interactions
+- Includes grouped export scenarios covering group-to-group, group-to-many, and many-to-many flows
+- Full-flow spec covers upload modal seeding plus preview/export smoke checks (including sources panel, full-screen preview close, add-step flows, and empty-preview messaging)
 
 ### docker-compose.yml 🟡
 

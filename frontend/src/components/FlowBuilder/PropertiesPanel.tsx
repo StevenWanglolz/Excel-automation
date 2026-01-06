@@ -55,6 +55,48 @@ const emptyTarget: TableTarget = {
 const toSheetValue = (sheetName: string | null) => sheetName ?? SINGLE_SHEET_VALUE;
 const fromSheetValue = (value: string) => (value === SINGLE_SHEET_VALUE ? null : value);
 
+type RowFilterOperator =
+  | 'equals'
+  | 'not_equals'
+  | 'contains'
+  | 'not_contains'
+  | 'greater_than'
+  | 'less_than'
+  | 'is_blank'
+  | 'is_not_blank';
+
+interface RowFilterConfig {
+  column: string;
+  operator: RowFilterOperator;
+  value: string;
+}
+
+const rowFilterOperators: Array<{ value: RowFilterOperator; label: string }> = [
+  { value: 'equals', label: 'Equals' },
+  { value: 'not_equals', label: 'Does not equal' },
+  { value: 'contains', label: 'Contains' },
+  { value: 'not_contains', label: 'Does not contain' },
+  { value: 'greater_than', label: 'Greater than' },
+  { value: 'less_than', label: 'Less than' },
+  { value: 'is_blank', label: 'Is blank' },
+  { value: 'is_not_blank', label: 'Is not blank' },
+];
+
+const rowOperatorsRequiringValue = new Set<RowFilterOperator>([
+  'equals',
+  'not_equals',
+  'contains',
+  'not_contains',
+  'greater_than',
+  'less_than',
+]);
+
+const defaultRowFilterConfig: RowFilterConfig = {
+  column: '',
+  operator: 'equals',
+  value: '',
+};
+
 const buildUniqueFilename = (name: string, counts: Map<string, number>) => {
   const normalized = name.trim() || 'output.xlsx';
   const existingCount = counts.get(normalized);
@@ -99,6 +141,7 @@ export const PropertiesPanel = ({
   // Generate unique IDs for form elements based on selectedNodeId
   const formIds = useMemo(() => ({
     sourceType: `source-type-${selectedNodeId}`,
+    sourcePicker: `source-picker-${selectedNodeId}`,
     outputFile: `output-file-${selectedNodeId}`,
     outputSheet: `output-sheet-${selectedNodeId}`,
     sourceOutputFile: `source-output-file-${selectedNodeId}`,
@@ -108,6 +151,8 @@ export const PropertiesPanel = ({
     destinationOutputFile: `destination-output-file-${selectedNodeId}`,
     destinationOutputSheet: `destination-output-sheet-${selectedNodeId}`,
     filterColumn: `filter-column-${selectedNodeId}`,
+    filterOperator: `filter-operator-${selectedNodeId}`,
+    filterValue: `filter-value-${selectedNodeId}`,
     removeMode: `remove-mode-${selectedNodeId}`,
     removeColumnsManual: `remove-columns-manual-${selectedNodeId}`,
     removeColumnsIndices: `remove-columns-indices-${selectedNodeId}`,
@@ -139,15 +184,43 @@ export const PropertiesPanel = ({
     }
     return [];
   }, [nodeData.sourceTargets, target]);
-  const destinationTargets = useMemo(() => {
-    if (Array.isArray(nodeData.destinationTargets) && nodeData.destinationTargets.length > 0) {
-      return nodeData.destinationTargets.map(normalizeTarget);
-    }
-    if (destination.fileId || destination.virtualId) {
-      return [destination];
-    }
-    return [];
-  }, [nodeData.destinationTargets, destination]);
+const destinationTargets = useMemo(() => {
+  if (Array.isArray(nodeData.destinationTargets) && nodeData.destinationTargets.length > 0) {
+    return nodeData.destinationTargets.map(normalizeTarget);
+  }
+  if (destination.fileId || destination.virtualId) {
+    return [destination];
+  }
+  return [];
+}, [nodeData.destinationTargets, destination]);
+const isRowFilterNode = nodeData.blockType === 'filter_rows';
+const resolvedRowFilterConfig = useMemo<RowFilterConfig>(() => {
+  const raw = nodeData.config ?? {};
+  const column = typeof raw.column === 'string' ? raw.column : '';
+  const operator = typeof raw.operator === 'string' && rowFilterOperators.some((option) => option.value === raw.operator)
+    ? (raw.operator as RowFilterOperator)
+    : defaultRowFilterConfig.operator;
+  const value = typeof raw.value === 'string' ? raw.value : '';
+  return { column, operator, value };
+}, [nodeData.config]);
+const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) => {
+  if (!node) {
+    return;
+  }
+  const nextConfig: RowFilterConfig = {
+    ...resolvedRowFilterConfig,
+    ...partial,
+  };
+  if (!rowOperatorsRequiringValue.has(nextConfig.operator)) {
+    nextConfig.value = '';
+  }
+  updateNode(node.id, {
+    data: {
+      ...nodeData,
+      config: nextConfig,
+    },
+  });
+}, [node, nodeData, resolvedRowFilterConfig, updateNode]);
   const isOutputNode = nodeData.blockType === 'output' || nodeType === 'output';
   const isMappingNode = nodeData.blockType === 'mapping' || nodeType === 'mapping';
   const isSourceBlock =
@@ -259,6 +332,16 @@ export const PropertiesPanel = ({
     });
   }, [node, nodeData, updateNode]);
 
+  const handleUseFileAsDestination = useCallback((sourceIndex: number) => {
+    if (!node) {
+      return;
+    }
+    updateDestinationTargets([
+      ...destinationTargets,
+      { ...emptyTarget, sourceId: sourceIndex },
+    ]);
+  }, [destinationTargets, node, updateDestinationTargets]);
+
   const buildOutputTarget = useCallback(
     (fileOption: { outputId: string; label: string }, sheetName: string): TableTarget => ({
       fileId: null,
@@ -295,6 +378,31 @@ export const PropertiesPanel = ({
     return new Map(batches.map((batch) => [batch.id, batch]));
   }, [batches]);
 
+  const sourcePickerGroups = useMemo(() => {
+    const groupedFiles = new Map<number, File[]>();
+    const singles: File[] = [];
+    files.forEach((file) => {
+      if (typeof file.batch_id === 'number') {
+        const bucket = groupedFiles.get(file.batch_id) ?? [];
+        bucket.push(file);
+        groupedFiles.set(file.batch_id, bucket);
+      } else {
+        singles.push(file);
+      }
+    });
+    const result: Array<{ label: string; files: File[] }> = [];
+    Array.from(groupedFiles.entries())
+      .sort((a, b) => a[0] - b[0])
+      .forEach(([batchId, groupFiles]) => {
+        const label = batchesById.get(batchId)?.name ?? `Batch ${batchId}`;
+        result.push({ label, files: groupFiles });
+      });
+    if (singles.length > 0) {
+      result.push({ label: 'Single files', files: singles });
+    }
+    return result;
+  }, [files, batchesById]);
+
   const flowSourceTargets = useMemo(() => {
     const operationNode = nodes.find((candidate) => {
       const blockType = candidate.data?.blockType || candidate.type;
@@ -312,6 +420,13 @@ export const PropertiesPanel = ({
       .map((target) => normalizeTarget(target as TableTarget))
       .filter((target) => target.fileId || target.virtualId);
   }, [nodes]);
+
+  const processedSourceOptions = useMemo(() => (
+    flowSourceTargets.map((target, index) => ({
+      label: `${target.virtualName ?? 'Processed stream'} (processed)`,
+      value: `stream:${index}`,
+    }))
+  ), [flowSourceTargets]);
 
   const sourceGroupFiles = useMemo(() => {
     if (sourceNodeTarget.batchId) {
@@ -923,15 +1038,6 @@ export const PropertiesPanel = ({
     .map(Number)
     .filter((part) => Number.isInteger(part) && part >= 0);
 
-  const rowOperatorsRequiringValue = new Set([
-    'equals',
-    'not_equals',
-    'contains',
-    'not_contains',
-    'greater_than',
-    'less_than',
-  ]);
-
   useEffect(() => {
     if (!node || nodeData.blockType !== 'remove_columns_rows') {
       return;
@@ -1031,6 +1137,43 @@ export const PropertiesPanel = ({
       onUpdateLastTarget(primary);
     }
   }, [node, nodeData, onUpdateLastTarget, updateNode]);
+
+  const handleSourcePickerChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
+    const selectedValue = event.target.value;
+    if (!selectedValue) {
+      return;
+    }
+    const [type, rawId] = selectedValue.split(':');
+    if (type === 'file') {
+      const fileId = Number(rawId);
+      if (Number.isNaN(fileId)) {
+        return;
+      }
+      const file = filesById.get(fileId);
+      const nextTargets = [
+        ...sourceTargets,
+        {
+          fileId,
+          sheetName: null,
+          batchId: file?.batch_id ?? null,
+          virtualId: null,
+          virtualName: file?.original_filename ?? null,
+        },
+      ];
+      updateSourceTargets(nextTargets);
+    } else if (type === 'stream') {
+      const streamIndex = Number(rawId);
+      if (Number.isNaN(streamIndex)) {
+        return;
+      }
+      const streamTarget = flowSourceTargets[streamIndex];
+      if (!streamTarget) {
+        return;
+      }
+      updateSourceTargets([...sourceTargets, streamTarget]);
+    }
+    event.target.value = '';
+  }, [filesById, flowSourceTargets, sourceTargets, updateSourceTargets]);
 
 
 
@@ -1241,7 +1384,7 @@ export const PropertiesPanel = ({
   }
 
   return (
-    <div className="w-80 bg-white border-l border-gray-200 flex flex-col h-full">
+    <div id="properties-panel" className="w-80 bg-white border-l border-gray-200 flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900">Properties</h2>
@@ -1298,6 +1441,47 @@ export const PropertiesPanel = ({
                         No sources yet. Add one or more sources to run this operation.
                       </div>
                     )}
+                    <div className="rounded-md border border-gray-200 bg-white px-3 py-2 space-y-2">
+                      <label htmlFor={formIds.sourcePicker} className="block text-xs font-medium text-gray-500">
+                        Source
+                      </label>
+                      <select
+                        id={formIds.sourcePicker}
+                        onChange={handleSourcePickerChange}
+                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                        defaultValue=""
+                      >
+                        <option value="">Select source...</option>
+                        {sourcePickerGroups.map((group) => (
+                          <optgroup key={group.label} label={group.label}>
+                            {group.files.map((file) => (
+                              <option key={file.id} value={`file:${file.id}`}>
+                                {file.original_filename}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                        {processedSourceOptions.length > 0 && (
+                          <optgroup label="Processed streams">
+                            {processedSourceOptions.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                      {sourceGroupFiles.length > 0 && (
+                        <div className="rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs text-gray-700">
+                          <div className="text-[10px] uppercase tracking-wide text-gray-500">Batch info</div>
+                          <div className="text-sm font-semibold text-gray-900">Export Batch</div>
+                          <div>
+                            Auto-generating {sourceGroupFiles.length} destination
+                            {sourceGroupFiles.length === 1 ? '' : 's'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     {/* Unified Source List */}
                     <div className="space-y-4">
                       {sourceItems.map((item) => {
@@ -1708,7 +1892,7 @@ export const PropertiesPanel = ({
                                     <button
                                       type="button"
                                       className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-                                      onClick={() => handleUseFileAsDestination(sourceTarget.fileId)}
+                                      onClick={() => handleUseFileAsDestination(index)}
                                       disabled={!sourceTarget.fileId}
                                     >
                                       Create destination from this file
@@ -1735,7 +1919,86 @@ export const PropertiesPanel = ({
                   </div>
                 )}
               </div>
-              
+
+              {isRowFilterNode && (
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">Operation</h3>
+                      <p className="text-xs text-gray-500">
+                        Filter rows before downstream steps receive the data.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="rounded-md border border-gray-200 bg-white p-3 space-y-4">
+                    <div className="space-y-1">
+                      <label htmlFor={formIds.filterColumn} className="block text-xs font-medium text-gray-500 mb-1">
+                        Column
+                      </label>
+                      <select
+                        id={formIds.filterColumn}
+                        value={resolvedRowFilterConfig.column}
+                        onChange={(event) => updateRowFilterConfig({ column: event.target.value })}
+                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                        disabled={isLoadingColumns || columns.length === 0}
+                      >
+                        <option value="">
+                          {isLoadingColumns ? 'Loading columns...' : 'Select a column'}
+                        </option>
+                        {columns.map((column) => (
+                          <option key={column} value={column}>
+                            {column}
+                          </option>
+                        ))}
+                      </select>
+                      {!isLoadingColumns && columns.length === 0 && (
+                        <p className="text-[10px] text-gray-400">
+                          Select a source file to list the available columns.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-1">
+                      <label htmlFor={formIds.filterOperator} className="block text-xs font-medium text-gray-500 mb-1">
+                        Operator
+                      </label>
+                      <select
+                        id={formIds.filterOperator}
+                        value={resolvedRowFilterConfig.operator}
+                        onChange={(event) =>
+                          updateRowFilterConfig({ operator: event.target.value as RowFilterOperator })
+                        }
+                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                      >
+                        {rowFilterOperators.map((operator) => (
+                          <option key={operator.value} value={operator.value}>
+                            {operator.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor={formIds.filterValue} className="block text-xs font-medium text-gray-500 mb-1">
+                          Value
+                        </label>
+                        {!rowOperatorsRequiringValue.has(resolvedRowFilterConfig.operator) && (
+                          <span className="text-[10px] text-gray-400">Not required</span>
+                        )}
+                      </div>
+                      <input
+                        id={formIds.filterValue}
+                        type="text"
+                        value={resolvedRowFilterConfig.value}
+                        onChange={(event) => updateRowFilterConfig({ value: event.target.value })}
+                        className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                        placeholder="Enter comparison value"
+                        disabled={!rowOperatorsRequiringValue.has(resolvedRowFilterConfig.operator)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
                   <div>

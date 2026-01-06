@@ -427,7 +427,20 @@ export const FlowPipeline = ({
     if (isOutputSheetPreview) {
       return outputFileOptions;
     }
-    const fileIds = isSourcePreview ? filteredSourceFileIds : previewFiles.map((file) => file.id);
+    const fileIds = (() => {
+      if (!isSourcePreview) {
+        return previewFiles.map((file) => file.id);
+      }
+      if (sourceBatchId !== null) {
+        return previewFiles
+          .filter((file) => file.batch_id === sourceBatchId)
+          .map((file) => file.id);
+      }
+      return previewFiles
+        .filter((file) => file.batch_id === null || file.batch_id === undefined)
+        .map((file) => file.id);
+    })();
+
     if (fileIds.length === 0) {
       return [];
     }
@@ -436,7 +449,15 @@ export const FlowPipeline = ({
       id,
       label: filesById.get(id)?.original_filename ?? `File ${id}`,
     }));
-  }, [activePreviewNode, filteredSourceFileIds, isOutputSheetPreview, isSourcePreview, outputFileOptions, previewFiles]);
+  }, [
+    activePreviewNode,
+    filteredSourceFileIds,
+    isOutputSheetPreview,
+    isSourcePreview,
+    outputFileOptions,
+    previewFiles,
+    sourceBatchId,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -690,7 +711,12 @@ export const FlowPipeline = ({
       {activePreviewNode && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6"
-          onClick={() => onTogglePreview(activePreviewNode.id)}
+          onClick={(event) => {
+            if (event.target !== event.currentTarget) {
+              return;
+            }
+            onTogglePreview(activePreviewNode.id);
+          }}
         >
           <div
             className="w-full max-w-6xl rounded-2xl bg-white shadow-xl"
@@ -776,11 +802,7 @@ export const FlowPipeline = ({
               </div>
             </div>
             <div className="h-[70vh] p-5">
-              {isMissingSourceForPreview ? (
-                <div className="flex h-full items-center justify-center text-sm text-amber-700">
-                  Select a source file to preview.
-                </div>
-              ) : previewErrors[activePreviewNode.id] ? (
+              {previewErrors[activePreviewNode.id] ? (
                 <div className="flex h-full items-center justify-center text-sm text-red-600">
                   {previewErrors[activePreviewNode.id]}
                 </div>
@@ -860,7 +882,8 @@ export const FlowPipeline = ({
                         : (fileId) => {
                           if (isSourcePreview) {
                             const selectedFile = previewFiles.find((file) => file.id === fileId);
-                            onSourceFileChange(fileId, selectedFile?.batch_id ?? null);
+                            const nextBatchId = selectedFile?.batch_id ?? sourceBatchId ?? null;
+                            onSourceFileChange(fileId, nextBatchId);
                             return;
                           }
                           onPreviewFileChange(activePreviewNode.id, fileId);
