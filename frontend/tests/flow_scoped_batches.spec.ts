@@ -65,24 +65,68 @@ test.describe('Flow Scoped Batches', () => {
   });
 
   test('Should load batches specific to Flow 1', async ({ page }) => {
+    // We need a source node to trigger the batches fetch when opening the modal
+    const flowWithNode1 = {
+      ...flow1,
+      flow_data: {
+        nodes: [{
+          id: 'source-1',
+          type: 'source',
+          data: { blockType: 'source', fileIds: [999] }
+        }],
+        edges: []
+      }
+    };
+    
+    // 1. Navigate to Flow 1
+    await page.route(`**/api/flows/${flow1.id}`, (route) => mockJson(route, flowWithNode1));
+    await page.route(`**/api/files`, (route) => mockJson(route, [{id: 999, original_filename: 'test.xlsx'}]));
+
     await page.goto(`/flow-builder?flow=${flow1.id}`);
     
-    // Open Data Upload Modal (need to locate a way to open it, usually clicking a node or add button)
-    // Assuming we can trigger listBatches via PropertiesPanel or similar.
-    // FlowBuilder calls listBatches on mount/update of nodes, so we should verify the request was made.
+    // Use a more direct CSS selector
+    const flowNameInput = page.locator('input[placeholder="Flow name"]');
+    // Wait until the input value is actually populated with the flow name
+    await expect(flowNameInput).toHaveValue('Flow One', { timeout: 20000 });
+
+    // 2. Open Data Upload Modal
+    await page.click('button:has-text("Upload")');
     
-    // Actually, FlowBuilder calls listBatches automatically if there are fileIds.
-    // If no nodes, maybe not?
-    // Let's add a dummy node to flow1 so it triggers file collection and listing.
+    // 3. Wait for batches request and verify UI
+    // Options in a closed select are considered hidden by Playwright, so we wait for attached
+    await page.waitForSelector('option:has-text("Batch Flow 1")', { state: 'attached', timeout: 10000 });
+    await expect(page.locator('option:has-text("Batch Flow 1")')).toBeAttached();
+    await expect(page.locator('option:has-text("Batch Flow 2")')).not.toBeAttached();
     
-    // Wait, FlowBuilder calls `filesApi.listBatches(selectedFlowId)` in useEffect if fileIds > 0 OR just always?
-    // Let's check FlowBuilder.tsx:
-    // useEffect at line 1787: if (fileIds.length === 0) return;
-    // So we need at least one node with files or we need to open the modal.
+    // Close modal before navigating
+    // Use a more specific selector to avoid ambiguity with the Properties panel Close button
+    await page.getByRole('heading', { name: 'Upload Data' }).locator('..').getByRole('button', { name: 'Close' }).click();
+    await page.waitForSelector('text=Upload Data', { state: 'hidden' });
     
-    // Let's open the Data Upload Modal. 
-    // We first need to add a node to be able to click "Upload".
-    // Or we can rely on `PropertiesPanel` loading if we select a node.
+    // 4. Now navigate to Flow 2 and verify
+    const flowWithNode2 = {
+      ...flow2,
+      flow_data: {
+        nodes: [{
+          id: 'source-2',
+          type: 'source',
+          data: { blockType: 'source', fileIds: [1000] }
+        }],
+        edges: []
+      }
+    };
+    await page.route(`**/api/flows/${flow2.id}`, (route) => mockJson(route, flowWithNode2));
+    await page.route(`**/api/files`, (route) => mockJson(route, [{id: 1000, original_filename: 'test2.xlsx'}]));
+
+    await page.goto(`/flow-builder?flow=${flow2.id}`);
+    
+    // IMPORTANT: Wait for navigation to complete by checking flow name
+    await expect(flowNameInput).toHaveValue('Flow Two', { timeout: 20000 });
+    
+    await page.click('button:has-text("Upload")');
+    await page.waitForSelector('option:has-text("Batch Flow 2")', { state: 'attached', timeout: 10000 });
+    await expect(page.locator('option:has-text("Batch Flow 2")')).toBeAttached();
+    await expect(page.locator('option:has-text("Batch Flow 1")')).not.toBeAttached();
   });
   
   test('Should request batches with correct flow_id', async ({ page }) => {
@@ -90,9 +134,6 @@ test.describe('Flow Scoped Batches', () => {
       req.url().includes('/files/batches') && req.url().includes(`flow_id=${flow1.id}`)
     );
 
-    // We need to trigger the fetch.
-    // Adding a source node with a file should trigger `listBatches`.
-    // Let's mock the flow to have a source node.
     const flowWithNode = {
       ...flow1,
       flow_data: {
@@ -106,10 +147,15 @@ test.describe('Flow Scoped Batches', () => {
     };
     
     await page.route(`${API_BASE}/flows/${flow1.id}`, (route) => mockJson(route, flowWithNode));
-    await page.route(`${API_BASE}/files`, (route) => mockJson(route, [{id: 999, filename: 'test.xlsx'}]));
+    await page.route(`${API_BASE}/files`, (route) => mockJson(route, [{id: 999, original_filename: 'test.xlsx'}]));
 
     await page.goto(`/flow-builder?flow=${flow1.id}`);
     
-    await listBatchesRequestPromise;
+    // Opening the modal triggers listBatches
+    await page.click('button:has-text("Upload")');
+    
+    const request = await listBatchesRequestPromise;
+    const url = new URL(request.url());
+    expect(url.searchParams.get('flow_id')).toBe(String(flow1.id));
   });
 });

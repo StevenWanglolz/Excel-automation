@@ -1,5 +1,8 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import ObjectDeletedError
+from sqlalchemy.exc import NoResultFound
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_serializer
 from datetime import datetime
@@ -14,6 +17,7 @@ from app.services.file_service import file_service
 from app.storage.local_storage import storage
 
 router = APIRouter(prefix="/flows", tags=["flows"])
+logger = logging.getLogger(__name__)
 
 # Constants
 # Constant is used in all 3 locations (lines 94, 113, 167) - linter warning is false positive
@@ -203,6 +207,8 @@ async def delete_flow(
     db.commit()
 
     # 3. Clean up orphaned batches (referenced by files in the flow but not OF the flow)
+    # Note: The flow has already been deleted and committed above, so no need to exclude it
+    # from reference checks - it no longer exists in the database.
     for batch_id in batch_ids_in_flow:
         if batch_id in deleted_batches:
             continue
@@ -212,13 +218,9 @@ async def delete_flow(
             continue
 
         is_batch_referenced_elsewhere = False
-        # Improved check: query files in this batch that are referenced by OTHER flows
-        # The current flow's files are effectively de-referenced by the flow deletion intent, but strictly speaking
-        # flow_data still exists until commit. However, we are deleting the flow next.
-        # Actually, best to check if any file in the batch is referenced by a flow that is NOT this flow.
-
+        # Check if any file in this batch is still referenced by any remaining flow
         for file_in_batch in batch.files:
-            if file_reference_service.is_file_referenced(file_in_batch.id, current_user.id, db, exclude_flow_id=flow_id):
+            if file_reference_service.is_file_referenced(file_in_batch.id, current_user.id, db):
                 is_batch_referenced_elsewhere = True
                 break
 
@@ -228,7 +230,12 @@ async def delete_flow(
 
     # 4. Clean up individual orphaned files
     deleted_files = []
+    had_rollback = False
     for file_id in file_ids_in_flow:
+        if had_rollback:
+            # After a rollback, we cannot safely continue with more deletions
+            break
+
         if not file_reference_service.is_file_referenced(file_id, current_user.id, db):
             db_file = db.query(File).filter(
                 File.id == file_id,
@@ -236,20 +243,24 @@ async def delete_flow(
             ).first()
 
             if db_file:
-                # If file was part of a batch that got deleted, it's already gone.
-                # A refetch here would return None.
                 try:
                     storage.delete_file(current_user.id, db_file.filename)
                     db.delete(db_file)
                     deleted_files.append(file_id)
+                except (ObjectDeletedError, NoResultFound, FileNotFoundError) as e:
+                    # Expected: file was already deleted with its batch or storage file missing
+                    logger.info(
+                        f"File {file_id} already deleted or not found: {e}")
+                    db.expunge(db_file) if db_file in db else None
                 except Exception as e:
-                    # Could be that the file was part of a batch and already deleted.
-                    print(
-                        f"Info: Could not delete file {file_id}, it may have been deleted with its batch. Error: {e}")
-                    # We need to expunge the object from the session if it's already deleted.
+                    # Unexpected error - log and abort to prevent inconsistent state
+                    logger.error(
+                        f"Unexpected error deleting file {file_id}: {e}")
                     db.rollback()
+                    had_rollback = True
 
-    db.commit()
+    if not had_rollback:
+        db.commit()
 
     return {
         "message": "Flow deleted successfully",

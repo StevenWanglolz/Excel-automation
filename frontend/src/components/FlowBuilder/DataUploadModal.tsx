@@ -315,8 +315,12 @@ export const DataUploadModal = ({
         try {
           setIsLoadingBatches(true);
           currentFlowId = await onEnsureFlowSaved();
-        } catch (error) {
+        } catch (saveErr) {
           setIsLoadingBatches(false);
+          // Surface error to user instead of silently swallowing
+          const errMessage = saveErr instanceof Error ? saveErr.message : 'Failed to save flow';
+          setAlertMessage(errMessage);
+          setShowAlertModal(true);
           return;
         }
       } else {

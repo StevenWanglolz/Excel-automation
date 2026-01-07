@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { filesApi } from '../../api/files';
-import { transformApi } from '../../api/transform';
+
 import { useFlowStore } from '../../store/flowStore';
 import type {
   BlockData,
@@ -102,44 +102,26 @@ const defaultRowFilterConfig: RowFilterConfig = {
   value: '',
 };
 
-const buildUniqueFilename = (name: string, counts: Map<string, number>) => {
-  const normalized = name.trim() || 'output.xlsx';
-  const existingCount = counts.get(normalized);
-  if (!existingCount) {
-    counts.set(normalized, 1);
-    return normalized;
-  }
-  const nextCount = existingCount + 1;
-  counts.set(normalized, nextCount);
-  const dotIndex = normalized.lastIndexOf('.');
-  if (dotIndex === -1) {
-    return `${normalized} (${nextCount})`;
-  }
-  const base = normalized.slice(0, dotIndex);
-  const ext = normalized.slice(dotIndex);
-  return `${base} (${nextCount})${ext}`;
-};
 
 export const PropertiesPanel = ({
   selectedNodeId,
   onClose,
-  lastTarget,
+  lastTarget: _lastTarget,
   onUpdateLastTarget,
   refreshKey,
   flowId,
 }: PropertiesPanelProps) => {
-  const { nodes, edges, updateNode, getFlowData } = useFlowStore();
+  const { nodes, updateNode } = useFlowStore();
   const [files, setFiles] = useState<File[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [sheetsByFileId, setSheetsByFileId] = useState<Record<number, string[]>>({});
-  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [isLoadingBatches, setIsLoadingBatches] = useState(false);
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
   const [sourcesCollapsed, setSourcesCollapsed] = useState(false);
   const [destinationsCollapsed, setDestinationsCollapsed] = useState(false);
   const [expandedSourceGroups, setExpandedSourceGroups] = useState<Record<number, boolean>>({});
   const [showGroupedDestinations, setShowGroupedDestinations] = useState(false);
   const [showOutputGroups, setShowOutputGroups] = useState(false);
+  // @ts-ignore
   const precomputeTimeoutRef = useRef<number | null>(null);
   
   const node = useMemo(() => nodes.find((n) => n.id === selectedNodeId), [nodes, selectedNodeId]);
@@ -178,7 +160,6 @@ export const PropertiesPanel = ({
   
   const nodeType = node?.type || '';
   const nodeData = useMemo(() => (node?.data || {}) as unknown as BlockData, [node]);
-  const outputBatchId = typeof nodeData.outputBatchId === 'number' ? nodeData.outputBatchId : null;
   const target = normalizeTarget(nodeData.target);
   const destination = normalizeTarget(nodeData.destination);
   const sourceTargets = useMemo(() => {
@@ -229,11 +210,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
 }, [node, nodeData, resolvedRowFilterConfig, updateNode]);
   const isOutputNode = nodeData.blockType === 'output' || nodeType === 'output';
   const isMappingNode = nodeData.blockType === 'mapping' || nodeType === 'mapping';
-  const isSourceBlock =
-    nodeType === 'source' ||
-    nodeType === 'data' ||
-    nodeData.blockType === 'source' ||
-    nodeData.blockType === 'data';
   const normalizeOutputConfig = useCallback((rawOutput: OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined) => {
     if (rawOutput && Array.isArray((rawOutput as OutputConfig).outputs)) {
       return rawOutput as OutputConfig;
@@ -259,20 +235,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     () => normalizeOutputConfig(nodeData.output as OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined),
     [nodeData.output, normalizeOutputConfig]
   );
-
-  const buildOutputsFromFiles = useCallback((filesToCopy: File[]) => {
-    const nameCounts = new Map<string, number>();
-    return {
-      outputs: filesToCopy.map((file, index) => ({
-        id: `output-${Date.now()}-${file.id}-${index}`,
-        fileName: buildUniqueFilename(
-          file.original_filename || file.filename || `output-${index + 1}.xlsx`,
-          nameCounts
-        ),
-        sheets: [{ sheetName: 'Sheet 1' }],
-      })),
-    };
-  }, []);
 
   const outputFiles = useMemo(() => {
     const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
@@ -423,16 +385,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     );
   };
 
-  const sourceNodeFileIds = useMemo(() => {
-    const ids = new Set<number>();
-    nodes.forEach((n) => {
-      if (n.data?.fileIds && Array.isArray(n.data.fileIds)) {
-        n.data.fileIds.forEach((id: number) => ids.add(id));
-      }
-    });
-    return Array.from(ids).sort((a, b) => a - b);
-  }, [nodes]);
-
   const sourceNodeTarget = useMemo(() => {
     const sourceNode = nodes.find((candidate) => {
       const blockType = candidate.data?.blockType || candidate.type;
@@ -521,30 +473,28 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
   ), [flowSourceTargets]);
 
   const sourceGroupFiles = useMemo(() => {
-    if (sourceNodeTarget.batchId) {
-      return files.filter((file) => file.batch_id === sourceNodeTarget.batchId);
-    }
-    const fileTargets = flowSourceTargets.filter((target) => target.fileId).map((target) => target.fileId as number);
-    if (fileTargets.length === 0) {
-      return [];
-    }
-    return fileTargets
-      .map((fileId) => filesById.get(fileId))
-      .filter((file): file is File => Boolean(file));
-  }, [files, filesById, flowSourceTargets, sourceNodeTarget.batchId]);
+    // Collect all unique batch IDs from source targets
+    const batchIds = new Set<number>();
+    sourceTargets.forEach(t => {
+      if (t.batchId) {
+        batchIds.add(t.batchId);
+      }
+    });
 
-  const sourceSingleFile = useMemo(() => {
-    if (sourceNodeTarget.fileId) {
-      return filesById.get(sourceNodeTarget.fileId) ?? null;
+    // If no batch IDs in current node's targets, check the primary source node
+    if (batchIds.size === 0 && sourceNodeTarget.batchId) {
+      batchIds.add(sourceNodeTarget.batchId);
     }
-    const singleTarget = flowSourceTargets.find((target) => target.fileId);
-    if (!singleTarget?.fileId) {
-      return null;
-    }
-    return filesById.get(singleTarget.fileId) ?? null;
-  }, [filesById, flowSourceTargets, sourceNodeTarget.fileId]);
 
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
+    if (batchIds.size > 0) {
+      // Use the first batch ID found for the "Export Batch" info box
+      const firstBatchId = Array.from(batchIds)[0];
+      return files.filter((file) => file.batch_id === firstBatchId);
+    }
+    return [];
+  }, [files, sourceTargets, sourceNodeTarget.batchId]);
+
+
   const [expandedDestinationGroups, setExpandedDestinationGroups] = useState<Record<number, boolean>>({});
 
   const sourceItems = useMemo(() => {
@@ -615,13 +565,13 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
 
     for (const [index, target] of destinationTargets.entries()) {
       // Resolve batchId from outputId if possible
-      let batchId: number | null = null;
+      let batchId: number | null = target.batchId ?? null;
       let fileId: number | null = null;
       
       const parsed = parseOutputVirtualId(target.virtualId);
       if (parsed) {
          // Output ID format: output-{timestamp}-{fileId}-{index}
-         const match = parsed.outputId.match(/output-\d+-(\d+)-\d+/);
+         const match = parsed.outputId?.match(/output-\d+-(\d+)-\d+/);
          if (match) {
            fileId = Number(match[1]);
            const file = filesById.get(fileId);
@@ -712,71 +662,12 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     return `${sourceTargets.length} source${sourceTargets.length > 1 ? 's' : ''} (${parts.join(', ')})`;
   }, [sourceTargets.length, sourceItems]);
 
-  // --- Stream-Centric Architecture: Resolve Upstream Streams ---
-  const upstreamStreams = useMemo(() => {
-    if (!selectedNodeId) return [];
-
-    // 1. Find all incoming edges
-    const incomingEdges = edges.filter(e => e.target === selectedNodeId);
-    
-    // 2. Map to Source Nodes
-    const streamGroups = incomingEdges.map(edge => {
-        const sourceNode = nodes.find(n => n.id === edge.source);
-        if (!sourceNode) return null;
-
-        const sourceLabel = sourceNode.data?.label || sourceNode.type || 'Unknown Source';
-        
-        // 3. Resolve "Outputs" of this Source Node
-        let streams: { label: string; value: number; fileId: number | null }[] = [];
-        const sourceData = sourceNode.data as BlockData;
-
-        // Condition A: Data/Source Block -> Outputs are the Files
-        if (sourceNode.type === 'data' || sourceNode.type === 'source' || sourceData.blockType === 'data') {
-            const fileIds = sourceData.fileIds || [];
-            streams = fileIds.map((fid, idx) => {
-                const file = filesById.get(fid);
-                return {
-                    label: file ? file.original_filename : `File ${fid}`,
-                    value: idx, // This index needs to be globally unique or relative. 
-                                // CAUTION: Current `sourceTargets` uses flattened index. 
-                                // We might need to map this back to the current node's `sourceTargets` list
-                                // to ensure the `value` matches what the rest of the app expects.
-                    fileId: fid
-                };
-            });
-        } 
-        // Condition B: Operation Block -> Outputs are its Destination Targets
-        else {
-             const opDestinations = sourceData.destinationTargets || [];
-             streams = opDestinations.map((t, idx) => {
-                  const file = t.fileId ? filesById.get(t.fileId) : null;
-                  const label = file ? file.original_filename : (t.virtualName || `Stream ${idx + 1}`);
-                  return {
-                      label: `[Stream] ${label}`,
-                      value: idx, // Again, this is relative to the parent.
-                      fileId: t.fileId || null
-                  };
-             });
-        }
-
-        return {
-            sourceId: sourceNode.id,
-            sourceLabel,
-            streams
-        };
-    }).filter((group): group is { sourceId: string; sourceLabel: string; streams: { label: string; value: number; fileId: number | null }[] } => !!group);
-
-    return streamGroups;
-  }, [edges, nodes, selectedNodeId, filesById]);
-
-
   // CAUTION: The current application logic expects `sourceTargets` (array) to be the source of truth for execution.
   // The indices `0, 1, 2...` in `availableSourceOptions` MUST correspond to the indices in `sourceTargets`.
   // We need to correlate our "Graph-Aware" streams with the actual `sourceTargets` list.
   // We will iterate `sourceTargets` and try to match them to the Upstream Groups for labeling purposes.
   
   const availableSourceOptions = useMemo(() => {
-    const options: { group: string; items: { label: string; value: number }[] }[] = [];
     
     // We'll create a single "All Sources" group if we can't perfectly map back to graph topology,
     // but ideally we map it.
@@ -1077,84 +968,30 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
   };
 
 
-  const resolvedTargetFile = useMemo(() => {
-    if (!target.fileId) {
-      return null;
-    }
-    return files.find((file) => file.id === target.fileId) ?? null;
-  }, [files, target.fileId]);
 
 
   const [columns, setColumns] = useState<string[]>([]);
   const [isLoadingColumns, setIsLoadingColumns] = useState(false);
 
-  const sheetOptions = useMemo(() => {
-    if (!resolvedTargetFile) {
-      return [];
-    }
-    const sheets = sheetsByFileId[resolvedTargetFile.id] ?? [];
-    return sheets.length > 0 ? sheets : [SINGLE_SHEET_VALUE];
-  }, [resolvedTargetFile, sheetsByFileId]);
 
-  const hasSheetList = sheetOptions.length > 0 && sheetOptions[0] !== SINGLE_SHEET_VALUE;
 
-  const [removeDraftConfig, setRemoveDraftConfig] = useState<Record<string, any>>({});
-  const [isRemoveDirty, setIsRemoveDirty] = useState(false);
 
-  const removeConfig = removeDraftConfig || {};
-  const removeMode = removeConfig.mode || 'columns';
-  const columnSelection = removeConfig.columnSelection || { names: [], indices: [], match: {} };
-  const rowSelection = removeConfig.rowSelection || { indices: [], range: {}, rules: [], match: 'any' };
-
-  const updateRemoveConfig = (next: Record<string, any>) => {
-    if (!node) return;
-    updateNode(node.id, {
-      data: {
-        ...nodeData,
-        config: next,
-      },
-    });
-  };
-
-  const updateRemoveDraft = (next: Record<string, any>) => {
-    setRemoveDraftConfig(next);
-    setIsRemoveDirty(true);
-  };
-
-  const parseNumberList = (value: string) => value
-    .split(',')
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .map(Number)
-    .filter((part) => Number.isInteger(part) && part >= 0);
-
-  useEffect(() => {
-    if (!node || nodeData.blockType !== 'remove_columns_rows') {
-      return;
-    }
-    setRemoveDraftConfig(nodeData.config || {});
-    setIsRemoveDirty(false);
-  }, [node, node?.id, nodeData.blockType, nodeData.config]);
 
   useEffect(() => {
     if (!selectedNodeId) {
       return;
     }
-    setIsLoadingFiles(true);
-    setIsLoadingBatches(true);
     // Load files once when the panel opens so the target dropdown is ready.
     filesApi.list()
       .then((result) => {
         // Keep the full file list so group selections can pull in new files.
         setFiles(result);
       })
-      .catch(() => setFiles([]))
-      .finally(() => setIsLoadingFiles(false));
+      .catch(() => setFiles([]));
 
     filesApi.listBatches(flowId)
       .then((result) => setBatches(result))
-      .catch(() => setBatches([]))
-      .finally(() => setIsLoadingBatches(false));
+      .catch(() => setBatches([]));
   }, [selectedNodeId, refreshKey, flowId]);
 
   useEffect(() => {
@@ -1362,79 +1199,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     });
   }, [node, nodeData, updateNode]);
 
-  const updateOutputBatchId = useCallback((nextBatchId: number | null) => {
-    if (!node) return;
-    updateNode(node.id, {
-      data: {
-        ...nodeData,
-        outputBatchId: nextBatchId,
-      },
-    });
-  }, [node, nodeData, updateNode]);
 
-  const handleCopyGroupToOutput = useCallback(() => {
-    if (!node || !isOutputNode) {
-      return;
-    }
-    if (sourceGroupFiles.length === 0) {
-      return;
-    }
-    updateNode(node.id, {
-      data: {
-        ...nodeData,
-        output: buildOutputsFromFiles(sourceGroupFiles),
-      },
-    });
-  }, [
-    buildOutputsFromFiles,
-    isOutputNode,
-    node,
-    nodeData,
-    sourceGroupFiles,
-    updateNode,
-  ]);
-
-  const handleCopySingleToOutput = useCallback(() => {
-    if (!node || !isOutputNode) {
-      return;
-    }
-    if (!sourceSingleFile) {
-      return;
-    }
-    updateNode(node.id, {
-      data: {
-        ...nodeData,
-        output: buildOutputsFromFiles([sourceSingleFile]),
-      },
-    });
-  }, [
-    buildOutputsFromFiles,
-    isOutputNode,
-    node,
-    nodeData,
-    sourceSingleFile,
-    updateNode,
-  ]);
-
-  const triggerPrecompute = useCallback(() => {
-    const flowData = getFlowData();
-    if (!flowData) {
-      return;
-    }
-    const fileIds = Array.from(sourceNodeFileIds);
-    if (precomputeTimeoutRef.current) {
-      window.clearTimeout(precomputeTimeoutRef.current);
-    }
-    precomputeTimeoutRef.current = window.setTimeout(() => {
-      void transformApi.precompute({
-        file_id: fileIds[0] ?? 0,
-        file_ids: fileIds.length > 0 ? fileIds : undefined,
-        flow_data: flowData,
-      }).catch(() => {
-        // Ignore precompute failures so we don't block configuration changes.
-      });
-    }, 200);
-  }, [getFlowData, sourceNodeFileIds]);
 
   const addOutputFile = () => {
     const nextOutputs = [
@@ -1541,12 +1306,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     updateDestinationTargets,
   ]);
 
-  const sourceMode = useMemo(() => {
-    if (target.virtualId) {
-      return 'output';
-    }
-    return 'original';
-  }, [target.virtualId]);
 
   if (!selectedNodeId || !node) {
     return null;
@@ -1682,7 +1441,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                                 {(() => {
                                   // Check if all files in the group have the same sheet selected
                                   const firstSheet = group.targets[0]?.target.sheetName;
-                                  const allSame = group.targets.every(({ target }) => target.sheetName === firstSheet);
+                                  const allSame = group.targets.every(({ target }: { target: TableTarget }) => target.sheetName === firstSheet);
                                   const commonSheetName = allSame ? firstSheet : "";
 
                                   return (
@@ -1718,9 +1477,9 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                                         group.targets.flatMap(({ target }: { target: TableTarget }) => 
                                           target.fileId ? (sheetsByFileId[target.fileId] ?? []) : []
                                         )
-                                      )).sort().map((sheet) => (
-                                        <option key={sheet} value={sheet}>
-                                          {sheet}
+                                      )).sort().map((sheet: any) => (
+                                        <option key={String(sheet)} value={String(sheet)}>
+                                          {String(sheet)}
                                         </option>
                                       ))}
                                     </select>

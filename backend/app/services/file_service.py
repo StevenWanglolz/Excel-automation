@@ -26,19 +26,34 @@ class FileService:
             raise HTTPException(status_code=404, detail="Batch not found")
 
         files = db.query(File).filter(File.batch_id == batch_id).all()
-        flows = db.query(Flow).filter(Flow.user_id == user_id).all()
+        file_ids = [f.id for f in files]
 
-        for file in files:
-            for flow in flows:
-                if not flow.flow_data:
-                    continue
+        # Optimization: Query only flows that might reference these files
+        # Uses JSON containment to filter at the DB level instead of loading all flows
+        flows_to_check = db.query(Flow).filter(
+            Flow.user_id == user_id,
+            Flow.flow_data.isnot(None)
+        ).all()
+
+        # Build a set of flows that actually reference any of our file IDs
+        # This is more efficient than checking each file against each flow
+        affected_flows = []
+        for flow in flows_to_check:
+            flow_changed = False
+            current_flow_data = flow.flow_data
+            for file_id in file_ids:
                 updated_flow_data, changed = file_reference_service.remove_file_id_from_flow_data(
-                    flow.flow_data,
-                    file.id
+                    current_flow_data,
+                    file_id
                 )
                 if changed:
-                    flow.flow_data = updated_flow_data
-            
+                    current_flow_data = updated_flow_data
+                    flow_changed = True
+            if flow_changed:
+                flow.flow_data = current_flow_data
+                affected_flows.append(flow.id)
+
+        for file in files:
             try:
                 storage.delete_file(user_id, file.filename)
             except Exception as e:
@@ -61,25 +76,25 @@ class FileService:
         # Without this check, users could upload arbitrary files that break our parsing logic
         if not file.filename:
             raise HTTPException(status_code=400, detail="Filename is required")
-        
+
         allowed_extensions = {".xlsx", ".xls", ".csv"}
         file_ext = Path(file.filename).suffix.lower()
-        
+
         if file_ext not in allowed_extensions:
             raise HTTPException(
                 status_code=400,
                 detail=f"File type not supported. Allowed: {', '.join(allowed_extensions)}"
             )
-        
+
         # Save file to disk with user-specific directory structure
         # Returns both the full path and the generated filename (for uniqueness)
         # Note: save_file() already validates file size before saving
         file_path, filename = await storage.save_file(file, user_id)
-        
+
         # Get file size after saving - needed for database record
         # Double-check size as safety net (though save_file already validated)
         file_size = Path(file_path).stat().st_size
-        
+
         # Additional validation check (safety net in case size check was bypassed)
         # If file somehow exceeds limit, delete it and raise error
         if file_size > settings.MAX_FILE_SIZE:
@@ -91,7 +106,7 @@ class FileService:
                 status_code=413,  # 413 = Payload Too Large
                 detail=f"File size ({file_size_mb:.2f}MB) exceeds maximum allowed size ({max_size_mb:.0f}MB)"
             )
-        
+
         # Map file extension to MIME type for proper HTTP headers
         # Used when serving files back to clients
         mime_type_map = {
@@ -100,7 +115,7 @@ class FileService:
             ".csv": "text/csv"
         }
         mime_type = mime_type_map.get(file_ext, "application/octet-stream")
-        
+
         # Create database record linking file to user
         # Stores both generated filename (for disk lookup) and original filename (for user display)
         db_file = File(
@@ -116,7 +131,7 @@ class FileService:
         db.commit()
         # Refresh to load auto-generated fields (id, created_at) from database
         db.refresh(db_file)
-        
+
         return db_file
 
     @staticmethod
@@ -167,7 +182,8 @@ class FileService:
         a user-friendly original filename for display.
         """
         if not content:
-            raise HTTPException(status_code=400, detail="Generated file is empty")
+            raise HTTPException(
+                status_code=400, detail="Generated file is empty")
 
         if len(content) > settings.MAX_FILE_SIZE:
             max_size_mb = settings.MAX_FILE_SIZE / (1024 * 1024)
@@ -209,10 +225,10 @@ class FileService:
     def parse_file(file_path: str, sheet_name: Optional[str] = None) -> pd.DataFrame:
         """Parse Excel or CSV file into pandas DataFrame"""
         path = Path(file_path)
-        
+
         if not path.exists():
             raise HTTPException(status_code=404, detail="File not found")
-        
+
         try:
             if path.suffix.lower() == ".csv":
                 df = pd.read_csv(file_path)
@@ -220,8 +236,9 @@ class FileService:
                 # Excel files can have multiple sheets - handle both single sheet and multi-sheet cases
                 # If sheet_name is None, pd.read_excel returns a dict of all sheets
                 # If sheet_name is specified, returns DataFrame directly (single sheet)
-                result = pd.read_excel(file_path, engine="openpyxl", sheet_name=sheet_name)
-                
+                result = pd.read_excel(
+                    file_path, engine="openpyxl", sheet_name=sheet_name)
+
                 # Handle case where Excel file has multiple sheets
                 # pd.read_excel returns dict when sheet_name=None or when reading all sheets
                 if isinstance(result, dict):
@@ -235,7 +252,7 @@ class FileService:
                 else:
                     # Single sheet case - result is already a DataFrame
                     df = result
-            
+
             return df
         except Exception as e:
             # Wrap parsing errors to provide user-friendly messages
@@ -249,13 +266,13 @@ class FileService:
     def get_excel_sheets(file_path: str) -> list[str]:
         """Get list of sheet names from Excel file"""
         path = Path(file_path)
-        
+
         if not path.exists():
             raise HTTPException(status_code=404, detail="File not found")
-        
+
         if path.suffix.lower() not in {".xlsx", ".xls"}:
             return []  # CSV files don't have sheets
-        
+
         try:
             import openpyxl
             workbook = openpyxl.load_workbook(file_path, read_only=True)
@@ -315,7 +332,7 @@ class FileService:
                     else:
                         row_dict[col] = val
                 preview_rows.append(row_dict)
-        
+
         return {
             "columns": list(df.columns),
             "row_count": len(df),

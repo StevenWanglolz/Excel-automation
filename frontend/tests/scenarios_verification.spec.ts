@@ -96,7 +96,7 @@ test.describe('Advanced Data Flow Scenarios', () => {
         
         // Files & Batches
         await page.route('**/api/files', route => mockJson(route, mockFiles));
-        await page.route('**/api/files/batches', route => mockJson(route, [mockBatch]));
+        await page.route('**/api/files/batches*', route => mockJson(route, [mockBatch]));
         await page.route('**/api/files/*/sheets', route => mockJson(route, ['Sheet1']));
 
         // Preview Mocks
@@ -117,9 +117,11 @@ test.describe('Advanced Data Flow Scenarios', () => {
         // Select Op-1 to open Properties Panel
         const op1 = page.locator('.pipeline-block').filter({ hasText: 'Step 1 (Group Process)' }).first();
         await op1.waitFor({ state: 'attached', timeout: 10000 });
-        // Small wait for render stability
-        await page.waitForTimeout(1000); 
+        
+        // Wait for batches to load when selecting the node
+        const batchesPromise = page.waitForResponse('**/api/files/batches*').catch(() => null);
         await op1.click({ force: true });
+        await batchesPromise;
 
         // Define panel scope using stable ID
         const panel = page.locator('#properties-panel');
@@ -127,8 +129,7 @@ test.describe('Advanced Data Flow Scenarios', () => {
 
         // 2. Verify Destination Group Display
         // Should show "Group outputs" and "Test Batch"
-        await expect(panel.getByText(/Test Batch/).last()).toBeVisible();
-        await expect(panel.getByRole('heading', { name: 'Destinations' })).toBeVisible();
+        await expect(panel.getByText(/Test Batch/).last()).toBeVisible({ timeout: 10000 });
         await expect(panel.getByRole('heading', { name: 'Destinations' })).toBeVisible();
         // Checks for batch name in destinations
         await expect(panel.getByText(/Test Batch/).last()).toBeVisible();
