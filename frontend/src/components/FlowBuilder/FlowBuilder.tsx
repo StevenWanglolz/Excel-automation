@@ -307,8 +307,13 @@ export const FlowBuilder = () => {
       const sourceData = nodes[0]?.data;
       const hasUploadedFiles =
         Array.isArray(sourceData?.fileIds) ? sourceData.fileIds.length > 0 : Boolean(sourceData?.fileId);
+      
+      // Check if name is non-empty AND not the default "Untitled"
+      // If it's "Untitled", we don't count it as a "change" from empty state
+      const hasNameChange = flowName.trim().length > 0 && flowName !== 'Untitled Flow' && flowName !== 'Untitled';
+
       const hasChanges =
-        flowName.trim().length > 0 ||
+        hasNameChange ||
         edges.length > 0 ||
         nodes.length > 1 ||
         !isSingleSource ||
@@ -392,6 +397,7 @@ export const FlowBuilder = () => {
 
     if (isNewFlow) {
       clearFlowInternal();
+      setFlowName('Untitled'); 
       hasInitializedRef.current = true;
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('new');
@@ -422,8 +428,10 @@ export const FlowBuilder = () => {
 
       if (!hasBaseNodes) {
         clearFlowInternal();
+        setFlowName('Untitled');
       } else {
         hasInitializedRef.current = true;
+        if (!flowName) setFlowName('Untitled');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1792,7 +1800,7 @@ export const FlowBuilder = () => {
       return;
     }
     const fileIdSet = new Set(fileIds);
-    Promise.all([filesApi.list(), filesApi.listBatches()])
+    Promise.all([filesApi.list(), filesApi.listBatches(selectedFlowId ?? undefined)])
       .then(([files, batches]) => {
         const filtered = files.filter((file) => fileIdSet.has(file.id));
         setPreviewFiles(filtered);
@@ -1802,7 +1810,7 @@ export const FlowBuilder = () => {
         setPreviewFiles([]);
         setPreviewBatches([]);
       });
-  }, [collectFileIds, nodes]);
+  }, [collectFileIds, nodes, selectedFlowId]);
 
   useEffect(() => {
     const fileIds = collectFileIds(nodes);
@@ -2008,6 +2016,40 @@ export const FlowBuilder = () => {
     setHasUnsavedChanges(true);
   };
 
+  const handleAutoSave = async (): Promise<number> => {
+    if (selectedFlowId) {
+      return selectedFlowId;
+    }
+
+    setIsSaving(true);
+    try {
+      const flowData = getFlowData();
+      const defaultName = flowName.trim() || 'Untitled';
+      
+      const createdFlow = await flowsApi.create({
+        name: defaultName,
+        description: '',
+        flow_data: flowData,
+      });
+
+      // Save state
+      setFlowName(createdFlow.name);
+      setSelectedFlowId(createdFlow.id);
+      savedFlowDataRef.current = JSON.stringify({ ...flowData, flowName: createdFlow.name });
+      hasUnsavedChangesRef.current = false;
+      setHasUnsavedChanges(false);
+      
+      await loadFlows();
+      return createdFlow.id;
+    } catch (error) {
+      console.error('Failed to auto-save flow:', error);
+      showModal('error', 'Error', 'Failed to save flow automatically');
+      throw error;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
       
@@ -2165,6 +2207,7 @@ export const FlowBuilder = () => {
               >
                 {(() => {
                   if (isSaving) return 'Saving...';
+                  if (selectedFlowId && !hasUnsavedChangesRef.current) return 'Saved';
                   if (selectedFlowId) return 'Update Flow';
                   return 'Save Flow';
                 })()}
@@ -2272,6 +2315,7 @@ export const FlowBuilder = () => {
         lastTarget={lastTarget}
         onUpdateLastTarget={setLastTarget}
         refreshKey={filesRefreshKey}
+        flowId={selectedFlowId ?? undefined}
       />
       
       {/* Data Upload Modal */}
@@ -2288,6 +2332,12 @@ export const FlowBuilder = () => {
         initialFileIds={selectedNodeId ? getNodeFileIds(selectedNodeId) : []}
         onUploadStart={() => setIsFileUploading(true)}
         onUploadEnd={() => setIsFileUploading(false)}
+        flowId={selectedFlowId ?? undefined}
+        onEnsureFlowSaved={handleAutoSave}
+        onFlowModified={() => {
+          hasUnsavedChangesRef.current = true;
+          setHasUnsavedChanges(true);
+        }}
       />
       
       {/* Operation Selection Modal */}

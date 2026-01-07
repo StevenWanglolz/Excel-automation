@@ -1,12 +1,15 @@
+from app.transforms import filters, columns, rows, joins
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from app.core.config import settings
 from sqlalchemy import inspect, text
 from app.core.database import engine, Base
-from app.models import file_batch  # Ensure batch model is registered before create_all.
+# Ensure batch model is registered before create_all.
+from app.models import file_batch
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.api.routes import auth, files, flows, transform
+
 
 def ensure_schema_updates() -> None:
     """
@@ -21,7 +24,17 @@ def ensure_schema_updates() -> None:
         if "batch_id" not in columns:
             # Add batch_id column for grouping files into batches.
             with engine.begin() as connection:
-                connection.execute(text("ALTER TABLE files ADD COLUMN batch_id INTEGER"))
+                connection.execute(
+                    text("ALTER TABLE files ADD COLUMN batch_id INTEGER"))
+
+    if "file_batches" in inspector.get_table_names():
+        columns = {column["name"]
+                   for column in inspector.get_columns("file_batches")}
+        if "flow_id" not in columns:
+            # Add flow_id column for scoping batches to flows.
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE file_batches ADD COLUMN flow_id INTEGER"))
 
 
 # Create database tables from all models that inherit from Base
@@ -35,7 +48,7 @@ ensure_schema_updates()
 async def lifespan(app: FastAPI):
     """
     Manage app lifecycle events.
-    
+
     Startup: Start background scheduler for periodic cleanup
     Shutdown: Stop background scheduler
     """
@@ -73,7 +86,6 @@ app.include_router(transform.router, prefix="/api")
 # Import transforms to register them with the registry
 # The @register_transform decorator runs when modules are imported
 # This must happen after app creation but before first request
-from app.transforms import filters, columns, rows, joins
 
 
 @app.get("/")

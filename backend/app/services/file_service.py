@@ -8,9 +8,47 @@ from sqlalchemy.orm import Session
 from app.models.file import File
 from app.storage.local_storage import storage
 from app.core.config import settings
+from app.models.file_batch import FileBatch
+from app.models.flow import Flow
+from app.services.file_reference_service import file_reference_service
 
 
 class FileService:
+    @staticmethod
+    def delete_batch(db: Session, user_id: int, batch_id: int):
+        """Deletes a batch and all its associated files."""
+        batch = db.query(FileBatch).filter(
+            FileBatch.id == batch_id,
+            FileBatch.user_id == user_id
+        ).first()
+
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch not found")
+
+        files = db.query(File).filter(File.batch_id == batch_id).all()
+        flows = db.query(Flow).filter(Flow.user_id == user_id).all()
+
+        for file in files:
+            for flow in flows:
+                if not flow.flow_data:
+                    continue
+                updated_flow_data, changed = file_reference_service.remove_file_id_from_flow_data(
+                    flow.flow_data,
+                    file.id
+                )
+                if changed:
+                    flow.flow_data = updated_flow_data
+            
+            try:
+                storage.delete_file(user_id, file.filename)
+            except Exception as e:
+                print(f"Error deleting file {file.id} from disk: {e}")
+
+            db.delete(file)
+
+        db.delete(batch)
+        # The calling function will be responsible for the final db.commit()
+
     @staticmethod
     async def upload_file(
         db: Session,

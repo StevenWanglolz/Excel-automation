@@ -25,6 +25,10 @@ interface DataUploadModalProps {
   initialFileIds?: number[];
   onUploadStart?: () => void;
   onUploadEnd?: () => void;
+  flowId?: number;
+  onEnsureFlowSaved?: () => Promise<number>;
+  /** Called whenever the flow is modified (batch created/deleted, files added/removed) */
+  onFlowModified?: () => void;
 }
 
 export const DataUploadModal = ({
@@ -35,6 +39,9 @@ export const DataUploadModal = ({
   initialFileIds = [],
   onUploadStart,
   onUploadEnd,
+  flowId,
+  onEnsureFlowSaved,
+  onFlowModified,
 }: DataUploadModalProps) => {
   type UploadedFile = {
     id: number;
@@ -106,7 +113,7 @@ export const DataUploadModal = ({
     try {
       const [allFiles, batchList] = await Promise.all([
         filesApi.list(),
-        filesApi.listBatches(),
+        filesApi.listBatches(flowId),
       ]);
 
       const filesById = new Map(allFiles.map((file) => [file.id, file]));
@@ -159,7 +166,7 @@ export const DataUploadModal = ({
       setIsLoadingFiles(false);
       setIsLoadingBatches(false);
     }
-  }, [emitFileIds, getIncludedFileIds, initialFileIds]);
+  }, [emitFileIds, getIncludedFileIds, initialFileIds, flowId]);
 
   // Load initial files once per modal open for the selected node
   useEffect(() => {
@@ -301,12 +308,36 @@ export const DataUploadModal = ({
       return;
     }
 
+    let currentFlowId = flowId;
+
+    if (!currentFlowId) {
+      if (onEnsureFlowSaved) {
+        try {
+          setIsLoadingBatches(true);
+          currentFlowId = await onEnsureFlowSaved();
+        } catch (error) {
+          setIsLoadingBatches(false);
+          return;
+        }
+      } else {
+        setAlertMessage('Please save the flow before creating a group.');
+        setShowAlertModal(true);
+        return;
+      }
+    }
+
     try {
       setIsLoadingBatches(true);
-      const created = await filesApi.createBatch({ name });
-      setBatches((prev) => [...prev, created]);
+      const created = await filesApi.createBatch({ name, flow_id: currentFlowId });
+      setBatches(prev => [created, ...prev]);
       setBatchNameDraft('');
+      
+      // Auto-select the newly created batch
       setActiveBatchId(created.id);
+      
+      if (onFlowModified) {
+        onFlowModified();
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create group');
     } finally {
@@ -331,6 +362,10 @@ export const DataUploadModal = ({
 
       const nextFileIds = getIncludedFileIds(nextIndividuals, nextBatchFiles);
       emitFileIds(nextFileIds);
+      
+      if (onFlowModified) {
+        onFlowModified();
+      }
     } catch (error: any) {
       console.error('Failed to delete file:', error);
       setAlertMessage(
@@ -405,6 +440,10 @@ export const DataUploadModal = ({
 
       const nextFileIds = getIncludedFileIds(individualFiles, nextBatchFiles);
       emitFileIds(nextFileIds);
+      
+      if (onFlowModified) {
+        onFlowModified();
+      }
     } catch (error: any) {
       console.error('Failed to delete group files:', error);
       setAlertMessage(error.response?.data?.detail || 'Failed to delete group files');
@@ -440,6 +479,10 @@ export const DataUploadModal = ({
             // Only individual files remain
             const nextFileIds = getIncludedFileIds(individualFiles, {});
             emitFileIds(nextFileIds);
+            
+            if (onFlowModified) {
+              onFlowModified();
+            }
           } catch (error: any) {
             console.error('Failed to delete all groups:', error);
             setAlertMessage(error.response?.data?.detail || 'Failed to delete all groups');
@@ -469,6 +512,10 @@ export const DataUploadModal = ({
 
       const nextFileIds = getIncludedFileIds([], batchFilesById);
       emitFileIds(nextFileIds);
+      
+      if (onFlowModified) {
+        onFlowModified();
+      }
     } catch (error: any) {
       console.error('Failed to delete individual files:', error);
       setAlertMessage(error.response?.data?.detail || 'Failed to delete individual files');
@@ -633,6 +680,10 @@ export const DataUploadModal = ({
                                         { ...batchFilesById, [activeBatchId]: [] }
                                       );
                                       emitFileIds(nextFileIds);
+                                      
+                                      if (onFlowModified) {
+                                        onFlowModified();
+                                      }
                                     } catch (err: any) {
                                       console.error('Failed to delete group:', err);
                                       setAlertMessage(err.response?.data?.detail || 'Failed to delete group');

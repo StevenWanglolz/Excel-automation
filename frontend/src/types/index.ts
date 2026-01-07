@@ -21,6 +21,7 @@ export interface Batch {
   description: string | null;
   file_count: number;
   created_at: string;
+  flow_id?: number | null;
 }
 
 export interface Flow {

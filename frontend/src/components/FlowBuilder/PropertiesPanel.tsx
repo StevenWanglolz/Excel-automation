@@ -31,6 +31,7 @@ interface PropertiesPanelProps {
   lastTarget: TableTarget;
   onUpdateLastTarget: (target: TableTarget) => void;
   refreshKey?: number;
+  flowId?: number;
 }
 
 // Sentinel for CSV files where sheet selection doesn't apply.
@@ -125,6 +126,7 @@ export const PropertiesPanel = ({
   lastTarget,
   onUpdateLastTarget,
   refreshKey,
+  flowId,
 }: PropertiesPanelProps) => {
   const { nodes, edges, updateNode, getFlowData } = useFlowStore();
   const [files, setFiles] = useState<File[]>([]);
@@ -1148,11 +1150,12 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
       })
       .catch(() => setFiles([]))
       .finally(() => setIsLoadingFiles(false));
-    filesApi.listBatches()
+
+    filesApi.listBatches(flowId)
       .then((result) => setBatches(result))
       .catch(() => setBatches([]))
       .finally(() => setIsLoadingBatches(false));
-  }, [selectedNodeId, refreshKey]);
+  }, [selectedNodeId, refreshKey, flowId]);
 
   useEffect(() => {
     return () => {
