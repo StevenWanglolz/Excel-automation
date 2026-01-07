@@ -121,8 +121,7 @@ export const PropertiesPanel = ({
   const [expandedSourceGroups, setExpandedSourceGroups] = useState<Record<number, boolean>>({});
   const [showGroupedDestinations, setShowGroupedDestinations] = useState(false);
   const [showOutputGroups, setShowOutputGroups] = useState(false);
-  // @ts-ignore
-  const precomputeTimeoutRef = useRef<number | null>(null);
+  const precomputeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const node = useMemo(() => nodes.find((n) => n.id === selectedNodeId), [nodes, selectedNodeId]);
   
@@ -987,11 +986,17 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
         // Keep the full file list so group selections can pull in new files.
         setFiles(result);
       })
-      .catch(() => setFiles([]));
+      .catch((err) => {
+        console.error('Failed to list files:', err, { selectedNodeId, refreshKey });
+        setFiles([]);
+      });
 
     filesApi.listBatches(flowId)
       .then((result) => setBatches(result))
-      .catch(() => setBatches([]));
+      .catch((err) => {
+        console.error('Failed to list batches:', err, { flowId, selectedNodeId, refreshKey });
+        setBatches([]);
+      });
   }, [selectedNodeId, refreshKey, flowId]);
 
   useEffect(() => {

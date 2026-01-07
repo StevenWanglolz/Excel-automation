@@ -2212,6 +2212,7 @@ export const FlowBuilder = () => {
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
               <button
+                data-testid="save-button"
                 onClick={handleSave}
                 disabled={
                   isSaving ||

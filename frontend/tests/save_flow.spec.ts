@@ -104,8 +104,8 @@ test.describe('Save Flow Button', () => {
     await page.route(`${API_BASE}/files*`, (route) => mockJson(route, []));
   });
 
-  // Helper to get the save button - it's the indigo button with specific text
-  const getSaveButton = (page: any) => page.locator('button.bg-indigo-600');
+  // Helper to get the save button - uses the test ID for stability
+  const getSaveButton = (page: any) => page.getByTestId('save-button');
 
   test('Save button should be disabled for base state (new flow with default name)', async ({ page }) => {
     // Navigate to fresh flow builder

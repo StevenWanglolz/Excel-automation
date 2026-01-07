@@ -423,12 +423,12 @@ export const FlowPipeline = ({
     }
     return options;
   }, [previewBatches, previewFiles]);
-  const operationBatchOptions = useMemo(() => {
+  const operationBatchOptions = useMemo((): { id: number | null; label: string }[] => {
     const actualBatches = previewBatchOptions.filter((option) => option.id !== null) as { id: number; label: string }[];
     if (actualBatches.length <= 1) {
       return [];
     }
-    return [{ id: null as any, label: 'All batches' }, ...actualBatches];
+    return [{ id: null, label: 'All batches' }, ...actualBatches];
   }, [previewBatchOptions]);
 
   const previewSourceFileIds = useMemo(

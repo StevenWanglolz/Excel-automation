@@ -79,8 +79,8 @@ test.describe('Flow Scoped Batches', () => {
     };
     
     // 1. Navigate to Flow 1
-    await page.route(`**/api/flows/${flow1.id}`, (route) => mockJson(route, flowWithNode1));
-    await page.route(`**/api/files`, (route) => mockJson(route, [{id: 999, original_filename: 'test.xlsx'}]));
+    await page.route(`${API_BASE}/flows/${flow1.id}`, (route) => mockJson(route, flowWithNode1));
+    await page.route(`${API_BASE}/files`, (route) => mockJson(route, [{id: 999, original_filename: 'test.xlsx'}]));
 
     await page.goto(`/flow-builder?flow=${flow1.id}`);
     
@@ -115,8 +115,8 @@ test.describe('Flow Scoped Batches', () => {
         edges: []
       }
     };
-    await page.route(`**/api/flows/${flow2.id}`, (route) => mockJson(route, flowWithNode2));
-    await page.route(`**/api/files`, (route) => mockJson(route, [{id: 1000, original_filename: 'test2.xlsx'}]));
+    await page.route(`${API_BASE}/flows/${flow2.id}`, (route) => mockJson(route, flowWithNode2));
+    await page.route(`${API_BASE}/files`, (route) => mockJson(route, [{id: 1000, original_filename: 'test2.xlsx'}]));
 
     await page.goto(`/flow-builder?flow=${flow2.id}`);
     

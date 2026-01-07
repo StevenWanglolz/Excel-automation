@@ -251,7 +251,9 @@ async def delete_flow(
                     # Expected: file was already deleted with its batch or storage file missing
                     logger.info(
                         f"File {file_id} already deleted or not found: {e}")
-                    db.expunge(db_file) if db_file in db else None
+                    from sqlalchemy.orm import object_session
+                    if object_session(db_file) is db:
+                        db.expunge(db_file)
                 except Exception as e:
                     # Unexpected error - log and abort to prevent inconsistent state
                     logger.error(
