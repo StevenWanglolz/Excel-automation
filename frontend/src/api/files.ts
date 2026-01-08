@@ -25,12 +25,17 @@ export const filesApi = {
     return response.data;
   },
 
-  listBatches: async (): Promise<Batch[]> => {
-    const response = await apiClient.get('/files/batches');
+  listBatches: async (flowId?: number): Promise<Batch[]> => {
+    const params = new URLSearchParams();
+    if (typeof flowId === 'number') {
+      params.set('flow_id', String(flowId));
+    }
+    const query = params.toString();
+    const response = await apiClient.get(`/files/batches${query ? `?${query}` : ''}`);
     return response.data;
   },
 
-  createBatch: async (payload: { name: string; description?: string | null }): Promise<Batch> => {
+  createBatch: async (payload: { name: string; description?: string | null; flow_id?: number | null }): Promise<Batch> => {
     const response = await apiClient.post('/files/batches', payload);
     return response.data;
   },

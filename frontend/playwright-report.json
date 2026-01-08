@@ -69,297 +69,20 @@
   },
   "suites": [
     {
-      "title": "auth.spec.ts",
-      "file": "auth.spec.ts",
+      "title": "flow_scoped_batches.spec.ts",
+      "file": "flow_scoped_batches.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Authentication",
-          "file": "auth.spec.ts",
-          "line": 3,
-          "column": 15,
-          "specs": [
-            {
-              "title": "should redirect to login when unauthenticated",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "location": {
-                        "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                        "line": 3,
-                        "column": 15
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": -1,
-                      "parallelIndex": -1,
-                      "status": "skipped",
-                      "duration": 0,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.055Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "location": {
-                            "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                            "line": 3,
-                            "column": 15
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "d748ac400d08b85935ef-5383526910eb00d6ec23",
-              "file": "auth.spec.ts",
-              "line": 16,
-              "column": 3
-            },
-            {
-              "title": "should login successfully",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "location": {
-                        "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                        "line": 3,
-                        "column": 15
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": -1,
-                      "parallelIndex": -1,
-                      "status": "skipped",
-                      "duration": 0,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.058Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "location": {
-                            "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                            "line": 3,
-                            "column": 15
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "d748ac400d08b85935ef-ccea1da8a6499a5c322c",
-              "file": "auth.spec.ts",
-              "line": 21,
-              "column": 3
-            },
-            {
-              "title": "should show error on invalid credentials",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "location": {
-                        "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                        "line": 3,
-                        "column": 15
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": -1,
-                      "parallelIndex": -1,
-                      "status": "skipped",
-                      "duration": 0,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.058Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "location": {
-                            "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                            "line": 3,
-                            "column": 15
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "d748ac400d08b85935ef-1a0e60acbb789a2fdf0a",
-              "file": "auth.spec.ts",
-              "line": 52,
-              "column": 3
-            },
-            {
-              "title": "should navigate to register page",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "location": {
-                        "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                        "line": 3,
-                        "column": 15
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": -1,
-                      "parallelIndex": -1,
-                      "status": "skipped",
-                      "duration": 0,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.058Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "location": {
-                            "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                            "line": 3,
-                            "column": 15
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "d748ac400d08b85935ef-5733ba15f511f5a83e92",
-              "file": "auth.spec.ts",
-              "line": 76,
-              "column": 3
-            },
-            {
-              "title": "should register successfully",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "location": {
-                        "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                        "line": 3,
-                        "column": 15
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": -1,
-                      "parallelIndex": -1,
-                      "status": "skipped",
-                      "duration": 0,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.058Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "location": {
-                            "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/auth.spec.ts",
-                            "line": 3,
-                            "column": 15
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "d748ac400d08b85935ef-516215068ad0f35fa27b",
-              "file": "auth.spec.ts",
-              "line": 83,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "comprehensive_workflow.spec.ts",
-      "file": "comprehensive_workflow.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Comprehensive Workflow & Preview",
-          "file": "comprehensive_workflow.spec.ts",
-          "line": 4,
+          "title": "Flow Scoped Batches",
+          "file": "flow_scoped_batches.spec.ts",
+          "line": 33,
           "column": 6,
           "specs": [
             {
-              "title": "should preview data block (Source Node)",
+              "title": "Should load batches specific to Flow 1",
               "ok": true,
               "tags": [],
               "tests": [
@@ -372,14 +95,249 @@
                   "results": [
                     {
                       "workerIndex": 0,
-                      "parallelIndex": 5,
+                      "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 4103,
+                      "duration": 7853,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "PAGE LOG: [vite] connecting...\n"
+                        },
+                        {
+                          "text": "PAGE LOG: [vite] connected.\n"
+                        },
+                        {
+                          "text": "PAGE LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: [vite] connecting...\n"
+                        },
+                        {
+                          "text": "PAGE LOG: [vite] connected.\n"
+                        },
+                        {
+                          "text": "PAGE LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.656Z",
+                      "startTime": "2026-01-07T09:30:56.723Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -387,13 +345,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "815fc99380105f434b19-844cc7a730456d77e583",
-              "file": "comprehensive_workflow.spec.ts",
-              "line": 144,
-              "column": 5
+              "id": "2418cf21df3071fa7dbc-81d14953503c9f4afc73",
+              "file": "flow_scoped_batches.spec.ts",
+              "line": 67,
+              "column": 3
             },
             {
-              "title": "should handle file upload (single and groups)",
+              "title": "Should request batches with correct flow_id",
               "ok": true,
               "tags": [],
               "tests": [
@@ -406,14 +364,87 @@
                   "results": [
                     {
                       "workerIndex": 1,
-                      "parallelIndex": 6,
+                      "parallelIndex": 1,
                       "status": "passed",
-                      "duration": 5378,
+                      "duration": 7185,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "PAGE LOG: [vite] connecting...\n"
+                        },
+                        {
+                          "text": "PAGE LOG: [vite] connected.\n"
+                        },
+                        {
+                          "text": "PAGE LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        },
+                        {
+                          "text": "PAGE LOG: Failed to load resource: the server responded with a status of 404 (Not Found)\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.644Z",
+                      "startTime": "2026-01-07T09:30:56.701Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -421,13 +452,30 @@
                   "status": "expected"
                 }
               ],
-              "id": "815fc99380105f434b19-60036b35b00506454803",
-              "file": "comprehensive_workflow.spec.ts",
-              "line": 180,
-              "column": 5
-            },
+              "id": "2418cf21df3071fa7dbc-6b3ee788f0ccf4bb771c",
+              "file": "flow_scoped_batches.spec.ts",
+              "line": 132,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "save_flow.spec.ts",
+      "file": "save_flow.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Save Flow Button",
+          "file": "save_flow.spec.ts",
+          "line": 38,
+          "column": 6,
+          "specs": [
             {
-              "title": "should configure and preview operation block",
+              "title": "Save button should be disabled for base state (new flow with default name)",
               "ok": true,
               "tags": [],
               "tests": [
@@ -440,14 +488,30 @@
                   "results": [
                     {
                       "workerIndex": 2,
-                      "parallelIndex": 0,
+                      "parallelIndex": 2,
                       "status": "passed",
-                      "duration": 3290,
+                      "duration": 6161,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.680Z",
+                      "startTime": "2026-01-07T09:30:56.702Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -455,13 +519,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "815fc99380105f434b19-036dba749e3e094e2e02",
-              "file": "comprehensive_workflow.spec.ts",
-              "line": 224,
-              "column": 5
+              "id": "172251e30d492ebcbcbf-0502afaf5c50dca8b4dc",
+              "file": "save_flow.spec.ts",
+              "line": 110,
+              "column": 3
             },
             {
-              "title": "should preview output block",
+              "title": "Save button should be enabled when flow name is changed from Untitled",
               "ok": true,
               "tags": [],
               "tests": [
@@ -474,14 +538,30 @@
                   "results": [
                     {
                       "workerIndex": 3,
-                      "parallelIndex": 1,
+                      "parallelIndex": 3,
                       "status": "passed",
-                      "duration": 3283,
+                      "duration": 5986,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.683Z",
+                      "startTime": "2026-01-07T09:30:56.731Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -489,65 +569,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "815fc99380105f434b19-16bbf34f53f641a4fa48",
-              "file": "comprehensive_workflow.spec.ts",
-              "line": 264,
-              "column": 5
+              "id": "172251e30d492ebcbcbf-b76a935318ac5f4113ec",
+              "file": "save_flow.spec.ts",
+              "line": 129,
+              "column": 3
             },
             {
-              "title": "should delete all file groups",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [
-                    {
-                      "type": "skip",
-                      "location": {
-                        "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/comprehensive_workflow.spec.ts",
-                        "line": 285,
-                        "column": 10
-                      }
-                    }
-                  ],
-                  "expectedStatus": "skipped",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": -1,
-                      "parallelIndex": -1,
-                      "status": "skipped",
-                      "duration": 0,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.059Z",
-                      "annotations": [
-                        {
-                          "type": "skip",
-                          "location": {
-                            "file": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/comprehensive_workflow.spec.ts",
-                            "line": 285,
-                            "column": 10
-                          }
-                        }
-                      ],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "skipped"
-                }
-              ],
-              "id": "815fc99380105f434b19-55dbe9fcae16391efcbc",
-              "file": "comprehensive_workflow.spec.ts",
-              "line": 285,
-              "column": 10
-            },
-            {
-              "title": "should execute flow and show results (mocked)",
+              "title": "Save button should work when clicking it",
               "ok": true,
               "tags": [],
               "tests": [
@@ -560,14 +588,36 @@
                   "results": [
                     {
                       "workerIndex": 4,
-                      "parallelIndex": 3,
+                      "parallelIndex": 4,
                       "status": "passed",
-                      "duration": 2115,
+                      "duration": 7276,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: POST flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.708Z",
+                      "startTime": "2026-01-07T09:30:56.757Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -575,30 +625,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "815fc99380105f434b19-59e1e57b7f3b7a943cf1",
-              "file": "comprehensive_workflow.spec.ts",
-              "line": 334,
-              "column": 5
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "group_workflows.spec.ts",
-      "file": "group_workflows.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Group operation workflows",
-          "file": "group_workflows.spec.ts",
-          "line": 175,
-          "column": 6,
-          "specs": [
+              "id": "172251e30d492ebcbcbf-a6052053be4ea3e52461",
+              "file": "save_flow.spec.ts",
+              "line": 147,
+              "column": 3
+            },
             {
-              "title": "Group to Group uses a 1:1 mapping",
+              "title": "Save button should enable for existing flow when name is changed",
               "ok": true,
               "tags": [],
               "tests": [
@@ -611,14 +644,42 @@
                   "results": [
                     {
                       "workerIndex": 5,
-                      "parallelIndex": 4,
+                      "parallelIndex": 5,
                       "status": "passed",
-                      "duration": 3638,
+                      "duration": 6520,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "MOCK: GET http://localhost:8000/api/flows/1\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET http://localhost:8000/api/flows/1\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET http://localhost:8000/api/flows/1\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET http://localhost:8000/api/flows/1\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.694Z",
+                      "startTime": "2026-01-07T09:30:56.677Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -626,13 +687,13 @@
                   "status": "expected"
                 }
               ],
-              "id": "2728bbf5fc35278c206c-43cd66dea3e06881ffbf",
-              "file": "group_workflows.spec.ts",
-              "line": 219,
+              "id": "172251e30d492ebcbcbf-929bc2d7ee135c0a00b2",
+              "file": "save_flow.spec.ts",
+              "line": 167,
               "column": 3
             },
             {
-              "title": "Group to Many triggers append-style execution",
+              "title": "Save button should show correct states through the save lifecycle",
               "ok": true,
               "tags": [],
               "tests": [
@@ -645,14 +706,36 @@
                   "results": [
                     {
                       "workerIndex": 6,
-                      "parallelIndex": 2,
+                      "parallelIndex": 6,
                       "status": "passed",
-                      "duration": 4060,
+                      "duration": 6932,
                       "errors": [],
-                      "stdout": [],
+                      "stdout": [
+                        {
+                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        },
+                        {
+                          "text": "MOCK: POST flows list\n"
+                        },
+                        {
+                          "text": "MOCK: GET flows list\n"
+                        }
+                      ],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-01-06T15:21:53.679Z",
+                      "startTime": "2026-01-07T09:30:56.671Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -660,837 +743,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "2728bbf5fc35278c206c-a4118c761d78033bc165",
-              "file": "group_workflows.spec.ts",
-              "line": 232,
-              "column": 3
-            },
-            {
-              "title": "Many to Many keeps individual outputs aligned",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 4,
-                      "parallelIndex": 3,
-                      "status": "passed",
-                      "duration": 2160,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:57.411Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "2728bbf5fc35278c206c-246cb8d1b5b65f32b7ee",
-              "file": "group_workflows.spec.ts",
-              "line": 244,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "scenarios_export_groups.spec.ts",
-      "file": "scenarios_export_groups.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Export scenarios with grouped sources",
-          "file": "scenarios_export_groups.spec.ts",
-          "line": 155,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Group to Group export keeps batch outputs together",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2405,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:58.672Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c216d41529e958c0a7b1-bad02acacbfcb9b0d361",
-              "file": "scenarios_export_groups.spec.ts",
+              "id": "172251e30d492ebcbcbf-d6e4f7e8fdab471623b3",
+              "file": "save_flow.spec.ts",
               "line": 188,
-              "column": 3
-            },
-            {
-              "title": "Group to Many export downloads a single file",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 3,
-                      "parallelIndex": 1,
-                      "status": "passed",
-                      "duration": 2980,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:58.672Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c216d41529e958c0a7b1-f9bb95af2785c9c5cd47",
-              "file": "scenarios_export_groups.spec.ts",
-              "line": 217,
-              "column": 3
-            },
-            {
-              "title": "Many to Many export uses zip without batch grouping",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 5,
-                      "parallelIndex": 4,
-                      "status": "passed",
-                      "duration": 2286,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:58.909Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c216d41529e958c0a7b1-2c2987ce73a6ffea7f13",
-              "file": "scenarios_export_groups.spec.ts",
-              "line": 246,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "scenarios_filter.spec.ts",
-      "file": "scenarios_filter.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Filter Scenarios with Groups",
-          "file": "scenarios_filter.spec.ts",
-          "line": 13,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Add source button should be visible when clicking transform block",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 2,
-                      "status": "passed",
-                      "duration": 2342,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:59.504Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-abe9776068bf5020f93a",
-              "file": "scenarios_filter.spec.ts",
-              "line": 162,
-              "column": 3
-            },
-            {
-              "title": "Group to Group: Filter Rows preserves 3 -> 3 structure",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 5,
-                      "status": "passed",
-                      "duration": 2560,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:59.514Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-29b31cf4d2c7a02c6dc7",
-              "file": "scenarios_filter.spec.ts",
-              "line": 192,
-              "column": 3
-            },
-            {
-              "title": "Group to Many: Append Files (3 -> 1)",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 4,
-                      "parallelIndex": 3,
-                      "status": "passed",
-                      "duration": 2733,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:21:59.627Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-5aae039c16f409cac1ac",
-              "file": "scenarios_filter.spec.ts",
-              "line": 230,
-              "column": 3
-            },
-            {
-              "title": "Many to Many: Individual files to individual outputs",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 6,
-                      "status": "passed",
-                      "duration": 2248,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:00.720Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-b7f435e7ed1c0c39c6b7",
-              "file": "scenarios_filter.spec.ts",
-              "line": 267,
-              "column": 3
-            },
-            {
-              "title": "Filter configuration UI is accessible",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1512,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:01.466Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-33a2bbfddacf807eea0e",
-              "file": "scenarios_filter.spec.ts",
-              "line": 304,
-              "column": 3
-            },
-            {
-              "title": "Row filter preview sends configured column/operator/value",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 5,
-                      "parallelIndex": 4,
-                      "status": "passed",
-                      "duration": 2697,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:01.520Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-c9e0ff85e97fa6f7ea1d",
-              "file": "scenarios_filter.spec.ts",
-              "line": 338,
-              "column": 3
-            },
-            {
-              "title": "Create destination from a source automatically links the pair",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 3,
-                      "parallelIndex": 1,
-                      "status": "passed",
-                      "duration": 1849,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:01.752Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-6fe7eb1ad7a77b837d1a",
-              "file": "scenarios_filter.spec.ts",
-              "line": 396,
-              "column": 3
-            },
-            {
-              "title": "Manual linking lets one destination point to multiple sources",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 2,
-                      "status": "passed",
-                      "duration": 2640,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:01.871Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-aa3c904123884bee02db",
-              "file": "scenarios_filter.spec.ts",
-              "line": 426,
-              "column": 3
-            },
-            {
-              "title": "Preview batch dropdown scopes the file list to the selected group",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 5,
-                      "status": "passed",
-                      "duration": 2193,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:02.101Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "937fab83df6b3853e3ef-dcd1940d658b2a8ba986",
-              "file": "scenarios_filter.spec.ts",
-              "line": 459,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "scenarios_full_flow.spec.ts",
-      "file": "scenarios_full_flow.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Full End-to-End Workflow",
-          "file": "scenarios_full_flow.spec.ts",
-          "line": 7,
-          "column": 6,
-          "specs": [
-            {
-              "title": "E2E: Upload Group -> Preview -> Filter G2G -> Export",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 4,
-                      "parallelIndex": 3,
-                      "status": "passed",
-                      "duration": 4382,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:02.425Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "e4626da85f01b825659c-496ae847dec08c07519c",
-              "file": "scenarios_full_flow.spec.ts",
-              "line": 21,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "scenarios_verification.spec.ts",
-      "file": "scenarios_verification.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Advanced Data Flow Scenarios",
-          "file": "scenarios_verification.spec.ts",
-          "line": 5,
-          "column": 6,
-          "specs": [
-            {
-              "title": "Scenario 1: Verify Group-to-Group Configuration in UI",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 1,
-                      "parallelIndex": 6,
-                      "status": "passed",
-                      "duration": 3511,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "[Browser]: [vite] connecting...\n"
-                        },
-                        {
-                          "text": "[Browser]: [vite] connected.\n"
-                        },
-                        {
-                          "text": "[Browser]: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:03.030Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "e4c97fa21f839f5cb375-374711de37872137c7fc",
-              "file": "scenarios_verification.spec.ts",
-              "line": 111,
-              "column": 5
-            },
-            {
-              "title": "Scenario 2: Verify Chaining (Processed Files Selection)",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1806,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:03.045Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "e4c97fa21f839f5cb375-0670e5ff85f56409ffce",
-              "file": "scenarios_verification.spec.ts",
-              "line": 137,
-              "column": 5
-            },
-            {
-              "title": "Scenario 3: Verify Export Functionality",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 3,
-                      "parallelIndex": 1,
-                      "status": "passed",
-                      "duration": 2701,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:03.685Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "e4c97fa21f839f5cb375-b346262467025356cd75",
-              "file": "scenarios_verification.spec.ts",
-              "line": 187,
-              "column": 5
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "workflow.spec.ts",
-      "file": "workflow.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Workflow",
-          "file": "workflow.spec.ts",
-          "line": 3,
-          "column": 6,
-          "specs": [
-            {
-              "title": "should load dashboard and list flows",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 5,
-                      "parallelIndex": 4,
-                      "status": "passed",
-                      "duration": 1940,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
-                        },
-                        {
-                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:04.385Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c601ceb5ecfc8efa4a14-a12ac74502f06bc37e08",
-              "file": "workflow.spec.ts",
-              "line": 93,
-              "column": 3
-            },
-            {
-              "title": "should create new automation flow",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 5,
-                      "status": "passed",
-                      "duration": 2139,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:04.407Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c601ceb5ecfc8efa4a14-dbb1ff2bfe93a0576b61",
-              "file": "workflow.spec.ts",
-              "line": 123,
-              "column": 3
-            },
-            {
-              "title": "should capture and save flow",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 6,
-                      "parallelIndex": 2,
-                      "status": "passed",
-                      "duration": 1656,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:04.643Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c601ceb5ecfc8efa4a14-12d4548bdb88d2dd67b8",
-              "file": "workflow.spec.ts",
-              "line": 151,
-              "column": 3
-            },
-            {
-              "title": "should show node properties when clicked",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 2,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 1746,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "BROWSER LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-01-06T15:22:04.975Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "c601ceb5ecfc8efa4a14-d6ed265457d0d455d22d",
-              "file": "workflow.spec.ts",
-              "line": 180,
               "column": 3
             }
           ]
@@ -1500,10 +755,10 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-01-06T15:21:52.979Z",
-    "duration": 14156.071,
-    "expected": 28,
-    "skipped": 6,
+    "startTime": "2026-01-07T09:30:55.860Z",
+    "duration": 10345.572999999999,
+    "expected": 7,
+    "skipped": 0,
     "unexpected": 0,
     "flaky": 0
   }

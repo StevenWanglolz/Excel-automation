@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FlowData } from '../types';
+import type { FlowData, BlockData } from '../types';
 import { Node, Edge } from '@xyflow/react';
 
 const normalizeNodes = (nodes: Node[]): Node[] => {
@@ -123,7 +123,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         id: node.id,
         type: node.type,
         position: node.position,
-        data: node.data,
+        data: node.data as BlockData,
       })),
       edges: state.edges.map((edge) => ({
         id: edge.id,
@@ -147,8 +147,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
+      sourceHandle: edge.sourceHandle ?? undefined,
+      targetHandle: edge.targetHandle ?? undefined,
     }));
 
     const normalizedNodes = normalizeNodes(nodes);

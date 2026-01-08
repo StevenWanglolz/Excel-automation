@@ -1,5 +1,8 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import ObjectDeletedError
+from sqlalchemy.exc import NoResultFound
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, field_serializer
 from datetime import datetime
@@ -8,10 +11,13 @@ from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.models.flow import Flow
 from app.models.file import File
+from app.models.file_batch import FileBatch
 from app.services.file_reference_service import file_reference_service
+from app.services.file_service import file_service
 from app.storage.local_storage import storage
 
 router = APIRouter(prefix="/flows", tags=["flows"])
+logger = logging.getLogger(__name__)
 
 # Constants
 # Constant is used in all 3 locations (lines 94, 113, 167) - linter warning is false positive
@@ -117,16 +123,17 @@ async def update_flow(
     if flow_update.flow_data is not None:
         # Get old file IDs before update
         old_file_ids = file_reference_service.get_files_for_flow(flow)
-        
+
         # Update flow data
         flow.flow_data = flow_update.flow_data
-        
+
         # Get new file IDs after update
-        new_file_ids = file_reference_service.extract_file_ids_from_flow_data(flow_update.flow_data)
-        
+        new_file_ids = file_reference_service.extract_file_ids_from_flow_data(
+            flow_update.flow_data)
+
         # Find files that are no longer referenced by this flow
         removed_file_ids = old_file_ids - new_file_ids
-        
+
         # Delete files that are no longer referenced by any flow
         for file_id in removed_file_ids:
             if not file_reference_service.is_file_referenced(file_id, current_user.id, db, exclude_flow_id=flow_id):
@@ -135,7 +142,7 @@ async def update_flow(
                     File.id == file_id,
                     File.user_id == current_user.id
                 ).first()
-                
+
                 if db_file:
                     # Delete from disk
                     storage.delete_file(current_user.id, db_file.filename)
@@ -158,7 +165,7 @@ async def delete_flow(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Delete a flow and clean up associated files that are no longer referenced"""
+    """Delete a flow and clean up associated files and batches that are no longer referenced"""
     flow = db.query(Flow).filter(
         Flow.id == flow_id,
         Flow.user_id == current_user.id
@@ -167,37 +174,98 @@ async def delete_flow(
     if not flow:
         raise HTTPException(status_code=404, detail=FLOW_NOT_FOUND_MESSAGE)
 
-    # Get all file IDs referenced by this flow
-    file_ids = file_reference_service.get_files_for_flow(flow)
-    
-    # Delete the flow first
+    # 1. Get all file IDs and associated batch IDs from this flow
+    file_ids_in_flow = file_reference_service.get_files_for_flow(flow)
+    batch_ids_in_flow = set()
+    if file_ids_in_flow:
+        files_with_batches = db.query(File).filter(
+            File.id.in_(file_ids_in_flow),
+            File.batch_id.isnot(None)
+        ).all()
+        batch_ids_in_flow = {file.batch_id for file in files_with_batches}
+
+    # 1.5 Delete batches strictly belonging to this flow
+    # These are groups created specifically within this flow
+    deleted_batches = []
+    # Use a fresh query to ensure we get current state
+    flow_batches = db.query(FileBatch).filter(
+        FileBatch.flow_id == flow_id).all()
+
+    # We need to collect IDs first to avoid issues if iteration and deletion conflict
+    flow_batch_ids = [b.id for b in flow_batches]
+
+    for batch_id in flow_batch_ids:
+        # Re-query precisely to ensure object is attached and valid
+        batch_to_delete = db.query(FileBatch).filter(
+            FileBatch.id == batch_id).first()
+        if batch_to_delete:
+            file_service.delete_batch(db, current_user.id, batch_to_delete.id)
+            deleted_batches.append(batch_to_delete.id)
+
+    # 2. Delete the flow
     db.delete(flow)
     db.commit()
 
-    # Clean up files that are no longer referenced by any flow
+    # 3. Clean up orphaned batches (referenced by files in the flow but not OF the flow)
+    # Note: The flow has already been deleted and committed above, so no need to exclude it
+    # from reference checks - it no longer exists in the database.
+    for batch_id in batch_ids_in_flow:
+        if batch_id in deleted_batches:
+            continue
+
+        batch = db.query(FileBatch).filter(FileBatch.id == batch_id).first()
+        if not batch:
+            continue
+
+        is_batch_referenced_elsewhere = False
+        # Check if any file in this batch is still referenced by any remaining flow
+        for file_in_batch in batch.files:
+            if file_reference_service.is_file_referenced(file_in_batch.id, current_user.id, db):
+                is_batch_referenced_elsewhere = True
+                break
+
+        if not is_batch_referenced_elsewhere:
+            file_service.delete_batch(db, current_user.id, batch_id)
+            deleted_batches.append(batch_id)
+
+    # 4. Clean up individual orphaned files
     deleted_files = []
-    for file_id in file_ids:
-        # Check if file is still referenced by any other flow
+    had_rollback = False
+    for file_id in file_ids_in_flow:
+        if had_rollback:
+            # After a rollback, we cannot safely continue with more deletions
+            break
+
         if not file_reference_service.is_file_referenced(file_id, current_user.id, db):
-            # File is orphaned, safe to delete
             db_file = db.query(File).filter(
                 File.id == file_id,
                 File.user_id == current_user.id
             ).first()
-            
+
             if db_file:
-                # Delete from disk
-                storage.delete_file(current_user.id, db_file.filename)
-                # Delete from database
-                db.delete(db_file)
-                deleted_files.append(file_id)
-    
-    if deleted_files:
+                try:
+                    storage.delete_file(current_user.id, db_file.filename)
+                    db.delete(db_file)
+                    deleted_files.append(file_id)
+                except (ObjectDeletedError, NoResultFound, FileNotFoundError) as e:
+                    # Expected: file was already deleted with its batch or storage file missing
+                    logger.info(
+                        f"File {file_id} already deleted or not found: {e}")
+                    from sqlalchemy.orm import object_session
+                    if object_session(db_file) is db:
+                        db.expunge(db_file)
+                except Exception as e:
+                    # Unexpected error - log and abort to prevent inconsistent state
+                    logger.error(
+                        f"Unexpected error deleting file {file_id}: {e}")
+                    db.rollback()
+                    had_rollback = True
+
+    if not had_rollback:
         db.commit()
-        return {
-            "message": "Flow deleted successfully",
-            "deleted_files": deleted_files,
-            "files_cleaned_up": len(deleted_files)
-        }
-    
-    return {"message": "Flow deleted successfully"}
+
+    return {
+        "message": "Flow deleted successfully",
+        "deleted_files": deleted_files,
+        "deleted_batches": deleted_batches
+    }

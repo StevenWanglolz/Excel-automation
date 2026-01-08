@@ -11,9 +11,7 @@ from app.api.dependencies import get_current_user
 from app.models.user import User
 from app.models.file import File
 from app.models.file_batch import FileBatch
-from app.models.flow import Flow
 from app.services.file_service import file_service
-from app.services.file_reference_service import file_reference_service
 from app.services.preview_cache import preview_cache, stable_hash
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -47,6 +45,7 @@ class FilePreviewResponse(BaseModel):
 class BatchCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    flow_id: Optional[int] = None
 
 
 class BatchResponse(BaseModel):
@@ -55,6 +54,7 @@ class BatchResponse(BaseModel):
     description: Optional[str] = None
     file_count: int = 0
     created_at: datetime
+    flow_id: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,6 +111,7 @@ async def list_files(
 
 @router.get("/batches", response_model=List[BatchResponse])
 async def list_batches(
+    flow_id: Optional[int] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -121,12 +122,18 @@ async def list_batches(
         .group_by(File.batch_id)
         .subquery()
     )
-    batches = (
+    query = (
         db.query(FileBatch, func.coalesce(counts_subquery.c.file_count, 0))
         .outerjoin(counts_subquery, FileBatch.id == counts_subquery.c.batch_id)
         .filter(FileBatch.user_id == current_user.id)
-        .all()
     )
+
+    if flow_id is not None:
+        query = query.filter(FileBatch.flow_id == flow_id)
+    else:
+        query = query.filter(FileBatch.flow_id.is_(None))
+
+    batches = query.all()
 
     response = []
     for batch, file_count in batches:
@@ -135,7 +142,8 @@ async def list_batches(
             name=batch.name,
             description=batch.description,
             file_count=file_count or 0,
-            created_at=batch.created_at
+            created_at=batch.created_at,
+            flow_id=batch.flow_id
         ))
     return response
 
@@ -151,10 +159,26 @@ async def create_batch(
     if not name:
         raise HTTPException(status_code=400, detail="Batch name is required")
 
-    existing = db.query(FileBatch).filter(
+    query = db.query(FileBatch).filter(
         FileBatch.user_id == current_user.id,
         func.lower(FileBatch.name) == name.lower()
-    ).first()
+    )
+
+    if payload.flow_id is not None:
+        # Verify flow exists and belongs to user
+        from app.models.flow import Flow
+        flow = db.query(Flow).filter(
+            Flow.id == payload.flow_id,
+            Flow.user_id == current_user.id
+        ).first()
+        if not flow:
+            raise HTTPException(status_code=404, detail="Flow not found")
+
+        query = query.filter(FileBatch.flow_id == payload.flow_id)
+    else:
+        query = query.filter(FileBatch.flow_id.is_(None))
+
+    existing = query.first()
     if existing:
         raise HTTPException(
             status_code=400, detail="Batch name already exists")
@@ -162,7 +186,8 @@ async def create_batch(
     batch = FileBatch(
         user_id=current_user.id,
         name=name,
-        description=payload.description.strip() if payload.description else None
+        description=payload.description.strip() if payload.description else None,
+        flow_id=payload.flow_id
     )
     db.add(batch)
     db.commit()
@@ -173,7 +198,8 @@ async def create_batch(
         name=batch.name,
         description=batch.description,
         file_count=0,
-        created_at=batch.created_at
+        created_at=batch.created_at,
+        flow_id=batch.flow_id
     )
 
 
@@ -186,59 +212,11 @@ async def delete_batch(
     """
     Delete a file batch and all its files.
     """
-    batch = db.query(FileBatch).filter(
-        FileBatch.id == batch_id,
-        FileBatch.user_id == current_user.id
-    ).first()
-
-    if not batch:
-        raise HTTPException(status_code=404, detail="Batch not found")
-
-    # Get all files in the batch
-    files = db.query(File).filter(File.batch_id == batch_id).all()
-
-    # Track cleanup stats
-    deleted_files = 0
-    flows_updated = 0
-
-    # Delete files first (reusing deletion logic would be ideal but circular imports risk)
-    # We'll do it explicitly here for safety
-    from app.storage.local_storage import storage
-
-    # Get all flows to update references once
-    flows = db.query(Flow).filter(Flow.user_id == current_user.id).all()
-
-    for file in files:
-        # Update flow references
-        for flow in flows:
-            if not flow.flow_data:
-                continue
-            updated_flow_data, changed = file_reference_service.remove_file_id_from_flow_data(
-                flow.flow_data,
-                file.id
-            )
-            if changed:
-                flow.flow_data = updated_flow_data
-                flows_updated += 1
-
-        # Delete from disk
-        try:
-            storage.delete_file(current_user.id, file.filename)
-        except Exception as e:
-            print(f"Error deleting file {file.id} from disk: {e}")
-
-        # Delete from DB
-        db.delete(file)
-        deleted_files += 1
-
-    # Delete the batch itself
-    db.delete(batch)
+    file_service.delete_batch(db, current_user.id, batch_id)
     db.commit()
 
     return {
         "message": "Batch deleted successfully",
-        "deleted_files": deleted_files,
-        "flows_updated": flows_updated
     }
 
 

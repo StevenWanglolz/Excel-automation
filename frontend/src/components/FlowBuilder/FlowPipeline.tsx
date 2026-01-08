@@ -384,7 +384,6 @@ export const FlowPipeline = ({
     );
     return sourceFileIds.filter((fileId) => validIds.has(fileId));
   }, [previewFiles, sourceBatchId, sourceFileIds]);
-  const isMissingSourceForPreview = isSourcePreview && !sourceFileId;
   const activePreviewFileId = useMemo(() => {
     if (!activePreviewNode) {
       return null;
@@ -414,7 +413,7 @@ export const FlowPipeline = ({
     const batchesWithFiles = previewBatches.filter((batch) =>
       previewFiles.some((file) => file.batch_id === batch.id)
     );
-    const options = batchesWithFiles.map((batch) => ({
+    const options: { id: number | null; label: string }[] = batchesWithFiles.map((batch) => ({
       id: batch.id,
       label: batch.name,
     }));
@@ -424,8 +423,8 @@ export const FlowPipeline = ({
     }
     return options;
   }, [previewBatches, previewFiles]);
-  const operationBatchOptions = useMemo(() => {
-    const actualBatches = previewBatchOptions.filter((option) => option.id !== null);
+  const operationBatchOptions = useMemo((): { id: number | null; label: string }[] => {
+    const actualBatches = previewBatchOptions.filter((option) => option.id !== null) as { id: number; label: string }[];
     if (actualBatches.length <= 1) {
       return [];
     }

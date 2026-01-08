@@ -276,10 +276,62 @@ async def get_current_user(
    ↓
 4. Service stores file metadata with optional batch_id
    ↓
-5. Modal recomputes the flow's file IDs from all groups + single files
+6. If no flow is selected, Modal calls onEnsureFlowSaved() to auto-save as "Untitled"
+    ↓
+7. Backend creates new flow and returns its ID
+    ↓
+8. Modal recomputes the flow's file IDs from all groups + single files
+    ↓
+9. UI reflects saved state (Update Flow button enabled, Flow name as "Untitled")
 ```
 
-**Step 1: Group or single selection in the modal**
+**Step 6: Ensure flow is saved before creating group**
+
+```typescript
+// frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 313-331)
+if (!currentFlowId) {
+  if (onEnsureFlowSaved) {
+    try {
+      setIsLoadingBatches(true);
+      // Calls the auto-save handler in FlowBuilder
+      currentFlowId = await onEnsureFlowSaved();
+    } catch (saveErr) {
+      // ... error handling
+    }
+  }
+}
+```
+
+**Step 7: Auto-save implementation**
+
+```typescript
+// frontend/src/components/FlowBuilder/FlowBuilder.tsx (lines 2032-2078)
+const handleAutoSave = async (): Promise<number> => {
+  if (selectedFlowId) return selectedFlowId;
+  if (creatingFlowRef.current) return creatingFlowRef.current;
+
+  setIsSaving(true);
+  const createPromise = (async () => {
+    try {
+      const flowData = getFlowData();
+      const defaultName = flowName.trim() || 'Untitled';
+      const createdFlow = await flowsApi.create({
+        name: defaultName,
+        flow_data: flowData,
+      });
+      // ... update state and refs
+      return createdFlow.id;
+    } finally {
+      setIsSaving(false);
+      creatingFlowRef.current = null;
+    }
+  })();
+  creatingFlowRef.current = createPromise;
+  return createPromise;
+};
+```
+
+**Step 8: Modal recomputes the flow's file IDs**
 
 ```typescript
 // frontend/src/components/FlowBuilder/DataUploadModal.tsx (lines 140-205)

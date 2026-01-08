@@ -21,6 +21,7 @@ export interface Batch {
   description: string | null;
   file_count: number;
   created_at: string;
+  flow_id?: number | null;
 }
 
 export interface Flow {
@@ -40,7 +41,7 @@ export interface FlowData {
 
 export interface FlowNode {
   id: string;
-  type: string;
+  type?: string;
   position: { x: number; y: number };
   data: BlockData;
 }
@@ -49,11 +50,12 @@ export interface FlowEdge {
   id: string;
   source: string;
   target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
 }
 
 export interface BlockData {
+  [key: string]: any;
   blockType: string;
   config: Record<string, any>;
   label?: string;

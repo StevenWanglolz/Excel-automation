@@ -40,7 +40,7 @@ export const FlowBuilder = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { nodes, edges, getFlowData, loadFlowData, updateNode, deleteNode, setNodes, setEdges } = useFlowStore();
-  const [flowName, setFlowName] = useState('');
+  const [flowName, setFlowName] = useState('Untitled');
   const [isSaving, setIsSaving] = useState(false);
   const [savedFlows, setSavedFlows] = useState<Flow[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState<number | null>(null);
@@ -92,6 +92,8 @@ export const FlowBuilder = () => {
   const previewRunIdRef = useRef(0);
   const previewPrecomputeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewPrecomputeSignatureRef = useRef<string | null>(null);
+  // Guard against concurrent auto-save calls creating duplicate flows
+  const creatingFlowRef = useRef<Promise<number> | null>(null);
   const searchParamsKey = useMemo(() => searchParams.toString(), [searchParams]);
   // Cache raw file previews by file+sheet to avoid re-fetching when users switch tabs.
   const previewCacheRef = useRef<Map<string, FilePreview>>(new Map());
@@ -298,20 +300,36 @@ export const FlowBuilder = () => {
 
   // Track unsaved changes
   useEffect(() => {
-    // For new flows (no selectedFlowId), always allow saving if there are nodes
+    // For new flows (no selectedFlowId), allow saving if anything differs from the clean base state
     if (!selectedFlowId) {
-      const isSingleSource =
-        nodes.length === 1 &&
-        nodes[0]?.id === 'source-0' &&
+      // Base state: exactly 2 nodes (source-0 + output-0), no edges, name is "Untitled" or empty
+      const isBaseSourceNode = 
+        nodes[0]?.id === 'source-0' && 
         nodes[0]?.type === 'source';
+      const isBaseOutputNode = 
+        nodes[1]?.id === 'output-0' && 
+        nodes[1]?.type === 'output';
+      const isBaseNodeStructure = 
+        nodes.length === 2 && 
+        isBaseSourceNode && 
+        isBaseOutputNode;
+      
       const sourceData = nodes[0]?.data;
       const hasUploadedFiles =
         Array.isArray(sourceData?.fileIds) ? sourceData.fileIds.length > 0 : Boolean(sourceData?.fileId);
+      
+      // Check if name is non-empty AND not the default "Untitled"
+      const hasNameChange = flowName.trim().length > 0 && flowName !== 'Untitled Flow' && flowName !== 'Untitled';
+
+      // Mark as unsaved if any of these are true:
+      // - Name changed from default
+      // - There are edges (blocks are connected)
+      // - Node structure differs from base (more/fewer nodes, different IDs)
+      // - Files have been uploaded to the source
       const hasChanges =
-        flowName.trim().length > 0 ||
+        hasNameChange ||
         edges.length > 0 ||
-        nodes.length > 1 ||
-        !isSingleSource ||
+        !isBaseNodeStructure ||
         hasUploadedFiles;
 
       hasUnsavedChangesRef.current = hasChanges;
@@ -392,6 +410,7 @@ export const FlowBuilder = () => {
 
     if (isNewFlow) {
       clearFlowInternal();
+      setFlowName('Untitled'); 
       hasInitializedRef.current = true;
       const nextParams = new URLSearchParams(searchParams);
       nextParams.delete('new');
@@ -422,8 +441,10 @@ export const FlowBuilder = () => {
 
       if (!hasBaseNodes) {
         clearFlowInternal();
+        setFlowName('Untitled');
       } else {
         hasInitializedRef.current = true;
+        if (!flowName) setFlowName('Untitled');
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -608,7 +629,7 @@ export const FlowBuilder = () => {
     setEdges([]);
     
     // Reset other state
-    setFlowName('');
+    setFlowName('Untitled');
     setSelectedFlowId(null);
     setShowFlowList(false);
     setActivePreviewNodeIds(new Set());
@@ -1792,7 +1813,7 @@ export const FlowBuilder = () => {
       return;
     }
     const fileIdSet = new Set(fileIds);
-    Promise.all([filesApi.list(), filesApi.listBatches()])
+    Promise.all([filesApi.list(), filesApi.listBatches(selectedFlowId ?? undefined)])
       .then(([files, batches]) => {
         const filtered = files.filter((file) => fileIdSet.has(file.id));
         setPreviewFiles(filtered);
@@ -1802,7 +1823,7 @@ export const FlowBuilder = () => {
         setPreviewFiles([]);
         setPreviewBatches([]);
       });
-  }, [collectFileIds, nodes]);
+  }, [collectFileIds, nodes, selectedFlowId]);
 
   useEffect(() => {
     const fileIds = collectFileIds(nodes);
@@ -2008,6 +2029,54 @@ export const FlowBuilder = () => {
     setHasUnsavedChanges(true);
   };
 
+  const handleAutoSave = async (): Promise<number> => {
+    // Return existing flow ID if already saved
+    if (selectedFlowId) {
+      return selectedFlowId;
+    }
+
+    // If a creation is already in progress, wait for it instead of creating a duplicate
+    if (creatingFlowRef.current) {
+      return creatingFlowRef.current;
+    }
+
+    setIsSaving(true);
+    
+    // Create the promise and store it in ref before awaiting
+    const createPromise = (async () => {
+      try {
+        const flowData = getFlowData();
+        const defaultName = flowName.trim() || 'Untitled';
+        
+        const createdFlow = await flowsApi.create({
+          name: defaultName,
+          description: '',
+          flow_data: flowData,
+        });
+
+        // Save state
+        setFlowName(createdFlow.name);
+        setSelectedFlowId(createdFlow.id);
+        savedFlowDataRef.current = JSON.stringify({ ...flowData, flowName: createdFlow.name });
+        hasUnsavedChangesRef.current = false;
+        setHasUnsavedChanges(false);
+        
+        await loadFlows();
+        return createdFlow.id;
+      } catch (error) {
+        console.error('Failed to auto-save flow:', error);
+        showModal('error', 'Error', 'Failed to save flow automatically');
+        throw error;
+      } finally {
+        setIsSaving(false);
+        creatingFlowRef.current = null;
+      }
+    })();
+
+    creatingFlowRef.current = createPromise;
+    return createPromise;
+  };
+
   return (
     <div className="flex h-screen bg-gray-100">
       
@@ -2143,6 +2212,7 @@ export const FlowBuilder = () => {
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
               <button
+                data-testid="save-button"
                 onClick={handleSave}
                 disabled={
                   isSaving ||
@@ -2154,7 +2224,7 @@ export const FlowBuilder = () => {
                   if (!flowName.trim()) {
                     return 'Enter a flow name to save';
                   }
-                  if (selectedFlowId && !hasUnsavedChangesRef.current) {
+                  if (selectedFlowId && !hasUnsavedChanges) {
                     return 'No changes to save';
                   }
                   if (!selectedFlowId && nodes.length === 0) {
@@ -2165,6 +2235,7 @@ export const FlowBuilder = () => {
               >
                 {(() => {
                   if (isSaving) return 'Saving...';
+                  if (selectedFlowId && !hasUnsavedChanges) return 'Saved';
                   if (selectedFlowId) return 'Update Flow';
                   return 'Save Flow';
                 })()}
@@ -2272,6 +2343,7 @@ export const FlowBuilder = () => {
         lastTarget={lastTarget}
         onUpdateLastTarget={setLastTarget}
         refreshKey={filesRefreshKey}
+        flowId={selectedFlowId ?? undefined}
       />
       
       {/* Data Upload Modal */}
@@ -2288,6 +2360,12 @@ export const FlowBuilder = () => {
         initialFileIds={selectedNodeId ? getNodeFileIds(selectedNodeId) : []}
         onUploadStart={() => setIsFileUploading(true)}
         onUploadEnd={() => setIsFileUploading(false)}
+        flowId={selectedFlowId ?? undefined}
+        onEnsureFlowSaved={handleAutoSave}
+        onFlowModified={() => {
+          hasUnsavedChangesRef.current = true;
+          setHasUnsavedChanges(true);
+        }}
       />
       
       {/* Operation Selection Modal */}

@@ -17,6 +17,8 @@ class FileBatch(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    flow_id = Column(Integer, ForeignKey("flows.id"), nullable=True)
 
     # Relationship to access files in this batch via batch.files
     files = relationship("File", backref="batch")
+    flow = relationship("Flow", backref="batches")

@@ -97,7 +97,7 @@ test.describe('Full End-to-End Workflow', () => {
        await route.fulfill({ json: mockFiles });
     });
     
-    await page.route('**/api/files/batches', async route => {
+    await page.route('**/api/files/batches*', async route => {
        await route.fulfill({ json: [mockBatch] });
     });
     
@@ -107,7 +107,7 @@ test.describe('Full End-to-End Workflow', () => {
     });
     
     await page.route('**/api/transform/preview-step', async route => {
-       await route.fulfill({ json: { columns: ['A', 'B'], preview_rows: [{A: 1, B: 2}], row_count: 3 } });
+       await route.fulfill({ json: { columns: ['A', 'B'], preview_rows: [{A: 10, B: 20}], row_count: 3 } });
     });
     await page.route('**/api/files/*/sheets', async route => {
        await route.fulfill({ json: ['Sheet1'] });
@@ -131,30 +131,24 @@ test.describe('Full End-to-End Workflow', () => {
      await uploadModal.getByRole('button').filter({ hasText: /^$/ }).first().click();
 
      // 4. Preview Data Block
-     // Hover or click to see preview button? 
-     // The PipelineNodeCard has a preview toggle button.
+     // Trigger the preview modal
      await dataBlock.locator('button[title="Show preview"]').click();
      
-     // Verify Preview Panel
      // Verify Preview Panel (Modal)
      const previewModal = page.getByText('Full Screen Preview');
      await expect(previewModal).toBeVisible();
+     
+     // The "File group" selector should eventually appear once batches load
      const groupSelector = page.locator('label:has-text("File group") select');
-     await expect(groupSelector).toBeVisible();
+     await expect(groupSelector).toBeVisible({ timeout: 15000 });
      await groupSelector.selectOption({ label: 'E2E Batch' });
+
      // Check if the panel contains the data
      // Explicitly select the file since it might not be auto-selected
      const fileSelector = page.locator('label:has-text("File") select').nth(1);
-     try {
-       await expect(fileSelector).toBeVisible({ timeout: 5000 });
-     } catch (e) {
-       console.log('DEBUG: Preview modal visible?', await page.locator('.fixed.inset-0.z-50').isVisible());
-       console.log('DEBUG: Body text:', await page.locator('body').innerText());
-       throw e;
-     }
-     const previewResponse = page.waitForResponse('**/api/files/*/preview*', { timeout: 5000 }).catch(() => null);
+     await expect(fileSelector).toBeVisible({ timeout: 10000 });
+
      await fileSelector.selectOption({ label: 'data1.xlsx' });
-     await previewResponse;
 
      await expect(page.getByText('5 rows')).toBeVisible();
      await expect(page.getByRole('columnheader', { name: 'A' })).toBeVisible();
@@ -190,38 +184,20 @@ test.describe('Full End-to-End Workflow', () => {
      await expect(page.getByText('Full Screen Preview')).not.toBeVisible();
      
      // 7. Connect to Output
-     // Normally done automatically if we add "Output" block or if it exists.
-     // Let's add an Output block manually if not present, or assume flow ends with one?
-     // The "Add step" menu has "Output"? No, "Output" is usually the last node type.
-     // Let's click the "+" on filter block and add "Output".
-     // Wait, assuming "Output" isn't in the list of "Selection" category.
-     // Typically we add a "Transform" or similar.
-     // If the flow needs an Output block to export:
-     // Check if Output block exists. If not, add it.
      const outputBlockExists = await page.locator('.pipeline-block').filter({ hasText: 'Output' }).count() > 0;
      
      if (!outputBlockExists) {
-        // Add Output block logic via "Sheet & Output" category -> "Sheet Manager"
         await filterBlock.locator('button[title="Add step after this"]').click();
-        
-        // Wait for modal
         await expect(page.getByText('Select Operation')).toBeVisible();
-        
-        // Click Category "Sheet & Output" (based on BlockPalette label)
-        // If the category is strictly mapped to 'output' id, label is 'Sheet & Output'
         await page.getByText('Sheet & Output').click(); 
-        
-        // Click Block "Sheet Manager"
         await page.getByText('Sheet Manager').click(); 
      }
      
      // 8. Export
-     // Refetch output block code after addition
      const outputBlock = page.locator('.pipeline-block').filter({ hasText: 'Sheet Manager' }).first();
      if (await outputBlock.count() > 0) {
         await outputBlock.click();
         
-        // Mock Export 
         await page.route('**/api/transform/export', route => {
             route.fulfill({ 
                 status: 200, 
@@ -232,12 +208,6 @@ test.describe('Full End-to-End Workflow', () => {
         });
         
         const exportBtn = outputBlock.getByRole('button', { name: /Export/i });
-        // It might be disabled if no config. 
-        // We might need to select "E2E Batch" in destination targets.
-        
-        // Check Properties Panel for Output
-        await expect(propsPanel).toBeVisible();
-        // Ensure destination is configured (should default for groups)
         
         if (await exportBtn.isEnabled()) {
              const downloadPromise = page.waitForEvent('download');

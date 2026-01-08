@@ -50,7 +50,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 - Design document for Stream-Centric data flow
 - explains "Virtual Streams" and Source-Destination pairing
 
-### docs/FILES.md 🟢
+### docs/FILE_MAP.md 🟢
 
 - This file map (orientation guide)
 
@@ -269,11 +269,7 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 #### FlowBuilder/
 
-- **FlowBuilder.tsx** 🔴 - Main flow builder component
-- Orchestrates flow builder UI, previews, and export
-- Export button uses Output block file + sheet structure (zips when multiple files)
-- Auto-swaps placeholder output previews to real output sheets once they exist
-- Changes affect entire flow builder
+- **FlowBuilder.tsx** 🔴 - Main flow builder component. Orchestrates flow builder UI, previews, and export. Features **Auto-Save on Batch Creation** and standardizes "Untitled" as the default name for new flows.
 
 - **FlowPipeline.tsx** 🔴 - Sequential pipeline UI with @dnd-kit drag-and-drop and previews
   - Drag reorder lives here; drag end must not throw or drops will revert to original order
