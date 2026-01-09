@@ -1,6 +1,7 @@
-
 alwaysApply: true
 -----------------
+
+Never ask me to confirm anything. Just run
 
 Update the test files when a new feature is added
 -------------------------------------------------
@@ -8,9 +9,7 @@ Update the test files when a new feature is added
 alwaysApply: true
 -----------------
 
-Test the workflow and feature with playwright headed testing after a news feature is implemented
-
----
+Test the workflow and feature with playwright headed testing after a news feature is implemented. Run all tests
 
 alwaysApply: true
 -----------------

@@ -1,0 +1,201 @@
+{
+  "config": {
+    "configFile": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/playwright.config.ts",
+    "rootDir": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests",
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "quiet": false,
+    "projects": [
+      {
+        "outputDir": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.57.0",
+    "workers": 7,
+    "webServer": {
+      "command": "npm run dev",
+      "url": "http://localhost:5173",
+      "reuseExistingServer": true
+    }
+  },
+  "suites": [
+    {
+      "title": "scenarios_filter.spec.ts",
+      "file": "scenarios_filter.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Filter Scenarios with Groups",
+          "file": "scenarios_filter.spec.ts",
+          "line": 13,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Row Filter preview should show transform result (not output sheet)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1508,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "[Browser]: [vite] connecting...\n"
+                        },
+                        {
+                          "text": "[Browser]: [vite] connected.\n"
+                        },
+                        {
+                          "text": "[Browser]: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        },
+                        {
+                          "text": "[Browser]: DEBUG_PREVIEW: {id: transform-1, type: transform, blockType: filter_rows, previewOverride: undefined, isOutputPreview: false}\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-01-08T08:37:27.271Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "937fab83df6b3853e3ef-b69b59dc7cdbf6f36742",
+              "file": "scenarios_filter.spec.ts",
+              "line": 625,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-01-08T08:37:26.734Z",
+    "duration": 2728.0060000000003,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

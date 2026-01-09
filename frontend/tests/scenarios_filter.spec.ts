@@ -10,6 +10,21 @@ let lastTransformPayload: any = null;
  */
 const API_BASE = 'http://localhost:8000/api';
 
+type PreviewOverride = {
+  columns: string[];
+  preview_rows: Record<string, unknown>[];
+  row_count: number;
+};
+
+type TransformExecuteOverride = {
+  preview: PreviewOverride;
+  row_count: number;
+  column_count: number;
+};
+
+let customFilePreview: PreviewOverride | null = null;
+let customTransformExecuteResponse: TransformExecuteOverride | null = null;
+
 test.describe('Filter Scenarios with Groups', () => {
 
   // Mock data for testing
@@ -80,11 +95,13 @@ test.describe('Filter Scenarios with Groups', () => {
     await page.addInitScript(() => localStorage.setItem('access_token', 'mock-token'));
     
     // Debug logging (disabled for cleaner output)
-    // page.on('console', msg => { console.log(`[Browser]: ${msg.text()}`); });
+    page.on('console', msg => { console.log(`[Browser]: ${msg.text()}`); });
 
     // API Mocks - use specific backend URL to avoid interfering with Vite
     
     lastTransformPayload = null;
+    customFilePreview = null;
+    customTransformExecuteResponse = null;
 
     await page.route(`${API_BASE}/auth/me`, route => mockJson(route, mockUser));
     await page.route(`${API_BASE}/flows*`, async route => {
@@ -98,14 +115,17 @@ test.describe('Filter Scenarios with Groups', () => {
     await page.route(`${API_BASE}/files`, route => mockJson(route, [...mockFiles, mockIndividualFile1, mockIndividualFile2]));
     await page.route(`${API_BASE}/files/batches`, route => mockJson(route, [mockBatch]));
     await page.route(`${API_BASE}/files/*/sheets`, route => mockJson(route, ['Sheet1', 'Sheet2']));
-    await page.route(`${API_BASE}/files/*/preview*`, route => mockJson(route, { 
-      columns: ['Name', 'Amount', 'Status'], 
-      preview_rows: [
-        { Name: 'Item A', Amount: 100, Status: 'Active' },
-        { Name: 'Item B', Amount: 200, Status: 'Inactive' }
-      ], 
-      row_count: 2 
-    }));
+    await page.route(`${API_BASE}/files/*/preview*`, route => {
+      const payload = customFilePreview ?? {
+        columns: ['Name', 'Amount', 'Status'],
+        preview_rows: [
+          { Name: 'Item A', Amount: 100, Status: 'Active' },
+          { Name: 'Item B', Amount: 200, Status: 'Inactive' },
+        ],
+        row_count: 2,
+      };
+      mockJson(route, payload);
+    });
     await page.route(`${API_BASE}/transform/preview-step`, route => mockJson(route, { 
       columns: ['Name', 'Amount', 'Status'], 
       preview_rows: [{ Name: 'Item A', Amount: 100, Status: 'Active' }],
@@ -113,11 +133,12 @@ test.describe('Filter Scenarios with Groups', () => {
     }));
     await page.route(`${API_BASE}/transform/execute`, async (route) => {
       lastTransformPayload = route.request().postDataJSON();
-      await mockJson(route, {
+      const payload = customTransformExecuteResponse ?? {
         preview: { columns: ['Name', 'Amount'], preview_rows: [], row_count: 0 },
         row_count: 0,
-        column_count: 2
-      });
+        column_count: 2,
+      };
+      await mockJson(route, payload);
     });
     await page.route(`${API_BASE}/transform/precompute`, route => mockJson(route, { status: 'ok' }));
   });
@@ -498,10 +519,275 @@ test.describe('Filter Scenarios with Groups', () => {
     await expect.poll(
       () => fileSelect.locator('option').count(),
       { timeout: 10000 }
-    ).toBeGreaterThanOrEqual(2);
+    ).toBe(2);
     const secondBatchOptions = await fileSelect.locator('option').allTextContents();
     expect(secondBatchOptions).toContain('batch2-file1.xlsx');
     expect(secondBatchOptions).toContain('batch2-file2.xlsx');
     expect(secondBatchOptions).not.toContain('sales_q1.xlsx');
+  });
+
+  test('Batch picker lets you add multiple groups at once', async ({ page }) => {
+    const multiBatchFiles = [...mockFiles, mockBatch2File1, mockBatch2File2];
+    const multiBatches = [mockBatch, mockBatch2];
+    await page.route(`${API_BASE}/files`, (route) => mockJson(route, multiBatchFiles));
+    await page.route(`${API_BASE}/files/batches`, (route) => mockJson(route, multiBatches));
+
+    await page.goto('/flow-builder');
+    await addBlockViaModal(page, 'Selection', 'Row Filter');
+
+    const filterBlock = page.locator('.pipeline-block').nth(1);
+    await filterBlock.click({ force: true });
+    const panel = page.locator('#properties-panel');
+    const batchPicker = panel.getByTestId('batch-multi-select');
+    await batchPicker.selectOption([
+      String(mockBatch.id),
+      String(mockBatch2.id),
+    ]);
+
+    await expect(panel.getByText(mockBatch.name, { exact: true })).toBeVisible();
+    await expect(panel.getByText(mockBatch2.name, { exact: true })).toBeVisible();
+  });
+
+  test('Row Filter output preview should be accessible', async ({ page }) => {
+    /**
+     * Scenario:
+     * 1. Add Row Filter
+     * 2. Open Preview
+     * 3. Verify that we can see the "Preview output sheets" button or valid output data
+     */
+    // Mock a flow with a Row Filter already
+    const filterFlow = {
+      ...flowWithFiles,
+      id: 10001,
+      name: 'Filter Output Test Flow',
+      flow_data: {
+        nodes: [
+          {
+            id: 'source-0',
+            type: 'source',
+            position: { x: 250, y: 150 },
+            data: {
+              label: 'Data',
+              blockType: 'source',
+              config: {},
+              fileIds: [mockFile1.id],
+            },
+          },
+          {
+            id: 'transform-1',
+            type: 'transform',
+            position: { x: 250, y: 300 },
+            data: {
+              label: 'Row Filter',
+              blockType: 'filter_rows',
+              config: { column: 'Name', operator: 'contains', value: 'Item' },
+              sourceTargets: [{ fileId: mockFile1.id, sheetName: 'Sheet1' }], // Explicit source
+            },
+          },
+          {
+            id: 'output-0',
+            type: 'output',
+            position: { x: 250, y: 450 },
+            data: {
+              label: 'Output',
+              blockType: 'output',
+              config: {},
+              output: { outputs: [] },
+            },
+          },
+        ],
+        edges: [
+          { id: 'e1', source: 'source-0', target: 'transform-1' },
+          { id: 'e2', source: 'transform-1', target: 'output-0' },
+        ],
+      },
+    };
+
+    await page.route(`${API_BASE}/flows/${filterFlow.id}`, (route) => mockJson(route, filterFlow));
+    await page.route(`${API_BASE}/flows`, (route) => mockJson(route, [filterFlow]));
+
+    // Update the execute mock to return actual result for this flow
+    customTransformExecuteResponse = {
+      preview: {
+        columns: ['Name', 'Amount'],
+        preview_rows: [{ Name: 'Item A', Amount: 100, Status: 'Active' }],
+        row_count: 1,
+      },
+      row_count: 1,
+      column_count: 2,
+    };
+
+    await page.goto(`/flow-builder?flow=${filterFlow.id}`);
+    
+    // Wait for the blocks to appear
+    const filterBlock = page.locator('.pipeline-block').filter({ hasText: 'Row Filter' }).first();
+    await expect(filterBlock).toBeVisible();
+
+    // Open Preview
+    await filterBlock.locator('button[title*="preview"]').click({ force: true });
+    
+    // Check if the preview modal title is visible
+    await expect(page.getByText('Full Screen Preview')).toBeVisible();
+
+    // Wait for data
+    await expect(page.getByRole('cell', { name: 'Item A' })).toBeVisible({ timeout: 5000 });
+
+    // NOW CHECK FOR THE ISSUE: 
+    // The user claimed "Output preview... Only shows the source".
+    // "Preview output sheets" button lets you switch to the FINAL export. 
+    // But the default view should be the TRANSORMED output of this block.
+    
+    // We expect the "Preview output sheets" button to be visible (since we are in operation preview)
+    const outputBtn = page.getByRole('button', { name: 'Preview output sheets' });
+    await expect(outputBtn).toBeVisible();
+
+    // AND we should see the transformed data 'Item A' immediately
+    await expect(page.getByRole('cell', { name: 'Item A' })).toBeVisible();
+  });
+
+  test('Row Filter preview should show transform result (not output sheet)', async ({ page }) => {
+    // This test ensures that when we preview a transform node, it shows the transform result
+    // even if there is a compiled output block in the flow.
+    // Regression check for: "No output sheets available yet" error.
+    
+    // 1. Setup flow with Source -> Filter -> Output
+    const flowId = 10002;
+    const filterFlow = {
+      ...flowWithFiles,
+      id: flowId,
+      name: 'Filter Output Fallback Test',
+      flow_data: {
+        nodes: [
+          {
+            id: 'source-0',
+            type: 'source',
+            position: { x: 100, y: 100 },
+            data: {
+              label: 'Data',
+              blockType: 'source',
+              // Use fileIds array properly
+              fileIds: [mockFile1.id], 
+              config: {},
+              
+              // Key: Provide valid source target so FlowBuilder knows to use it
+              // relying on our previous fix (fallback) or explicit. 
+              // Let's rely on the previous fix (no explicit target needed if fallback works)
+              // But for this test let's be realistic mock
+            },
+          },
+          {
+            id: 'transform-1',
+            type: 'transform',
+            position: { x: 300, y: 100 },
+            data: {
+              label: 'Row Filter',
+              blockType: 'filter_rows',
+              config: { column: 'ColA', operator: 'contains', value: 'Data' },
+              sourceTargets: [{ fileId: mockFile1.id, sheetName: 'Sheet1' }],
+              // No destination set yet
+            },
+          },
+          {
+            id: 'output-0',
+            type: 'output',
+            position: { x: 500, y: 100 },
+            data: {
+              label: 'Output',
+              blockType: 'output',
+              config: {},
+              output: { outputs: [{ id: 'out1', fileName: 'final.xlsx', sheets: [] }] }, // Empty output
+            },
+          },
+        ],
+        edges: [
+            { id: 'e1', source: 'source-0', target: 'transform-1' }
+        ],
+      },
+    };
+
+    await page.route(`${API_BASE}/flows/${flowId}`, (route) => mockJson(route, filterFlow));
+    await page.route(`${API_BASE}/flows`, (route) => mockJson(route, [filterFlow]));
+
+    // Mock Execute result for the Filter
+    customTransformExecuteResponse = {
+      preview: {
+        columns: ['ColA'],
+        preview_rows: [{ ColA: 'FilteredData' }],
+        row_count: 1,
+      },
+      row_count: 1,
+      column_count: 1,
+    };
+
+    await page.goto(`/flow-builder?flow=${flowId}`);
+
+    // 2. Click Preview on the Row Filter
+    const filterBlock = page.locator('.pipeline-block').filter({ hasText: 'Row Filter' }).first();
+    await expect(filterBlock).toBeVisible();
+    await filterBlock.locator('button[title*="preview"]').click({ force: true });
+
+    // 3. Verify we see 'FilteredData' (Transform Result)
+    // NOT "No output sheets available yet"
+    await expect(page.getByText('No output sheets available yet')).not.toBeVisible();
+    await expect(page.getByRole('cell', { name: 'FilteredData' })).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Row Filter preview shows filtered job title after uploading files', async ({ page }) => {
+    /**
+     * Workflow:
+     * 1. Upload files (mocked via API)
+     * 2. Add Row Filter block and configure the column/operator/value
+     * 3. Preview the transform and expect the filtered job title row
+     */
+    customFilePreview = {
+      columns: ['Job Title', 'Department', 'Employment Type'],
+      preview_rows: [
+        { 'Job Title': 'Software Engineer', Department: 'Product', 'Employment Type': 'Full-Time' },
+        { 'Job Title': 'Designer', Department: 'Design', 'Employment Type': 'Part-Time' },
+      ],
+      row_count: 2,
+    };
+    customTransformExecuteResponse = {
+      preview: {
+        columns: ['Job Title', 'Department'],
+        preview_rows: [{ 'Job Title': 'Software Engineer', Department: 'Engineering' }],
+        row_count: 1,
+      },
+      row_count: 1,
+      column_count: 2,
+    };
+
+    await page.goto('/flow-builder');
+    await expect(page.getByText('Data', { exact: true })).toBeVisible({ timeout: 10000 });
+
+    await addBlockViaModal(page, 'Selection', 'Row Filter');
+    const filterBlock = page.locator('.pipeline-block').nth(1);
+    await filterBlock.click({ force: true });
+
+    const panel = page.locator('#properties-panel');
+    const addSourceButton = panel.getByRole('button', { name: 'Add source' });
+    await addSourceButton.click();
+    const sourceSelect = panel.locator('[data-testid^="source-entry-select-"]').first();
+    await sourceSelect.selectOption('file:101');
+
+    const columnSelect = panel.locator('select[id^="filter-column-"]');
+    await columnSelect.selectOption('Job Title');
+    const operatorSelect = panel.locator('select[id^="filter-operator-"]');
+    await operatorSelect.selectOption('equals');
+    const valueInput = panel.locator('input[id^="filter-value-"]');
+    await valueInput.fill('Software Engineer');
+
+    await filterBlock.locator('button[title*="preview"]').click({ force: true });
+    await expect(page.getByText('Full Screen Preview')).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Software Engineer' })).toBeVisible({ timeout: 5000 });
+    const outputButton = page.getByRole('button', { name: 'Preview output sheets' });
+    await expect(outputButton).toBeVisible();
+    await outputButton.click({ force: true });
+    await expect(page.getByText('No output sheets available yet')).not.toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Software Engineer' })).toBeVisible({ timeout: 5000 });
+    await expect.poll(
+      () => lastTransformPayload?.preview_target?.virtual_id ?? null,
+      { timeout: 10000, message: 'output preview never requested' }
+    ).not.toBeNull();
   });
 });

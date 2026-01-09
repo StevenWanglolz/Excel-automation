@@ -1,5 +1,5 @@
 import apiClient from './client';
-import type { FlowData, FilePreview } from '../types';
+import type { FlowData, FilePreview, TableTarget } from '../types';
 
 export interface FlowExecuteRequest {
   file_id: number;
@@ -33,7 +33,16 @@ export interface FlowExecuteResponse {
   column_count: number;
 }
 
+export interface ListOutputsResponse {
+  outputs: TableTarget[];
+}
+
 export const transformApi = {
+  listOutputs: async (request: FlowPrecomputeRequest): Promise<ListOutputsResponse> => {
+    const response = await apiClient.post('/transform/list-outputs', request);
+    return response.data;
+  },
+
   execute: async (request: FlowExecuteRequest): Promise<FlowExecuteResponse> => {
     const response = await apiClient.post('/transform/execute', request);
     return response.data;

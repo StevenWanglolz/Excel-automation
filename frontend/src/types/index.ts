@@ -115,6 +115,8 @@ export interface TableTarget {
   virtualName?: string | null;
   sourceId?: string | number | null; // ID of the source file this target is mapped to
   linkedSourceIds?: Array<string | number>;
+  isFinalOutput?: boolean;
+  isFutureSource?: boolean;
 }
 
 export interface MappingTarget {
@@ -135,6 +137,8 @@ export interface OutputFileConfig {
 
 export interface OutputConfig {
   outputs: OutputFileConfig[];
+  mode?: 'fixed' | 'batch_template';
+  batchNamingPattern?: string;
 }
 
 export interface FilePreview {

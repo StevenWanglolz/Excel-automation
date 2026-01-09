@@ -1,3 +1,13 @@
+"""
+- Responsible for:
+- - Defining row filtering and deletion logic for DataFrames
+-
+- Key assumptions:
+- - Input values from frontend are often strings and require type coercion
+-
+- Be careful:
+- - Mismatched types between filter value and column data will result in empty selections
+"""
 from app.transforms.base import BaseTransform
 from app.transforms.registry import register_transform
 from typing import Dict, Any
@@ -25,19 +35,43 @@ class FilterRowsTransform(BaseTransform):
         operator = config.get("operator", "equals")
         value = config.get("value")
 
+        # Type coercion: Convert value to match column dtype if needed
+        # This handles cases where frontend sends "30" (str) for an integer column
+        if column in df.columns and value is not None:
+            col_dtype = df[column].dtype
+            try:
+                if pd.api.types.is_integer_dtype(col_dtype):
+                    value = int(value)
+                elif pd.api.types.is_float_dtype(col_dtype):
+                    value = float(value)
+                elif pd.api.types.is_bool_dtype(col_dtype):
+                    if isinstance(value, str):
+                        value = value.lower() == "true"
+            except (ValueError, TypeError):
+                # If conversion fails, keep original value (best effort)
+                pass
+
         # Apply filter based on operator type
         # Each operator handles different data types and edge cases
         if operator == "equals":
+            # For strings, we do case-insensitive and whitespace-insensitive comparison
+            if pd.api.types.is_string_dtype(df[column]):
+                return df[df[column].astype(str).str.strip().str.lower() == str(value).strip().lower()]
             return df[df[column] == value]
         elif operator == "not_equals":
+            if pd.api.types.is_string_dtype(df[column]):
+                return df[df[column].astype(str).str.strip().str.lower() != str(value).strip().lower()]
             return df[df[column] != value]
         elif operator == "contains":
             # Convert to string for text search - handles numeric columns with text search
             # na=False excludes NaN values from results (they would cause errors)
-            return df[df[column].astype(str).str.contains(str(value), na=False)]
+            # case=False makes it case-insensitive
+            val_str = str(value).strip()
+            return df[df[column].astype(str).str.contains(val_str, case=False, na=False)]
         elif operator == "not_contains":
             # Use ~ to negate the contains condition
-            return df[~df[column].astype(str).str.contains(str(value), na=False)]
+            val_str = str(value).strip()
+            return df[~df[column].astype(str).str.contains(val_str, case=False, na=False)]
         elif operator == "greater_than":
             return df[df[column] > value]
         elif operator == "less_than":
