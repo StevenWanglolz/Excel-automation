@@ -66,15 +66,10 @@ async def list_outputs(
         found_ids = {f.id for f in db_files}
         missing_ids = set(requested_ids) - found_ids
         if missing_ids:
-            # We could raise 404, or just proceed with what we have.
-            # Given execute logic raises 404 if "effective_ids and not db_files",
-            # but usually we want to be strict about explicit requests.
-            # For now, let's just log or ensure logic is robust.
-            # The original code didn't validate specifically, but new requirement says "Validate requested_ids".
-            # Let's clean requested_ids to only include found ones?
-            # Or better, if explicit file_id was requested and missing, that's an error.
-            # But list-outputs is a precomputation step often.
-            pass
+            raise HTTPException(
+                status_code=404,
+                detail=f"Requested files not found: {list(missing_ids)}"
+            )
 
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
 

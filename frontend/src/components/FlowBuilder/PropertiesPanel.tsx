@@ -1955,7 +1955,7 @@ const renderSourceOptions = useCallback(
                       <p className="text-xs text-gray-500 mb-2">No destinations configured.</p>
                       {hasUpstreamBatch ? (
                           <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block">
-                             Auto-generating destinations match upstream batch.
+                             Auto-generating destinations to match upstream batch.
                           </div>
                       ) : (
                           <button
