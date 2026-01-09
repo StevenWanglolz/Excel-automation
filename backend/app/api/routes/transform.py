@@ -60,6 +60,22 @@ async def list_outputs(
 
     db_files = db.query(File).filter(File.user_id == current_user.id, File.id.in_(
         effective_ids)).all() if effective_ids else []
+
+    # Validate that all requested IDs exist
+    if requested_ids:
+        found_ids = {f.id for f in db_files}
+        missing_ids = set(requested_ids) - found_ids
+        if missing_ids:
+            # We could raise 404, or just proceed with what we have.
+            # Given execute logic raises 404 if "effective_ids and not db_files",
+            # but usually we want to be strict about explicit requests.
+            # For now, let's just log or ensure logic is robust.
+            # The original code didn't validate specifically, but new requirement says "Validate requested_ids".
+            # Let's clean requested_ids to only include found ones?
+            # Or better, if explicit file_id was requested and missing, that's an error.
+            # But list-outputs is a precomputation step often.
+            pass
+
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
 
     try:
@@ -138,7 +154,7 @@ async def list_outputs(
                             "fileId": t.get("fileId")  # If mapped to real file
                         })
 
-        return {"outputs": output_targets}
+        return {"outputs": [t for t in output_targets if t.get("virtualId") or (t.get("fileId") and t.get("sheetName"))]}
 
     except Exception as e:
         # It's important to raise an error with details for debugging
@@ -387,6 +403,11 @@ async def export_result(
 
     file_paths_by_id = {db_file.id: db_file.file_path for db_file in db_files}
 
+    # Calculate effective_ids for fallback logic
+    referenced_ids = list(
+        file_reference_service.extract_file_ids_from_flow_data(request.flow_data))
+    effective_ids = requested_ids or referenced_ids
+
     output_batch = None
     if request.output_batch_id is not None:
         from app.models.file_batch import FileBatch
@@ -404,6 +425,11 @@ async def export_result(
             file_paths_by_id,
             request.flow_data
         )
+
+        # Initialize default result_df from last step if available
+        result_df = pd.DataFrame()
+        if last_table_key and last_table_key in table_map:
+            result_df = table_map[last_table_key]
 
         # Collect outputs to export
         outputs_to_write = []

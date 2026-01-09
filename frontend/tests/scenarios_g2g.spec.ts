@@ -61,7 +61,12 @@ test.describe('G2G (Group-to-Group) Batch Flow', () => {
       if (route.request().method() === 'GET') {
         await route.fulfill({ json: initialFlowData });
       } else if (route.request().method() === 'PUT') {
-        const body = route.request().postDataJSON();
+        let body = {};
+        try {
+          body = route.request().postDataJSON() || {};
+        } catch (e) {
+            console.warn('Failed to parse JSON body', e);
+        }
         await route.fulfill({ json: { ...body, id: 1 } });
       } else {
         await route.continue();

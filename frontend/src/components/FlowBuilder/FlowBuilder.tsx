@@ -1638,6 +1638,11 @@ export const FlowBuilder = () => {
                 setPreviewLoading(prev => ({ ...prev, [node.id]: true }));
                 try {
                   const fileIds = collectFileIds(nodesSnapshot);
+                  if (fileIds.length === 0) {
+                     setPreviewErrors(prev => ({ ...prev, [node.id]: "No input files found." }));
+                     setPreviewLoading(prev => ({ ...prev, [node.id]: false }));
+                     continue;
+                  }
                   const flowData = buildFlowData(nodesSnapshot);
                   const response = await transformApi.listOutputs({
                     file_id: fileIds[0] ?? 0,

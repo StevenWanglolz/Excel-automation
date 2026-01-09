@@ -9,7 +9,7 @@
  * - Stop event propagation on action buttons to avoid unwanted selection.
  */
 import type { Node } from '@xyflow/react';
-import type { OutputConfig } from '../../types';
+import type { OutputConfig, TableTarget } from '../../types';
 
 interface PipelineNodeCardProps {
   node: Node;
@@ -63,11 +63,13 @@ export const PipelineNodeCard = ({
   const showUpload = canUpload;
   const uploadedCount = typeof uploadCount === 'number' ? uploadCount : 0;
   
+  const target = node.data?.target as TableTarget | undefined;
+  const sourceTargets = node.data?.sourceTargets as TableTarget[] | undefined;
   const isBatch = Boolean(
     // Source node with batch
-    (node.data?.target as any)?.batchId ||
+    target?.batchId ||
     // Operation node with upstream batch
-    (Array.isArray(node.data?.sourceTargets) && node.data.sourceTargets.some((t: any) => t.batchId))
+    (Array.isArray(sourceTargets) && sourceTargets.some((t) => t.batchId))
   );
 
   return (

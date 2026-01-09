@@ -635,7 +635,7 @@ test.describe('Filter Scenarios with Groups', () => {
     // NOW CHECK FOR THE ISSUE: 
     // The user claimed "Output preview... Only shows the source".
     // "Preview output sheets" button lets you switch to the FINAL export. 
-    // But the default view should be the TRANSORMED output of this block.
+    // But the default view should be the TRANSFORMED output of this block.
     
     // We expect the "Preview output sheets" button to be visible (since we are in operation preview)
     const outputBtn = page.getByRole('button', { name: 'Preview output sheets' });

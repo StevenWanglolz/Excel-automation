@@ -69,7 +69,11 @@ test.describe('New Output Preview Workflow', () => {
         // Upload a file
         await sourceNode.getByTestId('upload-button').click();
         const modal = page.locator('div[role="dialog"]').filter({ hasText: 'Upload Data' });
-        await modal.locator('input[type="file"]').first().setInputFiles('../Test Files/test1.csv');
+        await modal.locator('input[type="file"]').first().setInputFiles({
+            name: 'test1.csv',
+            mimeType: 'text/csv',
+            buffer: Buffer.from('ID,Name,Amount\n1,Alpha,100\n2,Beta,200\n3,Gamma,300')
+        });
 
         // Verify the file appears in the modal, which signals the upload API call has completed
         await expect(modal.getByText('test1.csv')).toBeVisible({timeout: 10000});

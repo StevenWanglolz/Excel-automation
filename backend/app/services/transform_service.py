@@ -16,7 +16,7 @@ class TransformService:
         table_map: Dict[str, pd.DataFrame] = {}
         last_table_key: str | None = None
         default_file_id = next(iter(file_paths_by_id.keys()), None)
-        
+
         used_source_keys = set()
         initial_source_keys = set()
 
@@ -25,7 +25,7 @@ class TransformService:
 
         def virtual_key(virtual_id: str) -> str:
             return f"virtual:{virtual_id}"
-        
+
         def get_key_for_target(target: Dict[str, Any]) -> str | None:
             virtual_id = target.get("virtualId")
             if isinstance(virtual_id, str):
@@ -37,10 +37,18 @@ class TransformService:
             return table_key(file_id, sheet_name)
 
         # Pre-populate initial source keys
-        for file_id, path in file_paths_by_id.items():
-            # This is a simplification; a more robust approach would parse sheets.
-            # For now, we assume the default sheet for each initial file.
+        # Pre-populate initial source keys
+        for file_id in file_paths_by_id.keys():
             initial_source_keys.add(table_key(file_id, None))
+
+        # Also add specific sheets referenced in source nodes to ensure they are tracked
+        for node in nodes:
+            if node.get("data", {}).get("blockType") == "source":
+                target = node.get("data", {}).get("target", {})
+                file_id = target.get("fileId") or default_file_id
+                sheet_name = target.get("sheetName")
+                if file_id and file_id in file_paths_by_id:
+                    initial_source_keys.add(table_key(file_id, sheet_name))
 
         def load_table(file_id: int, sheet_name: str | None) -> pd.DataFrame:
             key = table_key(file_id, sheet_name)
@@ -61,7 +69,7 @@ class TransformService:
             virtual_id = target.get("virtualId")
             if isinstance(virtual_id, str):
                 return table_map.get(key, pd.DataFrame())
-            
+
             file_id = target.get("fileId") or default_file_id
             if not file_id:
                 return pd.DataFrame()
@@ -97,7 +105,8 @@ class TransformService:
                     mapping_file_id = mapping_target.get("fileId")
                     mapping_sheet = mapping_target.get("sheetName")
                     if mapping_file_id in file_paths_by_id:
-                        mapping_dfs.append(load_table(mapping_file_id, mapping_sheet))
+                        mapping_dfs.append(load_table(
+                            mapping_file_id, mapping_sheet))
             if mapping_dfs:
                 next_config["mapping_dfs"] = mapping_dfs
                 if "lookup_df" not in next_config:
@@ -141,19 +150,22 @@ class TransformService:
             if transform_class:
                 transform = transform_class()
                 transform_config = build_transform_config(config, data)
-                
+
                 # ... (omitting original transform execution logic for brevity) ...
                 if len(source_targets) > len(destination_targets) and destination_targets:
                     result_frames = []
                     for source_target in source_targets:
                         df = load_table_for_target(source_target)
                         if transform.validate(df, transform_config):
-                            result_frames.append(transform.execute(df, transform_config))
+                            result_frames.append(
+                                transform.execute(df, transform_config))
 
                     if result_frames:
-                        combined_df = pd.concat(result_frames, ignore_index=True, sort=False)
+                        combined_df = pd.concat(
+                            result_frames, ignore_index=True, sort=False)
                         for destination_target in destination_targets:
-                            last_table_key = store_table_for_target(destination_target, combined_df.copy())
+                            last_table_key = store_table_for_target(
+                                destination_target, combined_df.copy())
                     continue
 
                 if len(source_targets) == 1 and len(destination_targets) > 1:
@@ -161,7 +173,8 @@ class TransformService:
                     if transform.validate(df, transform_config):
                         result_df = transform.execute(df, transform_config)
                         for destination_target in destination_targets:
-                            last_table_key = store_table_for_target(destination_target, result_df.copy())
+                            last_table_key = store_table_for_target(
+                                destination_target, result_df.copy())
                     continue
 
                 if len(source_targets) != len(destination_targets):
@@ -171,13 +184,14 @@ class TransformService:
                     df = load_table_for_target(source_target)
                     if transform.validate(df, transform_config):
                         result_df = transform.execute(df, transform_config)
-                        last_table_key = store_table_for_target(destination_target, result_df)
+                        last_table_key = store_table_for_target(
+                            destination_target, result_df)
 
         all_generated_keys = set(table_map.keys())
-        terminal_keys = list(all_generated_keys - used_source_keys - initial_source_keys)
-        
-        return table_map, last_table_key, terminal_keys
+        terminal_keys = list(all_generated_keys -
+                             used_source_keys - initial_source_keys)
 
+        return table_map, last_table_key, terminal_keys
 
     @staticmethod
     def preview_step(

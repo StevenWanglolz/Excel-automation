@@ -140,16 +140,21 @@ export const PropertiesPanel = ({
   }, [nodes]);
   
   // Get the batch ID from the first source node that has one (for output node preview)
+  // Get the batch ID from source nodes (check all, not just first)
   const upstreamBatchId = useMemo(() => {
+    const batchIds = new Set<number>();
     for (const n of nodes) {
       if (n.type !== 'source') continue;
       const data = n.data as BlockData | undefined;
       const target = data?.target;
       if (target?.batchId != null && target.batchId > 0) {
-        return target.batchId;
+        batchIds.add(target.batchId);
       }
     }
-    return null;
+    // For now, return the first one found if any, or handle multiple?
+    // The UI currently seems designed for singular upstream logic in some spots, 
+    // but improving this to at least be consistent with `hasUpstreamBatch` is good.
+    return batchIds.size > 0 ? Array.from(batchIds)[0] : null;
   }, [nodes]);
   
   // Generate unique IDs for form elements based on selectedNodeId
@@ -1316,19 +1321,28 @@ const renderSourceOptions = useCallback(
       const nextTargets = [...sourceTargets];
       const existingBatches = new Set(addedBatchIds);
       selected.forEach((batchId) => {
-        if (existingBatches.has(batchId)) {
-          return;
-        }
+        // Find if this batch is already fully represented? 
+        // Logic: Add all files from this batch. 
+        // If some files from this batch are already added, we should probably add the missing ones or ignore duplicates.
+        // Simplified: Just check which files from this batch are NOT in sourceTargets.
         const batchFiles = files.filter((file) => file.batch_id === batchId);
+        
+        // Helper to check if file is already a source
+        const currentFileIds = new Set(sourceTargets.map(t => t.fileId).filter(Boolean));
+        
         batchFiles.forEach((file) => {
-          nextTargets.push({
-            fileId: file.id,
-            sheetName: null,
-            batchId,
-            virtualId: null,
-            virtualName: file.original_filename,
-          });
+          if (!currentFileIds.has(file.id)) {
+             nextTargets.push({
+                fileId: file.id,
+                sheetName: null,
+                batchId,
+                virtualId: null,
+                virtualName: file.original_filename,
+             });
+          }
         });
+        // We track addedBatches separately but purely for UI disabling often. 
+        // If we want to allow re-selection if user removed files, avoid blocking based on `existingBatches`.
         existingBatches.add(batchId);
       });
       if (nextTargets.length !== sourceTargets.length) {
@@ -1434,7 +1448,9 @@ const renderSourceOptions = useCallback(
       return;
     }
     if (outputFileOptions.length === 0) {
-      return;
+      // Even if no options, we should validate to clean up invalid links if any?
+      // Or we wait. But returning here prevents validation if we have destinations.
+      // Let's proceed to filter.
     }
     const validTargets = destinationTargets.filter((destTarget) => {
       if (!destTarget.virtualId) {
@@ -1939,7 +1955,7 @@ const renderSourceOptions = useCallback(
                       <p className="text-xs text-gray-500 mb-2">No destinations configured.</p>
                       {hasUpstreamBatch ? (
                           <div className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded inline-block">
-                             Auto-generating destinations matches upstream batch.
+                             Auto-generating destinations match upstream batch.
                           </div>
                       ) : (
                           <button
@@ -1948,7 +1964,7 @@ const renderSourceOptions = useCallback(
                                     fileId: null,
                                     sheetName: null,
                                     batchId: null,
-                                    virtualId: `output:${Date.now()}:Sheet1`,
+                                    virtualId: `output:${crypto.randomUUID()}:Sheet1`,
                                     virtualName: `Destination 1`,
                                     isFinalOutput: true,
                                     isFutureSource: false
@@ -1970,7 +1986,7 @@ const renderSourceOptions = useCallback(
                                 fileId: null,
                                 sheetName: null,
                                 batchId: null,
-                                virtualId: `output:${Date.now()}:Sheet1`,
+                                virtualId: `output:${crypto.randomUUID()}:Sheet1`,
                                 virtualName: `New Destination`,
                                 isFinalOutput: true,
                                 isFutureSource: false

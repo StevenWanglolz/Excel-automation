@@ -33,6 +33,9 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+# REST api
+# -----------------------------
+# POST, PUT, DELETE, GET
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
