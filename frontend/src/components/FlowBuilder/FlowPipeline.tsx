@@ -1226,7 +1226,7 @@ export const FlowPipeline = ({
           </div>
         </div>
       )}
-\n
+
     </div>
   );
 };

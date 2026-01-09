@@ -197,6 +197,11 @@ async def execute_flow(
             "flow_data": request.flow_data,
             "preview_target": preview_target_payload,
         })
+
+        cached_preview = preview_cache.get(preview_cache_key)
+        if cached_preview is not None:
+            return cached_preview
+
         table_map, last_table_key, _ = transform_service.execute_flow(
             file_paths_by_id,
             request.flow_data
@@ -498,6 +503,14 @@ async def export_result(
         if not outputs_to_write and effective_ids:
             # Just export the input if nothing transformed?
             pass
+
+        if not outputs_to_write and last_table_key and last_table_key in table_map:
+            # Fallback to exporting the result of the last step if no explicit outputs are defined.
+            outputs_to_write.append({
+                "fileName": "output.xlsx",
+                "sheets": [{"sheetName": "Sheet1"}],
+                "target": None  # Indicates to use the default result_df
+            })
 
         files_payload: list[dict[str, str | bytes]] = []
         reserved_output_names: set[str] = set()
