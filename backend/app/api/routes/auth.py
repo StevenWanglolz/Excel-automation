@@ -33,7 +33,6 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new user"""

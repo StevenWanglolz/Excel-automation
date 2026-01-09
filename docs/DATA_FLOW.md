@@ -1228,7 +1228,7 @@ Output blocks can copy the currently selected source file or file group into out
 
 ## Preview Defaults
 
-When an operation block has an output destination, the preview opens on the output sheet by default (users can still toggle to the source file). Preview refreshes are debounced briefly to reduce request spam while editing.
+When an operation block has an output destination, the preview opens on the transform result by default; users must click “Preview output sheets” to switch to an output view so having a destination no longer forces the “No output sheets available yet” warning. Preview refreshes are debounced briefly to reduce request spam while editing.
 
 If a source file is uploaded but the user has not selected a specific source file/sheet yet, previews show a "select a source file" prompt instead of auto-picking a file.
 
@@ -1529,7 +1529,11 @@ Output DataFrame:
     </select>
     ```
 
-5. **Execution contract:** The backend receives the normalized `sourceTargets` and `destinationTargets` arrays in the flow payload. Linked source IDs propagate through the transform APIs so each destination can apply the correct filtered stream (batch-preserving, append, or one-to-one as configured in the UI).
+5. **Auto-generated group destinations:** When a transform node receives a batch source (`batchId` set), the builder automatically populates `destinationTargets` with one entry per batch member (virtual IDs are generated as `output:auto:{nodeId}:{batchId}:{index}`). This ensures the preview toolbar’s **Preview output sheets** button always has a target, even before an Output node is configured, and these virtual destinations keep the source linkage (`sourceId`, `linkedSourceIds`) so downstream blocks can treat them as future sources. The preview modal now reuses the filtered transform rows when rendering these destinations so you always see the same filtered dataset in both the source and the generated output tabs, even if no workbook has been written yet.
+
+6. **Batch picker:** The Sources section exposes a batch picker under the “Add source” button, allowing you to append several batches in one action. Each selection adds every file from the chosen batch (skipping batches already added) and preserves the grouped UI so you can manage multi-batch transforms quickly without creating duplicate rows.
+
+7. **Execution contract:** The backend receives the normalized `sourceTargets` and `destinationTargets` arrays in the flow payload. Linked source IDs propagate through the transform APIs so each destination can apply the correct filtered stream (batch-preserving, append, or one-to-one as configured in the UI).
 
 ## State Synchronization
 

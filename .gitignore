@@ -51,3 +51,9 @@ uploads/
 # Logs
 *.log
 
+
+# Playwright
+playwright-report/
+test-results/
+frontend/report.json
+frontend/playwright-report.json

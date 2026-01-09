@@ -9,7 +9,7 @@
  * - Stop event propagation on action buttons to avoid unwanted selection.
  */
 import type { Node } from '@xyflow/react';
-import type { OutputConfig } from '../../types';
+import type { OutputConfig, TableTarget } from '../../types';
 
 interface PipelineNodeCardProps {
   node: Node;
@@ -62,6 +62,15 @@ export const PipelineNodeCard = ({
 
   const showUpload = canUpload;
   const uploadedCount = typeof uploadCount === 'number' ? uploadCount : 0;
+  
+  const target = node.data?.target as TableTarget | undefined;
+  const sourceTargets = node.data?.sourceTargets as TableTarget[] | undefined;
+  const isBatch = Boolean(
+    // Source node with batch
+    target?.batchId ||
+    // Operation node with upstream batch
+    (Array.isArray(sourceTargets) && sourceTargets.some((t) => t.batchId))
+  );
 
   return (
     <div className="flex flex-col">
@@ -95,6 +104,7 @@ export const PipelineNodeCard = ({
               <div className={`text-sm font-semibold ${isOutputNode ? 'text-emerald-900' : 'text-gray-900'}`}>
                 {(node.data?.label as string) || (node.type as string) || 'Block'}
                 {isOutputNode && <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-emerald-600 opacity-60">End Node</span>}
+                {isBatch && <span className="ml-2 inline-flex items-center rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">Batch</span>}
               </div>
               <div className={`text-xs ${isOutputNode ? 'text-emerald-700/70' : 'text-gray-500'}`}>{configSummary}</div>
               {showUpload && (
@@ -110,6 +120,7 @@ export const PipelineNodeCard = ({
             {showUpload && (
               <button
                 type="button"
+                data-testid="upload-button"
                 className="flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-xs font-medium text-indigo-700 transition hover:border-indigo-300 hover:bg-indigo-50"
                 onClick={(event) => {
                   event.stopPropagation();
