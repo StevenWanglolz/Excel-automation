@@ -59,6 +59,8 @@ const emptyTarget: TableTarget = {
   linkedSourceIds: [],
 };
 
+const EMPTY_ARRAY: any[] = [];
+
 const toSheetValue = (sheetName: string | null) => sheetName ?? SINGLE_SHEET_VALUE;
 const fromSheetValue = (value: string) => (value === SINGLE_SHEET_VALUE ? null : value);
 
@@ -279,8 +281,9 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
   const outputFiles = useMemo(() => {
     const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
     const output = outputNode?.data?.output as OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined;
+
     if (!output) {
-      return [];
+      return EMPTY_ARRAY;
     }
     if (Array.isArray((output as OutputConfig).outputs)) {
       return (output as OutputConfig).outputs;
@@ -1161,12 +1164,21 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
       .finally(() => setIsLoadingSheets(false));
   }, [target.fileId, sheetsByFileId]);
 
+  // Calculate stable key for file dependencies to prevent infinite loops
+  const sourceFileIdsKey = useMemo(() => {
+     return sourceTargets
+        .map((entry) => entry.fileId)
+        .filter((fileId): fileId is number => typeof fileId === 'number')
+        .sort()
+        .join(',');
+  }, [sourceTargets]);
+
   useEffect(() => {
-    const fileIds = sourceTargets
-      .map((entry) => entry.fileId)
-      .filter((fileId): fileId is number => typeof fileId === 'number');
+    const fileIds = sourceFileIdsKey ? sourceFileIdsKey.split(',').map(Number) : [];
+
     fileIds.forEach((fileId) => {
-      if (sheetsByFileId[fileId]) {
+      // Check if we already have sheets OR if we already tried and failed (to avoid loop)
+      if (sheetsByFileId[fileId] !== undefined) {
         return;
       }
       setIsLoadingSheets(true);
@@ -1175,9 +1187,15 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
         .then((sheets) => {
           setSheetsByFileId((prev) => ({ ...prev, [fileId]: sheets }));
         })
+        .catch(() => {
+             // on error, set empty to prevent infinite retry loop
+             setSheetsByFileId((prev) => ({ ...prev, [fileId]: [] }));
+        })
         .finally(() => setIsLoadingSheets(false));
     });
-  }, [sourceTargets, sheetsByFileId]);
+  }, [sourceFileIdsKey, sheetsByFileId]); // Dependent on primitive string key now
+
+
 
   const updateSourceTargets = useCallback((nextTargets: TableTarget[]) => {
     if (!node) return;
@@ -1453,6 +1471,10 @@ const renderSourceOptions = useCallback(
       // Let's proceed to filter.
     }
     const validTargets = destinationTargets.filter((destTarget) => {
+      // Allow implicit auto-generated outputs for batches
+      if (destTarget.virtualId?.startsWith('output:auto:')) {
+        return true;
+      }
       if (!destTarget.virtualId) {
         return true;
       }
