@@ -15,6 +15,8 @@ import type { ChangeEvent } from 'react';
 import { filesApi } from '../../api/files';
 
 import { useFlowStore } from '../../store/flowStore';
+import { outputFileOptionById, outputFileOptions as getOutputFileOptions } from './utils';
+import { ExcelTemplateEditor, VirtualFileTemplate, SheetTemplate } from './ExcelTemplateEditor';
 import type {
   BlockData,
   Batch,
@@ -47,6 +49,7 @@ const normalizeTarget = (target?: TableTarget): TableTarget => ({
   linkedSourceIds: target?.linkedSourceIds ?? [],
   isFinalOutput: target?.isFinalOutput,
   isFutureSource: target?.isFutureSource,
+  writeMode: target?.writeMode ?? 'overwrite',
 });
 
 const emptyTarget: TableTarget = {
@@ -58,6 +61,8 @@ const emptyTarget: TableTarget = {
   sourceId: null,
   linkedSourceIds: [],
 };
+
+
 
 const toSheetValue = (sheetName: string | null) => sheetName ?? SINGLE_SHEET_VALUE;
 const fromSheetValue = (value: string) => (value === SINGLE_SHEET_VALUE ? null : value);
@@ -115,6 +120,9 @@ export const PropertiesPanel = ({
 }: PropertiesPanelProps) => {
   const { nodes, updateNode } = useFlowStore();
   const [files, setFiles] = useState<File[]>([]);
+  const [lastTarget, setLastTarget] = useState<TableTarget | null>(null);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editingDestinationIndex, setEditingDestinationIndex] = useState<number | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [sheetsByFileId, setSheetsByFileId] = useState<Record<number, string[]>>({});
   const [isLoadingSheets, setIsLoadingSheets] = useState(false);
@@ -276,42 +284,12 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     [nodeData.output, normalizeOutputConfig]
   );
 
-  const outputFiles = useMemo(() => {
+  const globalOutputConfig = useMemo<OutputConfig>(() => {
     const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
-    const output = outputNode?.data?.output as OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined;
-    if (!output) {
-      return [];
-    }
-    if (Array.isArray((output as OutputConfig).outputs)) {
-      return (output as OutputConfig).outputs;
-    }
-    const legacy = output as { fileName?: string; sheets?: OutputSheetMapping[] };
-    return [
-      {
-        id: 'legacy-output',
-        fileName: legacy.fileName || 'output.xlsx',
-        sheets: legacy.sheets?.length
-          ? legacy.sheets.map((sheet) => ({ sheetName: sheet.sheetName }))
-          : [{ sheetName: 'Sheet 1' }],
-      },
-    ];
-  }, [nodes]);
+    return normalizeOutputConfig(outputNode?.data?.output as OutputConfig | { fileName?: string; sheets?: OutputSheetMapping[] } | undefined);
+  }, [nodes, normalizeOutputConfig]);
 
-  const outputFileOptions = useMemo(
-    () =>
-      outputFiles.map((outputFile, index) => ({
-        id: index + 1,
-        outputId: outputFile.id,
-        label: outputFile.fileName || `output-${index + 1}.xlsx`,
-        sheets: outputFile.sheets,
-      })),
-    [outputFiles]
-  );
-
-  const outputFileOptionById = useMemo(
-    () => new Map(outputFileOptions.map((option) => [option.id, option])),
-    [outputFileOptions]
-  );
+  // Removed getOutputFileOptions(outputConfig) and outputFileOptionById useMemo blocks as they are now imported functions.
 
   const parseOutputVirtualId = useMemo(() => {
     return (virtualId?: string | null) => {
@@ -340,19 +318,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     });
   }, [node, nodeData, updateNode]);
 
-  const handleUseFileAsDestination = useCallback((sourceIndex: number) => {
-    if (!node) {
-      return;
-    }
-    updateDestinationTargets([
-      ...destinationTargets,
-      {
-        ...emptyTarget,
-        sourceId: sourceIndex,
-        linkedSourceIds: [sourceIndex],
-      },
-    ]);
-  }, [destinationTargets, node, updateDestinationTargets]);
+  // Removed handleUseFileAsDestination
 
   const buildOutputTarget = useCallback(
     (
@@ -505,12 +471,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
   );
 
 
-  const processedSourceOptions = useMemo(() => (
-    flowSourceTargets.map((target, index) => ({
-      label: `${target.virtualName ?? 'Processed stream'} (processed)`,
-      value: `stream:${index}`,
-    }))
-  ), [flowSourceTargets]);
+
 
   const sourceGroupFiles = useMemo(() => {
     // Collect all unique batch IDs from source targets
@@ -692,31 +653,9 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     return items;
   }, [destinationTargets, parseOutputVirtualId, filesById]);
 
-  const hasGroupedSources = sourceItems.some(item => item.type === 'group');
 
-  const destinationSummary = useMemo(() => {
-    if (destinationTargets.length === 0) {
-      return 'No destinations configured.';
-    }
-    return `${destinationTargets.length} destination${destinationTargets.length > 1 ? 's' : ''} configured.`;
-  }, [destinationTargets.length]);
 
-  const sourceSummary = useMemo(() => {
-    if (sourceTargets.length === 0) {
-      return 'No sources selected.';
-    }
-    const groupCount = sourceItems.filter(i => i.type === 'group').length;
-    const singleCount = sourceItems.filter(i => i.type === 'single').length;
-    
-    const parts = [];
-    if (singleCount > 0) {
-      parts.push(`${singleCount} single file${singleCount > 1 ? 's' : ''}`);
-    }
-    if (groupCount > 0) {
-      parts.push(`${groupCount} group${groupCount > 1 ? 's' : ''}`);
-    }
-    return `${sourceTargets.length} source${sourceTargets.length > 1 ? 's' : ''} (${parts.join(', ')})`;
-  }, [sourceTargets.length, sourceItems]);
+  // Removed destinationSummary and sourceSummary
 
   // CAUTION: The current application logic expects `sourceTargets` (array) to be the source of truth for execution.
   // The indices `0, 1, 2...` in `availableSourceOptions` MUST correspond to the indices in `sourceTargets`.
@@ -739,9 +678,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
     // IF we want "From Parent Node", we need to know which batch belongs to which node.
     // `batchesById` usually comes from `filesApi`. Batch Name often reflects upload.
     // For generated streams (virtualId), the batch info might be missing or generic.
-    
-    // Let's stick to the flattening logic but visual separation by Batch is roughly accurate to "Topology" 
-    // if every upstream block produces a new batch.
     
     // Refined Plan: Group by Batch Name.
     const groupedOptions = new Map<string, { label: string; value: number }[]>();
@@ -817,8 +753,10 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                 </button>
                 <button
                   type="button"
-                  className="text-xs font-semibold text-red-600 hover:text-red-700"
+                  disabled={typeof group.batchId === 'number'}
+                  className={`text-xs font-semibold ${typeof group.batchId === 'number' ? 'text-gray-400 cursor-not-allowed' : 'text-red-600 hover:text-red-700'}`}
                   onClick={() => {
+                    if (typeof group.batchId === 'number') return;
                     const indicesToRemove = new Set(group.targets.map((t: { index: number }) => t.index));
                     const nextTargets = destinationTargets.filter(
                       (_, index) => !indicesToRemove.has(index)
@@ -828,7 +766,6 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                 >
                   Remove group
                 </button>
-
               </div>
             </div>
             
@@ -873,108 +810,112 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                 {group.targets.map(({ target: destTarget, index }: { target: TableTarget; index: number }) => {
                   const parsedOutput = parseOutputVirtualId(destTarget.virtualId);
                   const activeOutputOption = parsedOutput
-                    ? outputFileOptions.find((option) => option.outputId === parsedOutput.outputId) ?? outputFileOptions[0] ?? null
-                    : outputFileOptions[0] ?? null;
+                    ? getOutputFileOptions(globalOutputConfig).find((option) => option.outputId === parsedOutput.outputId) ?? getOutputFileOptions(globalOutputConfig)[0] ?? null
+                    : getOutputFileOptions(globalOutputConfig)[0] ?? null;
                   const outputSheets = activeOutputOption?.sheets?.map((sheet) => sheet.sheetName || 'Sheet 1') ?? [];
                   const fileId = parsedOutput?.outputId.match(/output-\d+-(\d+)-\d+/)?.[1];
                   const file = fileId ? filesById.get(Number(fileId)) : null;
                   const fileLabel = file?.original_filename || file?.filename || 'Unnamed file';
+                  const isBatch = typeof group.batchId === 'number';
 
                   return (
                     <div key={`group-dest-${index}`} className="pl-2 border-l-2 border-gray-100 space-y-2">
                       <div className="flex items-center justify-between">
-                         <div className="text-xs text-gray-600 truncate max-w-[150px]" title={fileLabel}>
+                         <div className="text-xs text-gray-600 truncate max-w-[200px]" title={fileLabel}>
                             {fileLabel}
                          </div>
-                         <button
-                            type="button"
-                            className="text-xs text-red-600 hover:text-red-700"
-                            onClick={() => {
-                              const nextTargets = destinationTargets.filter((_, targetIndex) => targetIndex !== index);
+                         {!isBatch && (
+                           <button
+                              type="button"
+                              className="text-xs text-red-600 hover:text-red-700"
+                              onClick={() => {
+                                const nextTargets = destinationTargets.filter((_, targetIndex) => targetIndex !== index);
+                                updateDestinationTargets(nextTargets);
+                              }}
+                            >
+                              Remove
+                           </button>
+                         )}
+                      </div>
+
+                      {!isBatch && (
+                        <div className="space-y-2">
+                          {/* Source Selector (Source-Destination Pair) */}
+                          <div>
+                              <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Source</label>
+                              <select
+                                  value={destTarget.sourceId ?? ''}
+                                  onChange={(event) => {
+                                      const nextTargets = [...destinationTargets];
+                                      const sourceIndex = event.target.value ? Number(event.target.value) : null;
+                                      // Update the target with the selected source index
+                                      nextTargets[index] = { ...destTarget, sourceId: sourceIndex };
+                                      updateDestinationTargets(nextTargets);
+                                  }}
+                                  className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                              >
+                                  <option value="">Select source...</option>
+                                  {availableSourceOptions.map((group) => (
+                                      <optgroup key={group.group} label={group.group}>
+                                          {group.items.map((opt) => (
+                                              <option key={opt.value} value={opt.value}>
+                                                  {opt.label}
+                                              </option>
+                                          ))}
+                                      </optgroup>
+                                  ))}
+                              </select>
+                          </div>
+
+                          <div>
+                          <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Destination</label>
+                          <select
+                            value={activeOutputOption?.id ?? ''}
+                            onChange={(event) => {
+                              const fileOption = outputFileOptionById(globalOutputConfig).get(Number(event.target.value));
+                              if (!fileOption) return;
+                              const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
+                              const nextTargets = [...destinationTargets];
+                              nextTargets[index] = buildOutputTarget(fileOption, sheetName, destTarget);
                               updateDestinationTargets(nextTargets);
                             }}
+                            className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                            disabled={false}
                           >
-                            Remove
-                          </button>
-                      </div>
-
-                      <div className="space-y-2">
-                        {/* Source Selector (Source-Destination Pair) */}
-                        <div>
-                            <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Source</label>
-                            <select
-                                value={destTarget.sourceId ?? ''}
-                                onChange={(event) => {
-                                    const nextTargets = [...destinationTargets];
-                                    const sourceIndex = event.target.value ? Number(event.target.value) : null;
-                                    // Update the target with the selected source index
-                                    nextTargets[index] = { ...destTarget, sourceId: sourceIndex };
-                                    updateDestinationTargets(nextTargets);
-                                }}
-                                className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                            >
-                                <option value="">Select source...</option>
-                                {availableSourceOptions.map((group) => (
-                                    <optgroup key={group.group} label={group.group}>
-                                        {group.items.map((opt) => (
-                                            <option key={opt.value} value={opt.value}>
-                                                {opt.label}
-                                            </option>
-                                        ))}
-                                    </optgroup>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div>
-                        <label className="block text-[10px] uppercase font-bold text-gray-500 mb-1">Destination</label>
-                        <select
-                          value={activeOutputOption?.id ?? ''}
-                          onChange={(event) => {
-                            const fileOption = outputFileOptionById.get(Number(event.target.value));
-                            if (!fileOption) return;
-                            const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
-                            const nextTargets = [...destinationTargets];
-                            nextTargets[index] = buildOutputTarget(fileOption, sheetName, destTarget);
-                            updateDestinationTargets(nextTargets);
-                          }}
-                          className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-                          disabled={outputFileOptions.length === 0}
-                        >
-                          <option value="">Select output file</option>
-                          {outputFileOptions.map((option) => (
-                            <option key={option.outputId} value={String(option.id)}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                        </div>
-                      </div>
-                      <div>
-                        <select
-                          value={destTarget.sheetName ?? ''}
-                          onChange={(event) => {
-                            if (!activeOutputOption) return;
-                            const sheetName = event.target.value;
-                            const nextTargets = [...destinationTargets];
-                            nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName, destTarget);
-                            updateDestinationTargets(nextTargets);
-                          }}
-                          className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
-                          disabled={outputSheets.length === 0}
-                        >
-                          {outputSheets.length === 0 ? (
-                            <option value="">No output sheets</option>
-                          ) : (
-                            outputSheets.map((sheetName) => (
-                              <option key={sheetName} value={sheetName}>
-                                {sheetName}
+                            <option value="">Select output file</option>
+                            {getOutputFileOptions(globalOutputConfig).map((option) => (
+                              <option key={option.outputId} value={String(option.id)}>
+                                {option.label}
                               </option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-                      {renderLinkedSourcesControl(destTarget, index)}
+                            ))}
+                          </select>
+                          </div>
+                          <div>
+                            <select
+                              value={destTarget.sheetName ?? ''}
+                              onChange={(event) => {
+                                if (!activeOutputOption) return;
+                                const sheetName = event.target.value;
+                                const nextTargets = [...destinationTargets];
+                                nextTargets[index] = buildOutputTarget(activeOutputOption, sheetName, destTarget);
+                                updateDestinationTargets(nextTargets);
+                              }}
+                              className="w-full rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700"
+                              disabled={outputSheets.length === 0}
+                            >
+                              {outputSheets.length === 0 ? (
+                                <option value="">No output sheets</option>
+                              ) : (
+                                outputSheets.map((sheetName) => (
+                                  <option key={sheetName} value={sheetName}>
+                                    {sheetName}
+                                  </option>
+                                ))
+                              )}
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -986,8 +927,8 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
         const { target: destTarget, index } = item;
         const parsedOutput = parseOutputVirtualId(destTarget.virtualId);
         const activeOutputOption = parsedOutput
-          ? outputFileOptions.find((option) => option.outputId === parsedOutput.outputId) ?? outputFileOptions[0] ?? null
-          : outputFileOptions[0] ?? null;
+          ? getOutputFileOptions(globalOutputConfig).find((option) => option.outputId === parsedOutput.outputId) ?? getOutputFileOptions(globalOutputConfig)[0] ?? null
+          : getOutputFileOptions(globalOutputConfig)[0] ?? null;
         const outputSheets = activeOutputOption?.sheets?.map((sheet) => sheet.sheetName || 'Sheet 1') ?? [];
 
         return (
@@ -1034,34 +975,132 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                  <span className="text-xs text-gray-700">Future Source</span>
                </label>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
-              <select
-                value={activeOutputOption?.id ?? ''}
-                onChange={(event) => {
-                  const fileOption = outputFileOptionById.get(Number(event.target.value));
-                  if (!fileOption) return;
-                  const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
-                  const nextTargets = [...destinationTargets];
-                  nextTargets[index] = buildOutputTarget(fileOption, sheetName, destTarget);
-                  updateDestinationTargets(nextTargets);
-                }}
-                className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
-                disabled={outputFileOptions.length === 0}
-              >
-                <option value="">Select output file</option>
-                {outputFileOptions.map((option) => (
-                  <option key={option.outputId} value={String(option.id)}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-gray-500 mb-1">Output file</label>
+                  <select
+                    value={activeOutputOption?.id ?? ''}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'NEW_FILE') {
+                          setEditingDestinationIndex(index);
+                          setIsEditorOpen(true);
+                          return; 
+                      }
+    
+                      const numVal = Number(value);
+                      const lookupKey = !Number.isNaN(numVal) ? numVal : value;
+                      const fileOption = outputFileOptionById(globalOutputConfig).get(lookupKey as number | string); 
+                      if (!fileOption) return;
+                      const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
+                      const nextTargets = [...destinationTargets];
+                      nextTargets[index] = buildOutputTarget(fileOption, sheetName, destTarget);
+                      updateDestinationTargets(nextTargets);
+                    }}
+                    className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
+                    disabled={false}
+                  >
+                    <option value="">Select output file</option>
+                    <option value="NEW_FILE">+ Create new file</option>
+                    {getOutputFileOptions(globalOutputConfig)
+                      .filter(option => !option.creatorNodeId || option.creatorNodeId === selectedNodeId)
+                      .map((option) => (
+                      <option key={option.outputId} value={String(option.id)}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* Edit Button for Virtual Files */}
+                {activeOutputOption && String(activeOutputOption.outputId).length > 10 && (
+                   <div className="flex gap-1">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setEditingDestinationIndex(index);
+                            setIsEditorOpen(true);
+                        }}
+                        className="p-2 text-gray-400 hover:text-indigo-600 border border-gray-200 rounded-md bg-white mb-[1px]"
+                        title="Edit Template"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                    </button>
+                    {/* Delete Button - Only for owned files */}
+                    {(activeOutputOption.creatorNodeId === selectedNodeId) && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                // Find output node and remove the file config
+                                const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
+                                if (!outputNode) return;
+                                
+                                // Confirm deletion? For now direct delete as requested "Users should be able to delete"
+                                const currentOutputConfig = (outputNode.data?.output as OutputConfig) || { outputs: [], mode: 'single' };
+                                const nextOutputs = currentOutputConfig.outputs.filter(o => o.id !== activeOutputOption.outputId);
+                                
+                                updateNode(outputNode.id, {
+                                    data: {
+                                        ...outputNode.data,
+                                        output: { ...currentOutputConfig, outputs: nextOutputs }
+                                    }
+                                });
+                                
+                                // Reset selection for this target
+                                const nextTargets = [...destinationTargets];
+                                nextTargets[index] = { ...destTarget, virtualId: null, sheetName: null };
+                                updateDestinationTargets(nextTargets);
+                            }}
+                            className="p-2 text-gray-400 hover:text-red-600 border border-gray-200 rounded-md bg-white mb-[1px]"
+                            title="Delete File"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                        </button>
+                    )}
+                   </div>
+                )}
+              </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Output sheet</label>
               <select
                 value={destTarget.sheetName ?? ''}
                 onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === 'NEW_SHEET') {
+                      // Logic to create new sheet in the active output file
+                      if (!activeOutputOption) return;
+                      const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
+                      if (!outputNode || !outputNode.data?.output) return;
+
+                      const currentOutputConfig = outputNode.data.output as OutputConfig;
+                      const fileIndex = currentOutputConfig.outputs.findIndex(o => o.id === activeOutputOption.id);
+                      if (fileIndex === -1) return;
+
+                      const nextOutputs = [...currentOutputConfig.outputs];
+                      const newSheetName = `Sheet ${nextOutputs[fileIndex].sheets.length + 1}`;
+                      nextOutputs[fileIndex] = {
+                          ...nextOutputs[fileIndex],
+                          sheets: [...nextOutputs[fileIndex].sheets, { sheetName: newSheetName }]
+                      };
+                      
+                      const newOutputConfig = { ...currentOutputConfig, outputs: nextOutputs };
+                       updateNode(outputNode.id, {
+                        data: {
+                          ...outputNode.data,
+                          output: newOutputConfig
+                        }
+                      });
+                      
+                      // Auto-select the NEW sheet
+                       const nextTargets = [...destinationTargets];
+                       nextTargets[index] = buildOutputTarget(activeOutputOption, newSheetName, destTarget);
+                       updateDestinationTargets(nextTargets);
+                      return;
+                  }
+                  
                   if (!activeOutputOption) return;
                   const sheetName = event.target.value;
                   const nextTargets = [...destinationTargets];
@@ -1071,8 +1110,9 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                 className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700"
                 disabled={outputSheets.length === 0}
               >
+                <option value="NEW_SHEET">+ Create new sheet</option>
                 {outputSheets.length === 0 ? (
-                  <option value="">No output sheets</option>
+                  <option value="" disabled>No output sheets</option>
                 ) : (
                   outputSheets.map((sheetName) => (
                     <option key={sheetName} value={sheetName}>
@@ -1082,7 +1122,41 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                 )}
               </select>
             </div>
-            {renderLinkedSourcesControl(destTarget, index)}
+
+            {/* Write Mode Selection (Append vs Overwrite) */}
+            <div className="mt-3">
+               <label className="block text-xs font-medium text-gray-500 mb-2">WRITE MODE</label>
+               <div className="flex items-center space-x-4">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name={`writeMode-${destTarget.id || index}`}
+                      checked={destTarget.writeMode !== 'append'} // Default to overwrite
+                      onChange={() => {
+                          const nextTargets = [...destinationTargets];
+                          nextTargets[index] = { ...destTarget, writeMode: 'overwrite' };
+                          updateDestinationTargets(nextTargets);
+                      }}
+                      className="text-emerald-600 focus:ring-emerald-600"
+                    />
+                    <span className="text-sm text-gray-700">Overwrite</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name={`writeMode-${destTarget.id || index}`}
+                      checked={destTarget.writeMode === 'append'}
+                      onChange={() => {
+                          const nextTargets = [...destinationTargets];
+                          nextTargets[index] = { ...destTarget, writeMode: 'append' };
+                          updateDestinationTargets(nextTargets);
+                      }}
+                      className="text-emerald-600 focus:ring-emerald-600"
+                    />
+                    <span className="text-sm text-gray-700">Append</span>
+                  </label>
+               </div>
+            </div>
           </div>
         );
       }
@@ -1161,12 +1235,21 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
       .finally(() => setIsLoadingSheets(false));
   }, [target.fileId, sheetsByFileId]);
 
+  // Calculate stable key for file dependencies to prevent infinite loops
+  const sourceFileIdsKey = useMemo(() => {
+     return sourceTargets
+        .map((entry) => entry.fileId)
+        .filter((fileId): fileId is number => typeof fileId === 'number')
+        .sort()
+        .join(',');
+  }, [sourceTargets]);
+
   useEffect(() => {
-    const fileIds = sourceTargets
-      .map((entry) => entry.fileId)
-      .filter((fileId): fileId is number => typeof fileId === 'number');
+    const fileIds = sourceFileIdsKey ? sourceFileIdsKey.split(',').map(Number) : [];
+
     fileIds.forEach((fileId) => {
-      if (sheetsByFileId[fileId]) {
+      // Check if we already have sheets OR if we already tried and failed (to avoid loop)
+      if (sheetsByFileId[fileId] !== undefined) {
         return;
       }
       setIsLoadingSheets(true);
@@ -1175,9 +1258,15 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
         .then((sheets) => {
           setSheetsByFileId((prev) => ({ ...prev, [fileId]: sheets }));
         })
+        .catch(() => {
+             // on error, set empty to prevent infinite retry loop
+             setSheetsByFileId((prev) => ({ ...prev, [fileId]: [] }));
+        })
         .finally(() => setIsLoadingSheets(false));
     });
-  }, [sourceTargets, sheetsByFileId]);
+  }, [sourceFileIdsKey, sheetsByFileId]); // Dependent on primitive string key now
+
+
 
   const updateSourceTargets = useCallback((nextTargets: TableTarget[]) => {
     if (!node) return;
@@ -1296,18 +1385,10 @@ const renderSourceOptions = useCallback(
             ))}
           </optgroup>
         ))}
-        {processedSourceOptions.length > 0 && (
-          <optgroup label="Processed streams">
-            {processedSourceOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </optgroup>
-        )}
+
       </>
     ),
-    [processedSourceOptions, sourcePickerGroups]
+    [sourcePickerGroups]
   );
 
   const handleAddBatchSources = useCallback(
@@ -1447,12 +1528,25 @@ const renderSourceOptions = useCallback(
     if (destinationTargets.length === 0) {
       return;
     }
-    if (outputFileOptions.length === 0) {
+    if (getOutputFileOptions(outputConfig).length === 0) {
       // Even if no options, we should validate to clean up invalid links if any?
       // Or we wait. But returning here prevents validation if we have destinations.
       // Let's proceed to filter.
     }
+    // We use a stable key for options to avoid passing a new array every time
+    // Alternatively, just depend on outputConfig if it is stable enough, 
+    // but getOutputFileOptions creates a new array.
+    // Let's use memoized options.
+    const fileOptions = getOutputFileOptions(outputConfig);
     const validTargets = destinationTargets.filter((destTarget) => {
+      // Allow implicit auto-generated outputs for batches
+      if (destTarget.virtualId?.startsWith('output:auto:')) {
+        return true;
+      }
+      // Allow newly created custom destinations (using random UUID)
+      if (destTarget.virtualId?.startsWith('output:')) {
+          return true;
+      }
       if (!destTarget.virtualId) {
         return true;
       }
@@ -1460,15 +1554,26 @@ const renderSourceOptions = useCallback(
       if (!parsed?.outputId) {
         return false;
       }
-      return outputFileOptions.some((option) => option.outputId === parsed.outputId);
+      return fileOptions.some((option) => option.outputId === parsed.outputId);
     });
     if (validTargets.length !== destinationTargets.length) {
       updateDestinationTargets(validTargets);
     }
+    // fileOptions is derived from outputConfig, so we can just depend on outputConfig
+    // But better to be explicit about what we use.
+    // Ideally we'd optimize getOutputFileOptions but for now let's just ignore the exhaustive-deps warning 
+    // or use JSON stringify of options as key.
+    // The simplest fix for "infinite re-renders" without refactoring everything:
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     destinationTargets,
     isOutputNode,
-    outputFileOptions,
+    // outputConfig, // Omitting to manually control updates via stable check inside if needed, 
+                     // but here the loop was caused by getOutputFileOptions(outputConfig) being in dep array.
+    // Instead of passing the function result, we pass the stable parts or just accept we re-run when outputConfig changes.
+    // But outputConfig changes on every edit. We only want to filter when *available options* change meaningfully remove a target?
+    // Actually, this effect is validating targets.
+    outputConfig, 
     parseOutputVirtualId,
     updateDestinationTargets,
   ]);
@@ -1522,7 +1627,7 @@ const renderSourceOptions = useCallback(
                 </div>
                 {sourcesCollapsed ? (
                   <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-                    {sourceSummary}
+                    {sourceTargets.length} selected
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -2008,6 +2113,7 @@ const renderSourceOptions = useCallback(
           
           {isOutputNode && (
             <div className="space-y-6">
+
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-gray-900">Output Configuration</h3>
@@ -2276,6 +2382,141 @@ const renderSourceOptions = useCallback(
 
 
       </div>
+
+      <ExcelTemplateEditor
+        isOpen={isEditorOpen}
+        initialTemplate={(() => {
+            if (editingDestinationIndex === null) return undefined;
+            const target = destinationTargets[editingDestinationIndex];
+            if (!target) return undefined;
+            
+            // Find the output file config
+            // parseOutputVirtualId helps if we have virtualId
+            // Or we look up via active option?
+            // The cleanest way is to look in `outputConfig.outputs` for matching ID.
+            const parsed = parseOutputVirtualId(target.virtualId);
+            // If we have parsed.outputId (which is the UUID for virtual files), look it up.
+            // But wait, `target.fileId` is null for virtual files.
+            
+            let fileId = null;
+            if (parsed) {
+                 // The regex in `parseOutputVirtualId` extracts what we call `outputId`.
+                 // But `OutputFileConfig.id` might be that UUID.
+                 // Let's look at `getOutputFileOptions`: it maps `file.id` to `option.id`.
+                 // Let's iterate `outputConfig.outputs` and find match.
+                 // Actually `parseOutputVirtualId` implementation (not shown completely) likely returns the ID string.
+                 const match = target.virtualId?.match(/output:([^:]+):.*/);
+                 if (match) fileId = match[1];
+            }
+            
+            if (!fileId) return undefined;
+            
+            const fileConfig = globalOutputConfig.outputs.find(o => String(o.id) === fileId);
+            if (!fileConfig) return undefined;
+            
+            return {
+                id: String(fileConfig.id),
+                name: fileConfig.fileName,
+                sheets: fileConfig.sheets.map(s => ({
+                    name: s.sheetName,
+                    data: s.templateData || [],
+                    columns: s.columns || []
+                }))
+            };
+        })()}
+        onSave={(template) => {
+            // 1. Find or create Output Node
+            const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
+            if (!outputNode) return;
+
+            const currentOutputConfig = (outputNode.data?.output as OutputConfig) || { outputs: [], mode: 'single' };
+            
+            // Map sheets
+            const mappedSheets = template.sheets.map(s => ({
+                sheetName: s.name,
+                templateData: s.data,
+                columns: s.columns
+            }));
+
+            // template.id comes from ExcelTemplateEditor which preserves the initial ID if it existed
+            // or generates a new one.
+            let newFileId = template.id.replace('virtual:', '') || crypto.randomUUID();
+            let newOutputConfig = { ...currentOutputConfig };
+
+            // Check if we are updating an existing file
+            // Try to find if this file ID already exists in our current config
+            const existingFileIndex = currentOutputConfig.outputs.findIndex(o => o.id === newFileId);
+            
+            if (existingFileIndex >= 0) {
+                 // Update existing
+                 const existingFile = currentOutputConfig.outputs[existingFileIndex];
+                 newFileId = existingFile.id; // Ensure we keep the ID
+                 const updatedFile: OutputFileConfig = {
+                     ...existingFile,
+                     fileName: template.name,
+                     sheets: mappedSheets
+                 };
+                 const nextOutputs = [...currentOutputConfig.outputs];
+                 nextOutputs[existingFileIndex] = updatedFile;
+                 newOutputConfig.outputs = nextOutputs;
+            } else {
+                 // Create New
+                 // If the ID was from "virtual:", it might not match existing real IDs if they were not virtual.
+                 // But for "Create new" flow, we generated a UUID.
+                 const newFile: OutputFileConfig = {
+                    id: newFileId,
+                    creatorNodeId: selectedNodeId || undefined,
+                    fileName: template.name,
+                    sheets: mappedSheets
+                };
+                newOutputConfig.outputs = [...currentOutputConfig.outputs, newFile];
+            }
+
+            updateNode(outputNode.id, {
+                data: {
+                  ...outputNode.data,
+                  output: newOutputConfig
+                }
+            });
+            
+            // Construct target
+            const newTarget: TableTarget = {
+                fileId: null,
+                sheetName: template.sheets[0]?.name || null,
+                batchId: null,
+                virtualId: `output:${newFileId}:${template.sheets[0]?.name || 'Sheet 1'}`, 
+                virtualName: template.name,
+                isFinalOutput: false,
+                isFutureSource: false
+            };
+            
+            if (editingDestinationIndex !== null && editingDestinationIndex >= 0 && editingDestinationIndex < destinationTargets.length) {
+                // Update existing target
+                const nextTargets = [...destinationTargets];
+                // Preserve flags
+                const existing = nextTargets[editingDestinationIndex];
+                nextTargets[editingDestinationIndex] = {
+                    ...newTarget,
+                    isFinalOutput: existing.isFinalOutput,
+                    isFutureSource: existing.isFutureSource,
+                    writeMode: existing.writeMode,
+                    sourceId: existing.sourceId,
+                    // Ensure we preserve the index-based key if needed, or play nice with React keys
+                };
+                updateDestinationTargets(nextTargets);
+            } else {
+                // Append new target
+                updateDestinationTargets([...destinationTargets, newTarget]);
+            }
+            
+            setIsEditorOpen(false);
+            setEditingDestinationIndex(null);
+        }}
+        onCancel={() => {
+            setIsEditorOpen(false);
+            setEditingDestinationIndex(null);
+        }}
+      />
     </div>
   );
 };

@@ -18,6 +18,7 @@ import { FlowPipeline } from './FlowPipeline';
 import { DataUploadModal } from './DataUploadModal';
 import { PropertiesPanel } from './PropertiesPanel';
 import { OperationSelectionModal } from './OperationSelectionModal';
+import { FlowSummary } from './FlowSummary';
 import { ConfirmationModal, type ModalType } from '../Common/ConfirmationModal';
 import { useFlowStore } from '../../store/flowStore';
 import { flowsApi } from '../../api/flows';
@@ -2149,6 +2150,10 @@ export const FlowBuilder = () => {
 
   return (
     <div className="flex h-screen bg-gray-100">
+      {/* Left Sidebar - Flow Summary */}
+      <div className="z-10 h-full bg-white border-r border-gray-200 shadow-sm transition-all duration-300">
+         <FlowSummary />
+      </div>
       
       {/* Center - Canvas */}
       <div className="flex-1 flex flex-col">
@@ -2403,7 +2408,7 @@ export const FlowBuilder = () => {
           onUpload={handleUploadClick}
           onExport={handleExport}
           outputPreviewTargets={outputPreviewTargets}
-          onPreviewTargetChange={handlePreviewTargetChange}
+
         />
         </div>
       </div>
@@ -2418,6 +2423,8 @@ export const FlowBuilder = () => {
         flowId={selectedFlowId ?? undefined}
       />
       
+
+
       {/* Data Upload Modal */}
       <DataUploadModal
         isOpen={isModalOpen}

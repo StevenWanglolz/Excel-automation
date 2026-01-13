@@ -117,6 +117,7 @@ export interface TableTarget {
   linkedSourceIds?: Array<string | number>;
   isFinalOutput?: boolean;
   isFutureSource?: boolean;
+  writeMode?: 'overwrite' | 'append';
 }
 
 export interface MappingTarget {
@@ -127,10 +128,13 @@ export interface MappingTarget {
 
 export interface OutputSheetMapping {
   sheetName: string;
+  templateData?: Record<string, string>[];
+  columns?: string[];
 }
 
 export interface OutputFileConfig {
   id: string;
+  creatorNodeId?: string; // ID of the node that created/owns this file
   fileName: string;
   sheets: OutputSheetMapping[];
 }
