@@ -988,7 +988,9 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                           return; 
                       }
     
-                      const fileOption = outputFileOptionById(globalOutputConfig).get(Number(value) || String(value)); 
+                      const numVal = Number(value);
+                      const lookupKey = (!Number.isNaN(numVal) && numVal !== 0) || numVal === 0 ? numVal : value;
+                      const fileOption = outputFileOptionById(globalOutputConfig).get(lookupKey as number | string); 
                       if (!fileOption) return;
                       const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
                       const nextTargets = [...destinationTargets];
@@ -1531,6 +1533,11 @@ const renderSourceOptions = useCallback(
       // Or we wait. But returning here prevents validation if we have destinations.
       // Let's proceed to filter.
     }
+    // We use a stable key for options to avoid passing a new array every time
+    // Alternatively, just depend on outputConfig if it is stable enough, 
+    // but getOutputFileOptions creates a new array.
+    // Let's use memoized options.
+    const fileOptions = getOutputFileOptions(outputConfig);
     const validTargets = destinationTargets.filter((destTarget) => {
       // Allow implicit auto-generated outputs for batches
       if (destTarget.virtualId?.startsWith('output:auto:')) {
@@ -1547,15 +1554,26 @@ const renderSourceOptions = useCallback(
       if (!parsed?.outputId) {
         return false;
       }
-      return getOutputFileOptions(outputConfig).some((option) => option.outputId === parsed.outputId);
+      return fileOptions.some((option) => option.outputId === parsed.outputId);
     });
     if (validTargets.length !== destinationTargets.length) {
       updateDestinationTargets(validTargets);
     }
+    // fileOptions is derived from outputConfig, so we can just depend on outputConfig
+    // But better to be explicit about what we use.
+    // Ideally we'd optimize getOutputFileOptions but for now let's just ignore the exhaustive-deps warning 
+    // or use JSON stringify of options as key.
+    // The simplest fix for "infinite re-renders" without refactoring everything:
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     destinationTargets,
     isOutputNode,
-    getOutputFileOptions(outputConfig),
+    // outputConfig, // Omitting to manually control updates via stable check inside if needed, 
+                     // but here the loop was caused by getOutputFileOptions(outputConfig) being in dep array.
+    // Instead of passing the function result, we pass the stable parts or just accept we re-run when outputConfig changes.
+    // But outputConfig changes on every edit. We only want to filter when *available options* change meaningfully remove a target?
+    // Actually, this effect is validating targets.
+    outputConfig, 
     parseOutputVirtualId,
     updateDestinationTargets,
   ]);
@@ -2407,7 +2425,7 @@ const renderSourceOptions = useCallback(
             };
         })()}
         onSave={(template) => {
-             // 1. Find or create Output Node
+            // 1. Find or create Output Node
             const outputNode = nodes.find((n) => n.data?.blockType === 'output' || n.type === 'output');
             if (!outputNode) return;
 
@@ -2420,20 +2438,39 @@ const renderSourceOptions = useCallback(
                 columns: s.columns
             }));
 
-            // Create new ID
-            const newFileId = crypto.randomUUID();
+            // template.id comes from ExcelTemplateEditor which preserves the initial ID if it existed
+            // or generates a new one.
+            let newFileId = template.id.replace('virtual:', '') || crypto.randomUUID();
+            let newOutputConfig = { ...currentOutputConfig };
 
-            const newFile: OutputFileConfig = {
-                id: newFileId,
-                creatorNodeId: selectedNodeId || undefined,
-                fileName: template.name,
-                sheets: mappedSheets
-            };
-
-            const newOutputConfig = {
-                ...currentOutputConfig,
-                outputs: [...currentOutputConfig.outputs, newFile]
-            };
+            // Check if we are updating an existing file
+            // Try to find if this file ID already exists in our current config
+            const existingFileIndex = currentOutputConfig.outputs.findIndex(o => o.id === newFileId);
+            
+            if (existingFileIndex >= 0) {
+                 // Update existing
+                 const existingFile = currentOutputConfig.outputs[existingFileIndex];
+                 newFileId = existingFile.id; // Ensure we keep the ID
+                 const updatedFile: OutputFileConfig = {
+                     ...existingFile,
+                     fileName: template.name,
+                     sheets: mappedSheets
+                 };
+                 const nextOutputs = [...currentOutputConfig.outputs];
+                 nextOutputs[existingFileIndex] = updatedFile;
+                 newOutputConfig.outputs = nextOutputs;
+            } else {
+                 // Create New
+                 // If the ID was from "virtual:", it might not match existing real IDs if they were not virtual.
+                 // But for "Create new" flow, we generated a UUID.
+                 const newFile: OutputFileConfig = {
+                    id: newFileId,
+                    creatorNodeId: selectedNodeId || undefined,
+                    fileName: template.name,
+                    sheets: mappedSheets
+                };
+                newOutputConfig.outputs = [...currentOutputConfig.outputs, newFile];
+            }
 
             updateNode(outputNode.id, {
                 data: {
@@ -2442,16 +2479,6 @@ const renderSourceOptions = useCallback(
                 }
             });
             
-            // Construct target
-            // ID matches what getOutputFileOptions generates: `output-${outputNode.id}-${file.id}-${sheetName}-${sheetIndex}`
-            // But getOutputFileOptions is complex.
-            // Let's assume the dropdown option value is just `file.id` (String(option.id) in the render loop) if it comes from `getOutputFileOptions`.
-            // Wait, previous code map `option.id` to value.
-            // Let's re-read line 2377: virtualId: `output:${newFileId}:0`
-            
-            // In render loop (line 1021): <option value={String(option.id)}>{option.label}</option>
-            // getOutputFileOptions returns options where .id is unique.
-            // We need to match THAT structure if we want `activeOutputOption` to work.
             // Construct target
             const newTarget: TableTarget = {
                 fileId: null,
@@ -2473,7 +2500,8 @@ const renderSourceOptions = useCallback(
                     isFinalOutput: existing.isFinalOutput,
                     isFutureSource: existing.isFutureSource,
                     writeMode: existing.writeMode,
-                    sourceId: existing.sourceId
+                    sourceId: existing.sourceId,
+                    // Ensure we preserve the index-based key if needed, or play nice with React keys
                 };
                 updateDestinationTargets(nextTargets);
             } else {

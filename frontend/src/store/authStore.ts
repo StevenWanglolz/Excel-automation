@@ -19,7 +19,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   // Load token from localStorage on store initialization
   // This allows app to remember login state across page refreshes
   token: localStorage.getItem('access_token'),
-  isLoading: false,
+  isLoading: true,
   // Check if token exists to determine auth state
   // !! converts truthy/falsy to boolean
   isAuthenticated: !!localStorage.getItem('access_token'),

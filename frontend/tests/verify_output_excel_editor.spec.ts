@@ -5,7 +5,8 @@ test.describe('Excel Template Editor Integration', () => {
   test.setTimeout(60000); // Increase timeout to 60s
   test('should create, update destination, and allow editing of virtual file', async ({ page }) => {
     // 1. Navigate to Flow Builder
-    await page.goto('http://localhost:5173/flow-builder?type=excel');
+    // 1. Navigate to Flow Builder
+    await page.goto('/flow-builder?type=excel');
 
     // 2. Add Row Filter Node
     await page.getByRole('button', { name: '+' }).click();
@@ -61,13 +62,7 @@ test.describe('Excel Template Editor Integration', () => {
     await expect(fileSelect.locator('option:checked')).toHaveText(newFileName);
     
     // 13. Verify NO new destination was added (still only 1 destination)
-    // Count the number of "Destination X" headers or remove buttons
-    const removeButtons = page.getByRole('button', { name: 'Remove', exact: true });
-    // Note: Destination cards might have "Remove" text.
-    // Let's count the number of destination cards. 
-    // The structure is `div.rounded-md.border...` with "Destination [index]" text.
     const destinationCards = page.locator('text=/Destination \\d+/'); 
-    // This might be tricky if texts are "Destination 1".
     await expect(destinationCards).toHaveCount(1);
   });
 });

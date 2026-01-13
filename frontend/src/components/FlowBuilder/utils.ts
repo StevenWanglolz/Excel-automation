@@ -12,6 +12,6 @@ export const outputFileOptions = (outputConfig: OutputConfig) => {
 
 export const outputFileOptionById = (outputConfig: OutputConfig) => {
     const options = outputFileOptions(outputConfig);
-    // mapped by string id for easy lookup
+    // mapped by numeric id for easy lookup
     return new Map(options.map((option) => [option.id, option]));
 };

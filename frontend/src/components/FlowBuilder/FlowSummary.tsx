@@ -28,7 +28,9 @@ export const FlowSummary = () => {
     if (t.virtualName) return t.virtualName;
     if (t.fileId) return `File #${t.fileId}`;
     if (t.virtualId?.startsWith('output:')) {
-         const match = /output:.*:.*:(.*)/.exec(t.virtualId);
+         // virtualId is "output:<outputId>:<sheetName>" (3 parts)
+         // We capture the 3rd part as the sheet name
+         const match = /output:[^:]+:(.+)/.exec(t.virtualId);
          return match ? match[1] : 'Output File';
     }
     return 'Unnamed Destination';
@@ -42,6 +44,7 @@ export const FlowSummary = () => {
     <div className={`flex flex-col h-full bg-white transition-all duration-300 ${isExpanded ? 'w-64' : 'w-12 items-center'}`}>
       <div 
         role="button"
+        data-testid="sidebar-toggle"
         tabIndex={0}
         className="p-3 border-b border-gray-100 flex items-center justify-between cursor-pointer w-full focus:outline-none focus:bg-gray-50"
         onClick={() => setIsExpanded(!isExpanded)}

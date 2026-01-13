@@ -35,6 +35,8 @@ export const ExcelTemplateEditor = ({ initialTemplate, onSave, onCancel, isOpen 
     if (initialTemplate) {
       setFileName(initialTemplate.name);
       setSheets(initialTemplate.sheets);
+      // Reset active sheet to 0 to safeguard against out-of-bounds if new template has fewer sheets
+      setActiveSheetIndex(0);
     } else {
         // Reset to defaults
         setFileName('New File.xlsx');
