@@ -9,7 +9,7 @@ test.describe('Excel Template Editor Integration', () => {
     await page.goto('/flow-builder?type=excel');
 
     // 2. Add Row Filter Node
-    await page.getByRole('button', { name: '+' }).click();
+    await page.getByRole('button', { name: 'Add step after this' }).click();
     await page.getByText('Row Filter').click();
     
     // 3. Open Properties
@@ -50,7 +50,7 @@ test.describe('Excel Template Editor Integration', () => {
     // 10. Click Edit and Verify Editor Reopens with Data
     await editButton.click();
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByDisplayValue(fileName)).toBeVisible();
+    await expect(page.locator(`input[value="${fileName}"]`)).toBeVisible();
     
     // 11. Change Name and Save Again
     const newFileName = fileName + " Updated";

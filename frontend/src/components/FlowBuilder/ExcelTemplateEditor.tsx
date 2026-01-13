@@ -27,7 +27,7 @@ const DEFAULT_COLS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
 export const ExcelTemplateEditor = ({ initialTemplate, onSave, onCancel, isOpen }: ExcelTemplateEditorProps) => {
   const [fileName, setFileName] = useState('New File.xlsx');
   const [sheets, setSheets] = useState<SheetTemplate[]>([
-    { name: 'Sheet1', data: Array(DEFAULT_ROWS).fill({}), columns: DEFAULT_COLS }
+    { name: 'Sheet1', data: Array.from({ length: DEFAULT_ROWS }, () => ({})), columns: DEFAULT_COLS }
   ]);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
 
@@ -40,7 +40,7 @@ export const ExcelTemplateEditor = ({ initialTemplate, onSave, onCancel, isOpen 
     } else {
         // Reset to defaults
         setFileName('New File.xlsx');
-        setSheets([{ name: 'Sheet1', data: Array(DEFAULT_ROWS).fill({}), columns: DEFAULT_COLS }]);
+        setSheets([{ name: 'Sheet1', data: Array.from({ length: DEFAULT_ROWS }, () => ({})), columns: DEFAULT_COLS }]);
         setActiveSheetIndex(0);
     }
   }, [initialTemplate, isOpen]);
@@ -67,7 +67,7 @@ export const ExcelTemplateEditor = ({ initialTemplate, onSave, onCancel, isOpen 
     const newSheetName = `Sheet${sheets.length + 1}`;
     setSheets([
       ...sheets,
-      { name: newSheetName, data: Array(DEFAULT_ROWS).fill({}), columns: DEFAULT_COLS }
+      { name: newSheetName, data: Array.from({ length: DEFAULT_ROWS }, () => ({})), columns: DEFAULT_COLS }
     ]);
     setActiveSheetIndex(sheets.length);
   };

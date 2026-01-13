@@ -62,7 +62,7 @@ const emptyTarget: TableTarget = {
   linkedSourceIds: [],
 };
 
-const EMPTY_ARRAY: any[] = [];
+
 
 const toSheetValue = (sheetName: string | null) => sheetName ?? SINGLE_SHEET_VALUE;
 const fromSheetValue = (value: string) => (value === SINGLE_SHEET_VALUE ? null : value);
@@ -989,7 +989,7 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                       }
     
                       const numVal = Number(value);
-                      const lookupKey = (!Number.isNaN(numVal) && numVal !== 0) || numVal === 0 ? numVal : value;
+                      const lookupKey = !Number.isNaN(numVal) ? numVal : value;
                       const fileOption = outputFileOptionById(globalOutputConfig).get(lookupKey as number | string); 
                       if (!fileOption) return;
                       const sheetName = fileOption.sheets?.[0]?.sheetName || 'Sheet 1';
