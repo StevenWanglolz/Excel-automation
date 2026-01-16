@@ -3,6 +3,7 @@ import pandas as pd
 from app.transforms.registry import get_transform
 import app.transforms
 from app.services.file_service import file_service
+import logging
 
 
 class TransformService:
@@ -155,7 +156,7 @@ class TransformService:
                                 new_target["virtualName"] = f"{target.get('virtualName', '')} / {sheet}"
                                 expanded_source_targets.append(new_target)
                         except Exception as e:
-                            print(
+                            logging.error(
                                 f"Error expanding sheets for file {file_id}: {e}")
                             expanded_source_targets.append(target)
                     else:

@@ -15,6 +15,7 @@ from app.utils.export_utils import create_zip_archive
 import pandas as pd
 import io
 import re
+import openpyxl
 
 
 router = APIRouter(prefix="/transform", tags=["transform"])
@@ -540,6 +541,42 @@ async def export_result(
 
             return pd.DataFrame()  # Empty if not found
 
+        def get_df_with_merge_resolution(target: Dict[str, Any], source_node: Dict[str, Any]) -> pd.DataFrame:
+            if not target:
+                return pd.DataFrame()
+
+            linked_ids = target.get("linkedSourceIds")
+            if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
+                # Merge Logic: Concatenate all linked sources
+                dfs_to_merge = []
+                node_source_targets = source_node.get("data", {}).get(
+                    "sourceTargets", []) if source_node else []
+
+                for link_id in linked_ids:
+                    target_found = None
+                    if isinstance(link_id, int):
+                        if 0 <= link_id < len(node_source_targets):
+                            target_found = node_source_targets[link_id]
+                    elif isinstance(link_id, str):
+                        for candidate in node_source_targets:
+                            c_vid = candidate.get("virtualId")
+                            c_fid = str(candidate.get("fileId")) if candidate.get(
+                                "fileId") is not None else None
+                            c_bid = f"batch:{candidate.get('batchId')}" if candidate.get(
+                                "batchId") is not None else None
+                            if link_id == c_vid or link_id == c_fid or link_id == c_bid:
+                                target_found = candidate
+                                break
+
+                    if target_found:
+                        dfs_to_merge.append(get_df_for_target(target_found))
+
+                if dfs_to_merge:
+                    return pd.concat(dfs_to_merge, ignore_index=True)
+                return pd.DataFrame()
+            else:
+                return get_df_for_target(target)
+
         # Check for Append Configuration
         # Check for Append Configuration / Output Config
         # Refactor: We look for ANY node that has configured output settings (writeMode or batchNamingPattern)
@@ -573,9 +610,10 @@ async def export_result(
             # But we might need check if this node defines batch settings.
 
         # If Append Mode, ensure we treat it as a single file write (Merge)
-        if write_mode == "append" and base_file_id:
-            # Fetch base file if not already loaded
-            if base_file_id not in file_paths_by_id:
+            # Fetch base file if not already loaded OR if we need the filename object
+            if base_file_id:
+                # We always fetch the file object to get the original_filename for the final payload
+                # even if the path is already in file_paths_by_id
                 base_file = db.query(File).filter(
                     File.id == base_file_id,
                     File.user_id == current_user.id
@@ -592,7 +630,6 @@ async def export_result(
         if write_mode == "append" and base_file_id and base_file_id in file_paths_by_id:
             # APPEND MODE LOGIC
             base_path = file_paths_by_id[base_file_id]
-            import openpyxl
 
             # Load workbook
             try:
@@ -628,46 +665,8 @@ async def export_result(
                         for sheet in sheets:
                             sheet_name = sheet.get("sheetName") or "Sheet1"
                             if target:
-                                # Linked/Merge Logic check... (Same as before)
-                                linked_ids = target.get("linkedSourceIds")
-                                if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
-                                    # Merge Logic: Concatenate all linked sources
-                                    dfs_to_merge = []
-                                    # We need to re-find node... use stored source_node
-                                    node_source_targets = source_node.get(
-                                        "data", {}).get("sourceTargets", []) if source_node else []
-
-                                    for link_id in linked_ids:
-                                        target_found = None
-
-                                        # Case 1: Integer Index (Legacy)
-                                        if isinstance(link_id, int):
-                                            if 0 <= link_id < len(node_source_targets):
-                                                target_found = node_source_targets[link_id]
-
-                                        # Case 2: String ID (Stable)
-                                        elif isinstance(link_id, str):
-                                            # Look for matching target in sourceTargets
-                                            for candidate in node_source_targets:
-                                                c_vid = candidate.get(
-                                                    "virtualId")
-                                                c_fid = str(candidate.get("fileId")) if candidate.get(
-                                                    "fileId") is not None else None
-                                                c_bid = f"batch:{candidate.get('batchId')}" if candidate.get(
-                                                    "batchId") is not None else None
-
-                                                if link_id == c_vid or link_id == c_fid or link_id == c_bid:
-                                                    target_found = candidate
-                                                    break
-
-                                        if target_found:
-                                            dfs_to_merge.append(
-                                                get_df_for_target(target_found))
-
-                                    sheet_df = pd.concat(
-                                        dfs_to_merge, ignore_index=True) if dfs_to_merge else pd.DataFrame()
-                                else:
-                                    sheet_df = get_df_for_target(target)
+                                sheet_df = get_df_with_merge_resolution(
+                                    target, source_node)
                             else:
                                 output_id = item.get("id") or "out"
                                 virtual_key = f"virtual:output:{output_id}:{sheet_name}"
@@ -758,51 +757,8 @@ async def export_result(
                                 sheet_name = sheet.get("sheetName") or "Sheet1"
                                 if target:
                                     # If target exists, it corresponds to this sheet/file.
-                                    # Check for G2M Merge (linkedSourceIds)
-                                    linked_ids = target.get("linkedSourceIds")
-                                    if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
-                                        # Merge Logic: Concatenate all linked sources
-                                        dfs_to_merge = []
-                                        # We need access to the node's sourceTargets to resolve indices
-                                        # Use stored source_node
-                                        node_source_targets = source_node.get(
-                                            "data", {}).get("sourceTargets", []) if source_node else []
-
-                                        for link_id in linked_ids:
-                                            target_found = None
-
-                                            # Case 1: Integer Index (Legacy)
-                                            if isinstance(link_id, int):
-                                                if 0 <= link_id < len(node_source_targets):
-                                                    target_found = node_source_targets[link_id]
-
-                                            # Case 2: String ID (Stable)
-                                            elif isinstance(link_id, str):
-                                                # Look for matching target in sourceTargets
-                                                for candidate in node_source_targets:
-                                                    c_vid = candidate.get(
-                                                        "virtualId")
-                                                    c_fid = str(candidate.get("fileId")) if candidate.get(
-                                                        "fileId") is not None else None
-                                                    c_bid = f"batch:{candidate.get('batchId')}" if candidate.get(
-                                                        "batchId") is not None else None
-
-                                                    if link_id == c_vid or link_id == c_fid or link_id == c_bid:
-                                                        target_found = candidate
-                                                        break
-
-                                            if target_found:
-                                                dfs_to_merge.append(
-                                                    get_df_for_target(target_found))
-
-                                        if dfs_to_merge:
-                                            sheet_df = pd.concat(
-                                                dfs_to_merge, ignore_index=True)
-                                        else:
-                                            sheet_df = pd.DataFrame()
-                                    else:
-                                        # Standard 1:1 Logic
-                                        sheet_df = get_df_for_target(target)
+                                    sheet_df = get_df_with_merge_resolution(
+                                        target, source_node)
                                 else:
                                     virtual_key = f"virtual:output:{output_id}:{sheet_name}"
                                     sheet_df = table_map.get(

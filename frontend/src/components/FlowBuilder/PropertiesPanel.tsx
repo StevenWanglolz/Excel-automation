@@ -17,6 +17,7 @@ import { filesApi } from '../../api/files';
 import { useFlowStore } from '../../store/flowStore';
 import { outputFileOptionById, outputFileOptions as getOutputFileOptions } from './utils';
 import { ExcelTemplateEditor, VirtualFileTemplate, SheetTemplate } from './ExcelTemplateEditor';
+import { OutputConfigurationControls } from './OutputConfigurationControls';
 import type {
   BlockData,
   Batch,
@@ -2198,131 +2199,16 @@ const renderSourceOptions = useCallback(
                   <div className="space-y-4">
                     {/* Unified Destination & Output Config Section */}
                     
-                    {/* Write Mode Selection - Now available for any node with destinations */}
-                    <div className="space-y-3 pb-4 mb-4 border-b border-gray-100">
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide">Write Mode</label>
-                        <div className="flex gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                checked={outputConfig.writeMode !== 'append'}
-                                onChange={() => {
-                                updateNode(node.id, {
-                                    data: {
-                                    ...nodeData,
-                                    output: {
-                                        ...outputConfig,
-                                        writeMode: 'create',
-                                        baseFileId: null
-                                    }
-                                    }
-                                });
-                                }}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span className="text-sm text-gray-700">Create New File</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                checked={outputConfig.writeMode === 'append'}
-                                onChange={() => {
-                                updateNode(node.id, {
-                                    data: {
-                                    ...nodeData,
-                                    output: {
-                                        ...outputConfig,
-                                        writeMode: 'append'
-                                    }
-                                    }
-                                });
-                                }}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span className="text-sm text-gray-700">Append to Existing</span>
-                            </label>
-                        </div>
-
-                        {outputConfig.writeMode === 'append' && (
-                            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 mt-2">
-                            <label className="block text-xs font-medium text-amber-900 mb-1">
-                                Select Base File to Append To
-                            </label>
-                            <select
-                                value={outputConfig.baseFileId ?? ''}
-                                onChange={(e) => {
-                                const fileId = Number(e.target.value);
-                                updateNode(node.id, {
-                                    data: {
-                                    ...nodeData,
-                                    output: {
-                                        ...outputConfig,
-                                        baseFileId: isNaN(fileId) ? null : fileId
-                                    }
-                                    }
-                                });
-                                }}
-                                className="w-full rounded-md border border-amber-200 bg-white px-3 py-2 text-sm text-gray-700 focus:ring-amber-500 focus:border-amber-500"
-                            >
-                                <option value="">Select a file...</option>
-                                {files.map((file) => (
-                                <option key={file.id} value={file.id}>
-                                    {file.original_filename}
-                                </option>
-                                ))}
-                            </select>
-                            <p className="text-[10px] text-amber-700 mt-2">
-                                New data will be added to this file. Existing sheets with same names will be overwritten.
-                            </p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Batch Output Mode Config - Now available for any node with upstream batch */}
-                    {hasUpstreamBatch && (
-                      <div className="space-y-4 mb-4 pb-4 border-b border-gray-100">
-                        <div className="rounded-md border border-purple-200 bg-purple-50 p-3 mb-2">
-                              <div className="text-xs font-medium text-purple-900 mb-2">Output Mode</div>
-                              <div className="flex gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`destinationMode-output-${selectedNodeId}`}
-                                    value="separate"
-                                    checked={destinationMode === 'separate'}
-                                    onChange={() => updateDestinationMode('separate')}
-                                    className="text-purple-600 focus:ring-purple-500"
-                                  />
-                                  <div>
-                                    <span className="text-sm text-gray-900">N to N</span>
-                                    <p className="text-[10px] text-gray-500">One output file per source file (1:1)</p>
-                                  </div>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`destinationMode-output-${selectedNodeId}`}
-                                    value="merge"
-                                    checked={destinationMode === 'merge'}
-                                    onChange={() => updateDestinationMode('merge')}
-                                    className="text-purple-600 focus:ring-purple-500"
-                                  />
-                                  <div>
-                                    <span className="text-sm text-gray-900">N to M</span>
-                                    <p className="text-[10px] text-gray-500">Merge or Split sources into custom outputs</p>
-                                  </div>
-                                </label>
-                              </div>
-                        </div>
-
-                        {/* Custom Mode (formerly Merge) uses the standard destination list below, so no special input needed here */}
-                        {destinationMode === 'merge' && (
-                             <div className="text-xs text-gray-500 italic mb-2 px-1">
-                                Configure your output files below. You can add multiple files and link them to specific sources.
-                             </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Write Mode & Batch Output Mode Selection (Refactored) */}
+                    <OutputConfigurationControls
+                      nodeId={node.id}
+                      files={files}
+                      updateNode={updateNode}
+                      nodeData={nodeData}
+                      hasUpstreamBatch={hasUpstreamBatch}
+                      destinationMode={destinationMode}
+                      updateDestinationMode={updateDestinationMode}
+                    />
                     
                     {destinationTargets.length === 0 ? (
                        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-4 text-center">
@@ -2404,131 +2290,17 @@ const renderSourceOptions = useCallback(
                 </div>
               </div>
 
-               {/* Write Mode Selection (Result of duplication for Output Node) */}
-                    <div className="space-y-3 pb-4 mb-4 border-b border-gray-100">
-                        <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wide">Write Mode</label>
-                        <div className="flex gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                checked={outputConfig.writeMode !== 'append'}
-                                onChange={() => {
-                                updateNode(node.id, {
-                                    data: {
-                                    ...nodeData,
-                                    output: {
-                                        ...outputConfig,
-                                        writeMode: 'create',
-                                        baseFileId: null
-                                    }
-                                    }
-                                });
-                                }}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span className="text-sm text-gray-700">Create New File</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="radio"
-                                checked={outputConfig.writeMode === 'append'}
-                                onChange={() => {
-                                updateNode(node.id, {
-                                    data: {
-                                    ...nodeData,
-                                    output: {
-                                        ...outputConfig,
-                                        writeMode: 'append'
-                                    }
-                                    }
-                                });
-                                }}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                            />
-                            <span className="text-sm text-gray-700">Append to Existing</span>
-                            </label>
-                        </div>
-
-                        {outputConfig.writeMode === 'append' && (
-                            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 mt-2">
-                            <label className="block text-xs font-medium text-amber-900 mb-1">
-                                Select Base File to Append To
-                            </label>
-                            <select
-                                value={outputConfig.baseFileId ?? ''}
-                                onChange={(e) => {
-                                const fileId = Number(e.target.value);
-                                updateNode(node.id, {
-                                    data: {
-                                    ...nodeData,
-                                    output: {
-                                        ...outputConfig,
-                                        baseFileId: isNaN(fileId) ? null : fileId
-                                    }
-                                    }
-                                });
-                                }}
-                                className="w-full rounded-md border border-amber-200 bg-white px-3 py-2 text-sm text-gray-700 focus:ring-amber-500 focus:border-amber-500"
-                            >
-                                <option value="">Select a file...</option>
-                                {files.map((file) => (
-                                <option key={file.id} value={file.id}>
-                                    {file.original_filename}
-                                </option>
-                                ))}
-                            </select>
-                            <p className="text-[10px] text-amber-700 mt-2">
-                                New data will be added to this file. Existing sheets with same names will be overwritten.
-                            </p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Batch Output Mode Config (Result of duplication for Output Node) */}
-                    {hasUpstreamBatch && (
-                      <div className="space-y-4 mb-4 pb-4 border-b border-gray-100">
-                        <div className="rounded-md border border-purple-200 bg-purple-50 p-3 mb-2">
-                              <div className="text-xs font-medium text-purple-900 mb-2">Output Mode</div>
-                              <div className="flex gap-4">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`destinationMode-output-${selectedNodeId}-dup`}
-                                    value="separate"
-                                    checked={destinationMode === 'separate'}
-                                    onChange={() => updateDestinationMode('separate')}
-                                    className="text-purple-600 focus:ring-purple-500"
-                                  />
-                                  <div>
-                                    <span className="text-sm text-gray-900">N to N</span>
-                                    <p className="text-[10px] text-gray-500">One output file per source file (1:1)</p>
-                                  </div>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                  <input
-                                    type="radio"
-                                    name={`destinationMode-output-${selectedNodeId}-dup`}
-                                    value="merge"
-                                    checked={destinationMode === 'merge'}
-                                    onChange={() => updateDestinationMode('merge')}
-                                    className="text-purple-600 focus:ring-purple-500"
-                                  />
-                                  <div>
-                                    <span className="text-sm text-gray-900">N to M</span>
-                                    <p className="text-[10px] text-gray-500">Merge or Split sources into custom outputs</p>
-                                  </div>
-                                </label>
-                              </div>
-                        </div>
-
-                         {/* Info Text for N to M */}
-                         {destinationMode === 'merge' && (
-                             <div className="text-xs text-gray-500 italic mb-2 px-1">
-                                Configure your output files below. Link them to specific sources.
-                             </div>
-                         )}
-                      </div>
-                    )}
+               {/* Write Mode & Batch Output Mode Selection (Refactored) */}
+                    <OutputConfigurationControls
+                      nodeId={node.id}
+                      files={files}
+                      updateNode={updateNode}
+                      nodeData={nodeData}
+                      hasUpstreamBatch={hasUpstreamBatch}
+                      destinationMode={destinationMode}
+                      updateDestinationMode={updateDestinationMode}
+                      inputIdSuffix="-dup"
+                    />
 
 
 
