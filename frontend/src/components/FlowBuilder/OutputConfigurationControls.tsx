@@ -78,13 +78,14 @@ export const OutputConfigurationControls: React.FC<OutputConfigurationControlsPr
             <select
               value={outputConfig.baseFileId ?? ''}
               onChange={(e) => {
-                const fileId = Number(e.target.value);
+                const val = e.target.value;
+                const fileId = val === '' ? null : Number(val);
                 updateNode(nodeId, {
                   data: {
                     ...nodeData,
                     output: {
                       ...outputConfig,
-                      baseFileId: isNaN(fileId) ? null : fileId
+                      baseFileId: fileId
                     }
                   }
                 });
