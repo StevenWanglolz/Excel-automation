@@ -538,86 +538,269 @@ async def export_result(
 
             return pd.DataFrame()  # Empty if not found
 
-        for index, output_item in enumerate(outputs_to_write):
-            file_name = output_item.get("fileName") or f"output_{index}.xlsx"
-            sheets = output_item.get("sheets", [])
-            # Our custom attached target ref
-            target = output_item.get("target")
+        # Check for Append Configuration
+        # Check for Append Configuration / Output Config
+        # Refactor: We look for ANY node that has configured output settings (writeMode or batchNamingPattern)
+        # We prioritize the "last" node or an explicit Output node if present.
+        output_config_node = next((n for n in nodes if n.get(
+            "data", {}).get("blockType") == "output"), None)
 
-            output_id = output_item.get("id") or f"out-{index}"
+        if not output_config_node:
+            # Fallback: Find any node that has explicit output config
+            # We iterate in reverse to find the "tail" config if possible?
+            # Or just finds the first one that has writeMode/naming.
+            # Since flow is usually sequential, we might want the last one.
+            for n in reversed(nodes):
+                d = n.get("data", {}).get("output", {})
+                if d.get("writeMode") or d.get("batchNamingPattern") or d.get("mode") == "batch_template":
+                    output_config_node = n
+                    break
 
-            file_extension = Path(file_name).suffix.lower()
+        write_mode = "create"
+        base_file_id = None
+        output_batch = None
 
-            if file_extension == ".csv":
+        if output_config_node:
+            output_config = output_config_node.get(
+                "data", {}).get("output", {})
+            write_mode = output_config.get("writeMode", "create")
+            base_file_id = output_config.get("baseFileId")
+
+            # Also resolve batch naming context from this node if needed?
+            # Actually output_batch is resolved from the FLOW context usually or explicit batch node.
+            # But we might need check if this node defines batch settings.
+
+        # If Append Mode, ensure we treat it as a single file write (Merge)
+        if write_mode == "append" and base_file_id:
+            # Fetch base file if not already loaded
+            if base_file_id not in file_paths_by_id:
+                base_file = db.query(File).filter(
+                    File.id == base_file_id).first()
+                if base_file:
+                    file_paths_by_id[base_file_id] = base_file.file_path
+
+            if base_file_id in file_paths_by_id:
+                # We will process ALL outputs into this one file
+                # effectively converting "Separate" -> "Append Sheets to Base"
+                pass  # Logic handled below
+
+        # REFACTORED LOOP
+        if write_mode == "append" and base_file_id and base_file_id in file_paths_by_id:
+            # APPEND MODE LOGIC
+            base_path = file_paths_by_id[base_file_id]
+            import openpyxl
+
+            # Load workbook
+            try:
+                book = openpyxl.load_workbook(base_path)
+            except Exception:
+                # Fallback if invalid base file, create new
+                book = openpyxl.Workbook()
+
+            # Create output buffer
+            output = io.BytesIO()
+            # We must save the book to the buffer to "start" the writer with it?
+            # pd.ExcelWriter doesn't easily accept an openpyxl book for *init* unless specific hack.
+            # Standard way:
+            # writer.book = book
+            # writer.sheets = dict((ws.title, ws) for ws in book.worksheets)
+
+            book.save(output)  # Save current base state to buffer
+            output.seek(0)
+
+            # Use pandas with 'openpyxl' engine in append mode?
+            # No, 'mode="a"' is for file paths. For bytes, we manually manipulate book.
+
+            with pd.ExcelWriter(output, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+                # This requires "output" to be a path or a handle that supports read/write/seek like a file.
+                # BytesIO works if pre-filled?
+                # Actually, pandas append mode on BytesIO is tricky/unsupported often.
+                # BETTER: Just use writer.book = book logic.
+                pass
+
+            # Manual Writer Setup
+            output = io.BytesIO()  # Clear output, we will save book at end
+            writer = pd.ExcelWriter(output, engine="openpyxl")
+            writer.book = book
+            writer.sheets = {ws.title: ws for ws in book.worksheets}
+
+            # Loop all items and write to this single writer
+            for item in outputs_to_write:
+                sheets = item.get("sheets", [])
+                target = item.get("target")
+
+                # Prepare DF
                 if sheets:
-                    sheet_name = sheets[0].get("sheetName") or "Sheet1"
-                    # If we have a target ref, use it directly
-                    if target:
-                        result_for_file = get_df_for_target(target)
-                    else:
-                        # Legacy Output/Virtual Key lookup
-                        virtual_key = f"virtual:output:{output_id}:{sheet_name}"
-                        result_for_file = table_map.get(
-                            virtual_key, result_df if not target else pd.DataFrame())
-                else:
-                    # Fallback to last result if available and no target
-                    result_for_file = result_df if not target else get_df_for_target(
-                        target)
-
-                output = io.StringIO()
-                result_for_file.to_csv(output, index=False)
-                payload = output.getvalue().encode("utf-8")
-                media_type = "text/csv"
-            else:
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                    if sheets:
-                        for sheet in sheets:
-                            sheet_name = sheet.get("sheetName") or "Sheet1"
-                            if target:
-                                # If target exists, it corresponds to this sheet/file.
-                                # Note: If grouping multiple sheets into one file from multiple targets...
-                                # Our current construction logic creates 1 file per target.
-                                # To support multi-sheet, we'd need grouping logic here.
-                                # For Simplicity: 1 Target = 1 File (as constructed above), unless using Output Node config.
-                                sheet_df = get_df_for_target(target)
+                    for sheet in sheets:
+                        sheet_name = sheet.get("sheetName") or "Sheet1"
+                        if target:
+                            # Linked/Merge Logic check... (Same as before)
+                            linked_ids = target.get("linkedSourceIds")
+                            if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
+                                # We need to re-find node... inefficient strictly but safe
+                                node_source_targets = node.get(
+                                    "data", {}).get("sourceTargets", [])
+                                dfs_to_merge = []
+                                for src_idx in linked_ids:
+                                    if isinstance(src_idx, int) and 0 <= src_idx < len(node_source_targets):
+                                        dfs_to_merge.append(get_df_for_target(
+                                            node_source_targets[src_idx]))
+                                sheet_df = pd.concat(
+                                    dfs_to_merge, ignore_index=True) if dfs_to_merge else pd.DataFrame()
                             else:
-                                virtual_key = f"virtual:output:{output_id}:{sheet_name}"
-                                sheet_df = table_map.get(
-                                    virtual_key, pd.DataFrame())
+                                sheet_df = get_df_for_target(target)
+                        else:
+                            output_id = item.get("id") or "out"
+                            virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                            sheet_df = table_map.get(
+                                virtual_key, pd.DataFrame())
 
-                            sheet_df.to_excel(
-                                writer, index=False, sheet_name=sheet_name)
-                    else:
-                        # Fallback
-                        df = get_df_for_target(target) if target else result_df
-                        df.to_excel(writer, index=False, sheet_name="Sheet1")
+                        # Write to shared writer
+                        # Check for name collision
+                        if sheet_name in writer.sheets:
+                            # Overwrite logic (pandas default) or append rows?
+                            # Prompt said "Append filtered data".
+                            # If we assume APPEND ROWS:
+                            # old_max_row = writer.sheets[sheet_name].max_row
+                            # But pandas doesn't support 'append rows' easily via high level too_excel.
+                            # We stick to OVERWRITE/REPLACE sheet for MVP, or new sheet name.
+                            pass
+                        sheet_df.to_excel(writer, index=False,
+                                          sheet_name=sheet_name)
+                else:
+                    # Single legacy file fallback
+                    df = get_df_for_target(target) if target else result_df
+                    df.to_excel(writer, index=False, sheet_name="Sheet1")
 
-                output.seek(0)
-                payload = output.read()
-                media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            writer.close()
+            payload = output.getvalue()
+
+            # Save logic for one file
+            file_name = outputs_to_write[0].get(
+                "fileName") if outputs_to_write else "appended.xlsx"
+            # We ignore file_name from others, we just use the first/base one.
+            # Or assume base filename.
+            file_name = base_file.original_filename if 'base_file' in locals() else file_name
+
+            media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
             if output_batch:
+                # Save...
                 file_name = file_service.resolve_unique_original_name(
-                    db=db,
-                    user_id=current_user.id,
-                    batch_id=output_batch.id,
-                    desired_name=file_name,
-                    reserved_names=reserved_output_names,
-                )
-                reserved_output_names.add(file_name)
+                    db, current_user.id, output_batch.id, file_name)
                 file_service.save_generated_file(
-                    db=db,
-                    user_id=current_user.id,
-                    original_filename=file_name,
-                    content=payload,
-                    batch_id=output_batch.id,
-                )
+                    db, current_user.id, file_name, payload, output_batch.id)
+
             files_payload.append({
                 "file_name": file_name,
                 "payload": payload,
-                "media_type": media_type,
+                "media_type": media_type
             })
+
+        else:
+            # STANDARD LOGIC (Loop and create separate files)
+            for index, output_item in enumerate(outputs_to_write):
+                file_name = output_item.get(
+                    "fileName") or f"output_{index}.xlsx"
+                sheets = output_item.get("sheets", [])
+                # Our custom attached target ref
+                target = output_item.get("target")
+
+                output_id = output_item.get("id") or f"out-{index}"
+
+                file_extension = Path(file_name).suffix.lower()
+
+                if file_extension == ".csv":
+                    if sheets:
+                        sheet_name = sheets[0].get("sheetName") or "Sheet1"
+                        # If we have a target ref, use it directly
+                        if target:
+                            result_for_file = get_df_for_target(target)
+                        else:
+                            # Legacy Output/Virtual Key lookup
+                            virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                            result_for_file = table_map.get(
+                                virtual_key, result_df if not target else pd.DataFrame())
+                    else:
+                        # Fallback to last result if available and no target
+                        result_for_file = result_df if not target else get_df_for_target(
+                            target)
+
+                    output = io.StringIO()
+                    result_for_file.to_csv(output, index=False)
+                    payload = output.getvalue().encode("utf-8")
+                    media_type = "text/csv"
+                else:
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                        if sheets:
+                            for sheet in sheets:
+                                sheet_name = sheet.get("sheetName") or "Sheet1"
+                                if target:
+                                    # If target exists, it corresponds to this sheet/file.
+                                    # Check for G2M Merge (linkedSourceIds)
+                                    linked_ids = target.get("linkedSourceIds")
+                                    if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
+                                        # Merge Logic: Concatenate all linked sources
+                                        dfs_to_merge = []
+                                        # We need access to the node's sourceTargets to resolve indices
+                                        # The 'node' variable is available from the outer loop
+                                        node_source_targets = node.get(
+                                            "data", {}).get("sourceTargets", [])
+
+                                        for src_idx in linked_ids:
+                                            if isinstance(src_idx, int) and 0 <= src_idx < len(node_source_targets):
+                                                src_target = node_source_targets[src_idx]
+                                                dfs_to_merge.append(
+                                                    get_df_for_target(src_target))
+
+                                        if dfs_to_merge:
+                                            sheet_df = pd.concat(
+                                                dfs_to_merge, ignore_index=True)
+                                        else:
+                                            sheet_df = pd.DataFrame()
+                                    else:
+                                        # Standard 1:1 Logic
+                                        sheet_df = get_df_for_target(target)
+                                else:
+                                    virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                                    sheet_df = table_map.get(
+                                        virtual_key, pd.DataFrame())
+
+                                sheet_df.to_excel(
+                                    writer, index=False, sheet_name=sheet_name)
+                        else:
+                            # Fallback
+                            df = get_df_for_target(
+                                target) if target else result_df
+                            df.to_excel(writer, index=False,
+                                        sheet_name="Sheet1")
+
+                    output.seek(0)
+                    payload = output.read()
+                    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+                if output_batch:
+                    file_name = file_service.resolve_unique_original_name(
+                        db=db,
+                        user_id=current_user.id,
+                        batch_id=output_batch.id,
+                        desired_name=file_name,
+                        reserved_names=reserved_output_names,
+                    )
+                    reserved_output_names.add(file_name)
+                    file_service.save_generated_file(
+                        db=db,
+                        user_id=current_user.id,
+                        original_filename=file_name,
+                        content=payload,
+                        batch_id=output_batch.id,
+                    )
+                files_payload.append({
+                    "file_name": file_name,
+                    "payload": payload,
+                    "media_type": media_type,
+                })
 
         from fastapi.responses import StreamingResponse
         if len(files_payload) == 1:

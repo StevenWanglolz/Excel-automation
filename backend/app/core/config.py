@@ -21,8 +21,10 @@ class Settings(BaseSettings):
     # CORS origins - allows frontend to make requests to backend
     # Can be string (comma-separated) or list for flexibility
     # Must include frontend URL or browser will block requests
-    CORS_ORIGINS: Union[str, list[str]
-                        ] = "http://localhost:5173,http://localhost:3000"
+    CORS_ORIGINS: Union[str, list[str]] = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:3000,http://127.0.0.1:3000"
+    )
 
     # Dev auth bypass - skips JWT validation for local development
     DISABLE_AUTH: bool = True

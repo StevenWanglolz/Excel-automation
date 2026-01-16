@@ -54,6 +54,17 @@ export interface FlowEdge {
   targetHandle?: string | null;
 }
 
+// Determines how batch sources map to destinations
+// 'separate' = N inputs → N outputs (1:1)
+// 'merge' = N inputs → 1 output (all data combined)
+// FUTURE: 'custom' = user-defined N→M mapping
+export type DestinationMode = 'separate' | 'merge';
+
+// FUTURE: Strategy for how data is merged when destinationMode is 'merge'
+// 'stack_rows' = all data into one sheet (append rows)
+// 'preserve_sheets' = each source → separate sheet in same file
+// export type MergeStrategy = 'stack_rows' | 'preserve_sheets';
+
 export interface BlockData {
   [key: string]: any;
   blockType: string;
@@ -68,6 +79,7 @@ export interface BlockData {
   outputBatchId?: number | null;
   fileIds?: number[];
   sourceRule?: SourceRule;
+  destinationMode?: DestinationMode; // How batch sources map to destinations
 }
 
 export type SourceRuleMode =
@@ -143,6 +155,8 @@ export interface OutputConfig {
   outputs: OutputFileConfig[];
   mode?: 'fixed' | 'batch_template';
   batchNamingPattern?: string;
+  writeMode?: 'create' | 'append';
+  baseFileId?: number | null;
 }
 
 export interface FilePreview {

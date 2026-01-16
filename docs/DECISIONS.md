@@ -200,5 +200,14 @@ This document records important architectural decisions and their rationale. Eac
 1. **Phase 1 (Current):** Single server, local file storage
 2. **Phase 2:** Add cloud file storage (S3)
 3. **Phase 3:** Add caching layer (Redis)
-4. **Phase 4:** Horizontal scaling with load balancer
-5. **Phase 5:** Background job queue for heavy processing
+### 2026-01-13 – G2M Merge Mode (UI Toggle)
+
+**Reason:** Users need to choose between processing batch files individually (1:1) or merging them into a single output (N:1).
+**Decision:** Added `destinationMode` ('separate' | 'merge') to node data.
+- **Separate:** Current behavior.
+- **Merge:** UI shows single destination, backend will merge dataframes.
+
+**Future Considerations:**
+- **Merge Strategy:** Currently assumes simple row stacking. Future: `preserve_sheets`, `custom_mapping`.
+- **Partial Merges:** N sources → M destinations.
+- **Append:** Append to existing external files.

@@ -361,7 +361,7 @@ export const FlowPipeline = ({
 
   const destinationOutputFileOptions = useMemo(() => {
     const destTargets = destinationTargetsForPreview;
-    if (destTargets.length === 0) {
+    if (!activePreviewNode || destTargets.length === 0) {
       return [];
     }
     const seen = new Set<string>();
