@@ -1224,7 +1224,11 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                         console.error("Error generating display name source target", err);
                      }
 
-                     const isSelected = destTarget.linkedSourceIds?.includes(srcIdx);
+                     // Use stable ID (fileId or virtualId)
+                     // If neither exists, we might fall back to index but that is unstable.
+                     // Ideally all valid sources here have one of these.
+                     const sourceId = src.virtualId || (src.fileId ? String(src.fileId) : (src.batchId ? `batch:${src.batchId}` : String(srcIdx)));
+                     const isSelected = destTarget.linkedSourceIds?.some(id => String(id) === String(sourceId));
                      
                      return (
                         <label key={srcIdx} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
@@ -1237,11 +1241,14 @@ const updateRowFilterConfig = useCallback((partial: Partial<RowFilterConfig>) =>
                                   let nextIds = [...currentIds];
                                   
                                   if (e.target.checked) {
-                                      // Add ID (index)
-                                      if (!nextIds.includes(srcIdx)) nextIds.push(srcIdx);
+                                      // Add ID
+                                      // We prefer checking string equality to avoid dups
+                                      if (!nextIds.some(id => String(id) === String(sourceId))) {
+                                          nextIds.push(sourceId);
+                                      }
                                   } else {
                                       // Remove ID
-                                      nextIds = nextIds.filter(id => id !== srcIdx);
+                                      nextIds = nextIds.filter(id => String(id) !== String(sourceId));
                                   }
                                   
                                   nextTargets[index] = { ...destTarget, linkedSourceIds: nextIds };
@@ -2489,7 +2496,7 @@ const renderSourceOptions = useCallback(
                                     name={`destinationMode-output-${selectedNodeId}-dup`}
                                     value="separate"
                                     checked={destinationMode === 'separate'}
-                                    onChange={() => updateNode(node.id, { data: { ...nodeData, destinationMode: 'separate' } })}
+                                    onChange={() => updateDestinationMode('separate')}
                                     className="text-purple-600 focus:ring-purple-500"
                                   />
                                   <div>

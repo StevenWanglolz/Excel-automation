@@ -170,6 +170,23 @@ This document records important architectural decisions and their rationale. Eac
 
 **Reference:** See [STREAM_ARCHITECTURE.md](./STREAM_ARCHITECTURE.md) for full design.
 
+### 2026-01-13 – Groups-to-Merge (G2M) Mode
+
+**Reason:** Users need to choose between processing batch files individually (1:1) or merging them into a single output (N:1).
+
+**Decision:** Added `destinationMode` to node data.
+- **separate:** (Default) Output 1 processing result per input source (1:1).
+- **merge:** Output a single workbook containing data from all sources (N:1). Backend strategy: Row-wise concatenation aligned by column name. Missing columns in some sources are filled with NaNs.
+
+**Migration Note:** Existing flows without `destinationMode` default to 'separate'. No migration required, but users can opt-in to 'merge'.
+
+**Future Considerations:**
+- **Merge Options:** 
+  - `preserve_sheets`: Maintain original spreadsheet/tab structure when merging (keep inputs as separate tabs).
+  - `custom_mapping`: User-defined field-to-field mapping rules for disparate schemas.
+- **Partial Merges:** Support merging N sources into M destinations with configurable routing/filters.
+- **Append:** Append to existing external files.
+
 ## Performance Decisions
 
 ### 2024-12-27 – No caching layer initially
@@ -200,14 +217,3 @@ This document records important architectural decisions and their rationale. Eac
 1. **Phase 1 (Current):** Single server, local file storage
 2. **Phase 2:** Add cloud file storage (S3)
 3. **Phase 3:** Add caching layer (Redis)
-### 2026-01-13 – G2M Merge Mode (UI Toggle)
-
-**Reason:** Users need to choose between processing batch files individually (1:1) or merging them into a single output (N:1).
-**Decision:** Added `destinationMode` ('separate' | 'merge') to node data.
-- **Separate:** Current behavior.
-- **Merge:** UI shows single destination, backend will merge dataframes.
-
-**Future Considerations:**
-- **Merge Strategy:** Currently assumes simple row stacking. Future: `preserve_sheets`, `custom_mapping`.
-- **Partial Merges:** N sources → M destinations.
-- **Append:** Append to existing external files.

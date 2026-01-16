@@ -453,7 +453,8 @@ async def export_result(
                         outputs_to_write.append({
                             "fileName": fname,
                             "sheets": [{"sheetName": t.get("sheetName") or "Sheet1"}],
-                            "target": t  # Keep ref to look up data
+                            "target": t,  # Keep ref to look up data
+                            "sourceNode": node  # Store source node for context
                         })
 
             # Implicit G2G (No dests, has batch source)
@@ -474,7 +475,8 @@ async def export_result(
                         outputs_to_write.append({
                             "fileName": fname,
                             "sheets": [{"sheetName": t.get("sheetName") or "Sheet1"}],
-                            "target": t
+                            "target": t,
+                            "sourceNode": node
                         })
 
         # 2. Output Node (Legacy/Explicit Output Block Config)
@@ -558,7 +560,9 @@ async def export_result(
 
         write_mode = "create"
         base_file_id = None
-        output_batch = None
+        write_mode = "create"
+        base_file_id = None
+        # output_batch = None (Preserve existing output_batch if set)
 
         if output_config_node:
             output_config = output_config_node.get(
@@ -575,7 +579,9 @@ async def export_result(
             # Fetch base file if not already loaded
             if base_file_id not in file_paths_by_id:
                 base_file = db.query(File).filter(
-                    File.id == base_file_id).first()
+                    File.id == base_file_id,
+                    File.user_id == current_user.id
+                ).first()
                 if base_file:
                     file_paths_by_id[base_file_id] = base_file.file_path
 
@@ -599,80 +605,95 @@ async def export_result(
 
             # Create output buffer
             output = io.BytesIO()
-            # We must save the book to the buffer to "start" the writer with it?
-            # pd.ExcelWriter doesn't easily accept an openpyxl book for *init* unless specific hack.
-            # Standard way:
-            # writer.book = book
-            # writer.sheets = dict((ws.title, ws) for ws in book.worksheets)
 
-            book.save(output)  # Save current base state to buffer
-            output.seek(0)
-
-            # Use pandas with 'openpyxl' engine in append mode?
-            # No, 'mode="a"' is for file paths. For bytes, we manually manipulate book.
-
-            with pd.ExcelWriter(output, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-                # This requires "output" to be a path or a handle that supports read/write/seek like a file.
-                # BytesIO works if pre-filled?
-                # Actually, pandas append mode on BytesIO is tricky/unsupported often.
-                # BETTER: Just use writer.book = book logic.
+            # Using pd.ExcelWriter as a context manager is safer.
+            # We initialize it with the existing book.
+            # Note: engine="openpyxl" is required.
+            try:
+                pass  # Placeholder for try/finally block structure closer to simplified logic
+            except:
                 pass
 
-            # Manual Writer Setup
-            output = io.BytesIO()  # Clear output, we will save book at end
-            writer = pd.ExcelWriter(output, engine="openpyxl")
-            writer.book = book
-            writer.sheets = {ws.title: ws for ws in book.worksheets}
+            # We use a with block for safety
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                writer.book = book
+                writer.sheets = {ws.title: ws for ws in book.worksheets}
 
-            # Loop all items and write to this single writer
-            for item in outputs_to_write:
-                sheets = item.get("sheets", [])
-                target = item.get("target")
+                # Loop all items and write to this single writer
+                for item in outputs_to_write:
+                    sheets = item.get("sheets", [])
+                    target = item.get("target")
+                    source_node = item.get("sourceNode")
 
-                # Prepare DF
-                if sheets:
-                    for sheet in sheets:
-                        sheet_name = sheet.get("sheetName") or "Sheet1"
-                        if target:
-                            # Linked/Merge Logic check... (Same as before)
-                            linked_ids = target.get("linkedSourceIds")
-                            if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
-                                # We need to re-find node... inefficient strictly but safe
-                                node_source_targets = node.get(
-                                    "data", {}).get("sourceTargets", [])
-                                dfs_to_merge = []
-                                for src_idx in linked_ids:
-                                    if isinstance(src_idx, int) and 0 <= src_idx < len(node_source_targets):
-                                        dfs_to_merge.append(get_df_for_target(
-                                            node_source_targets[src_idx]))
-                                sheet_df = pd.concat(
-                                    dfs_to_merge, ignore_index=True) if dfs_to_merge else pd.DataFrame()
+                    # Prepare DF
+                    if sheets:
+                        for sheet in sheets:
+                            sheet_name = sheet.get("sheetName") or "Sheet1"
+                            if target:
+                                # Linked/Merge Logic check... (Same as before)
+                                linked_ids = target.get("linkedSourceIds")
+                                if linked_ids and isinstance(linked_ids, list) and len(linked_ids) > 0:
+                                    # Merge Logic: Concatenate all linked sources
+                                    dfs_to_merge = []
+                                    # We need to re-find node... use stored source_node
+                                    node_source_targets = source_node.get(
+                                        "data", {}).get("sourceTargets", []) if source_node else []
+
+                                    for link_id in linked_ids:
+                                        target_found = None
+
+                                        # Case 1: Integer Index (Legacy)
+                                        if isinstance(link_id, int):
+                                            if 0 <= link_id < len(node_source_targets):
+                                                target_found = node_source_targets[link_id]
+
+                                        # Case 2: String ID (Stable)
+                                        elif isinstance(link_id, str):
+                                            # Look for matching target in sourceTargets
+                                            for candidate in node_source_targets:
+                                                c_vid = candidate.get(
+                                                    "virtualId")
+                                                c_fid = str(candidate.get("fileId")) if candidate.get(
+                                                    "fileId") is not None else None
+                                                c_bid = f"batch:{candidate.get('batchId')}" if candidate.get(
+                                                    "batchId") is not None else None
+
+                                                if link_id == c_vid or link_id == c_fid or link_id == c_bid:
+                                                    target_found = candidate
+                                                    break
+
+                                        if target_found:
+                                            dfs_to_merge.append(
+                                                get_df_for_target(target_found))
+
+                                    sheet_df = pd.concat(
+                                        dfs_to_merge, ignore_index=True) if dfs_to_merge else pd.DataFrame()
+                                else:
+                                    sheet_df = get_df_for_target(target)
                             else:
-                                sheet_df = get_df_for_target(target)
-                        else:
-                            output_id = item.get("id") or "out"
-                            virtual_key = f"virtual:output:{output_id}:{sheet_name}"
-                            sheet_df = table_map.get(
-                                virtual_key, pd.DataFrame())
+                                output_id = item.get("id") or "out"
+                                virtual_key = f"virtual:output:{output_id}:{sheet_name}"
+                                sheet_df = table_map.get(
+                                    virtual_key, pd.DataFrame())
 
-                        # Write to shared writer
-                        # Check for name collision
-                        if sheet_name in writer.sheets:
-                            # Overwrite logic (pandas default) or append rows?
-                            # Prompt said "Append filtered data".
-                            # If we assume APPEND ROWS:
-                            # old_max_row = writer.sheets[sheet_name].max_row
-                            # But pandas doesn't support 'append rows' easily via high level too_excel.
-                            # We stick to OVERWRITE/REPLACE sheet for MVP, or new sheet name.
-                            pass
-                        sheet_df.to_excel(writer, index=False,
-                                          sheet_name=sheet_name)
-                else:
-                    # Single legacy file fallback
-                    df = get_df_for_target(target) if target else result_df
-                    df.to_excel(writer, index=False, sheet_name="Sheet1")
+                            # Write to shared writer
+                            # Check for name collision
+                            if sheet_name in writer.sheets:
+                                # Overwrite logic (pandas default) or append rows?
+                                # Prompt said "Append filtered data".
+                                # If we assume APPEND ROWS:
+                                # old_max_row = writer.sheets[sheet_name].max_row
+                                # But pandas doesn't support 'append rows' easily via high level too_excel.
+                                # We stick to OVERWRITE/REPLACE sheet for MVP, or new sheet name.
+                                pass
+                            sheet_df.to_excel(writer, index=False,
+                                              sheet_name=sheet_name)
+                    else:
+                        # Single legacy file fallback
+                        df = get_df_for_target(target) if target else result_df
+                        df.to_excel(writer, index=False, sheet_name="Sheet1")
 
-            writer.close()
+            # Context manager closes writer automatically
             payload = output.getvalue()
 
             # Save logic for one file
@@ -705,6 +726,7 @@ async def export_result(
                 sheets = output_item.get("sheets", [])
                 # Our custom attached target ref
                 target = output_item.get("target")
+                source_node = output_item.get("sourceNode")
 
                 output_id = output_item.get("id") or f"out-{index}"
 
@@ -720,7 +742,7 @@ async def export_result(
                             # Legacy Output/Virtual Key lookup
                             virtual_key = f"virtual:output:{output_id}:{sheet_name}"
                             result_for_file = table_map.get(
-                                virtual_key, result_df if not target else pd.DataFrame())
+                                virtual_key, result_df)
                     else:
                         # Fallback to last result if available and no target
                         result_for_file = result_df if not target else get_df_for_target(
@@ -744,15 +766,36 @@ async def export_result(
                                         # Merge Logic: Concatenate all linked sources
                                         dfs_to_merge = []
                                         # We need access to the node's sourceTargets to resolve indices
-                                        # The 'node' variable is available from the outer loop
-                                        node_source_targets = node.get(
-                                            "data", {}).get("sourceTargets", [])
+                                        # Use stored source_node
+                                        node_source_targets = source_node.get(
+                                            "data", {}).get("sourceTargets", []) if source_node else []
 
-                                        for src_idx in linked_ids:
-                                            if isinstance(src_idx, int) and 0 <= src_idx < len(node_source_targets):
-                                                src_target = node_source_targets[src_idx]
+                                        for link_id in linked_ids:
+                                            target_found = None
+
+                                            # Case 1: Integer Index (Legacy)
+                                            if isinstance(link_id, int):
+                                                if 0 <= link_id < len(node_source_targets):
+                                                    target_found = node_source_targets[link_id]
+
+                                            # Case 2: String ID (Stable)
+                                            elif isinstance(link_id, str):
+                                                # Look for matching target in sourceTargets
+                                                for candidate in node_source_targets:
+                                                    c_vid = candidate.get(
+                                                        "virtualId")
+                                                    c_fid = str(candidate.get("fileId")) if candidate.get(
+                                                        "fileId") is not None else None
+                                                    c_bid = f"batch:{candidate.get('batchId')}" if candidate.get(
+                                                        "batchId") is not None else None
+
+                                                    if link_id == c_vid or link_id == c_fid or link_id == c_bid:
+                                                        target_found = candidate
+                                                        break
+
+                                            if target_found:
                                                 dfs_to_merge.append(
-                                                    get_df_for_target(src_target))
+                                                    get_df_for_target(target_found))
 
                                         if dfs_to_merge:
                                             sheet_df = pd.concat(

@@ -107,10 +107,13 @@ test.describe('Advanced Batch Scenarios', () => {
     });
     
     // Mock Sheets for multisheet file
-    // fileId 777 has 3 sheets
-    await page.route(new RegExp(`${API_BASE_PATTERN.source}/files/777/sheets`), async (route) => route.fulfill({ json: ['Jan', 'Feb', 'Mar'] }));
-    // Others
+    // Define general first, then specific (Playwright matches reverse order? No, "The matching happens from the last registered route to the first")
+    // Wait, documentation says: "When a request is made... Playwright checks all registered routes... matching happens from the last registered route to the first."
+    // So SPECIFIC should be registered LAST.
+    // My previous analysis was correct: 113 (general) was last, so it matched 'files/777/sheets' too.
+    
     await page.route(new RegExp(`${API_BASE_PATTERN.source}/files/.*/sheets`), async (route) => route.fulfill({ json: ['Sheet1'] }));
+    await page.route(new RegExp(`${API_BASE_PATTERN.source}/files/777/sheets`), async (route) => route.fulfill({ json: ['Jan', 'Feb', 'Mar'] }));
     
     // Mock Preview
     await page.route(new RegExp(`${API_BASE_PATTERN.source}/files/.*/preview.*`), async (route) => route.fulfill({ json: { columns: ['A'], row_count: 5, preview_rows: [] } }));
@@ -125,7 +128,7 @@ test.describe('Advanced Batch Scenarios', () => {
     
     // Logic check: source has sheetName='__all__', so output should show Batch Output Mode
     await expect(page.getByText('Output Mode', { exact: false })).toBeVisible();
-    await expect(page.getByText('Separate files')).toBeVisible();
+    await expect(page.getByText('N to N')).toBeVisible();
     
     // Check generated files preview - should list sheet names as files (roughly)
     // The logic in frontend: 'generatedNames = batchFiles.map...' 
@@ -136,8 +139,12 @@ test.describe('Advanced Batch Scenarios', () => {
     // However, the UI MODE should be correct.
     
     // Let's verify the UI mode first.
-    await expect(page.getByText('Separate files')).toBeChecked();
+    await expect(page.getByText('One output file per source file')).toBeVisible(); 
     
+    // Also verify G2M toggle is present (N to M)
+    await expect(page.getByText('N to M')).toBeVisible();
+    await expect(page.getByText('Merge or Split sources')).toBeVisible();
+
     // We expect 3 distinct items if the partial logic works, but 'generated files preview' 
     // specifically iterates 'batchFiles' array. 
     // If our implementation didn't mock 'batchFiles' for '__all__' case in frontend, it might be empty.
