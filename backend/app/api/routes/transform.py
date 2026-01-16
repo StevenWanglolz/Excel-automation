@@ -560,8 +560,6 @@ async def export_result(
 
         write_mode = "create"
         base_file_id = None
-        write_mode = "create"
-        base_file_id = None
         # output_batch = None (Preserve existing output_batch if set)
 
         if output_config_node:
@@ -606,18 +604,18 @@ async def export_result(
             # Create output buffer
             output = io.BytesIO()
 
-            # Using pd.ExcelWriter as a context manager is safer.
-            # We initialize it with the existing book.
-            # Note: engine="openpyxl" is required.
-            try:
-                pass  # Placeholder for try/finally block structure closer to simplified logic
-            except:
-                pass
+            # Save the existing book to the buffer so pandas can append to it
+            book.save(output)
+            output.seek(0)
 
-            # We use a with block for safety
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                writer.book = book
-                writer.sheets = {ws.title: ws for ws in book.worksheets}
+            # Use pandas with 'openpyxl' engine in append mode
+            # if_sheet_exists="overlay" allows writing to existing sheets without wiping them,
+            # or "replace" to replace them. "overlay" is generally safer for "appending" data if rows are managed,
+            # but here we likely want "replace" or "new" sheets.
+            # The prompt asked for "overlay" (or "replace" as appropriate).
+            # If we want to append *new sheets*, "replace" works fine if name is new.
+            # If we want to overwrite existing sheet, "replace" is correct.
+            with pd.ExcelWriter(output, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
 
                 # Loop all items and write to this single writer
                 for item in outputs_to_write:
