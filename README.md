@@ -22,6 +22,7 @@ The Properties panel now relies on the grouped **Source** dropdown embedded in e
 ```bash
 ./start.sh
 ```
+Note: `start.sh` and `restart.sh` will stop any local Vite dev server for this repo to prevent it from shadowing the Docker frontend on `localhost:5173`.
 
 **Auth bypass (dev only):**
 ```bash
@@ -60,9 +61,11 @@ npx playwright test
 ```
 
 Access at:
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:8000
-- API Docs: http://localhost:8000/docs
+- Frontend: http://127.0.0.1:5173
+- Backend API: http://127.0.0.1:8000
+- API Docs: http://127.0.0.1:8000/docs
+
+Note: if `http://localhost:5173` hangs, use `http://127.0.0.1:5173`. The backend CORS list includes both `localhost` and `127.0.0.1`.
 
 ## Test data
 
@@ -73,6 +76,7 @@ Access at:
 
 - `docs/ARCHITECTURE.md` – how things fit together
 - `docs/DATA_FLOW.md` – where data comes from and goes (including upload/file resolution)
+- `docs/BATCH_OUTPUT_MANUAL.md` – guide to Batch/Merge output scenarios (including upload/file resolution)
 - `docs/FILES.md` – what each file does
 - `docs/USER_MANUAL.md` – how to run each I/O scenario
 - `docs/STATE.md` – state management

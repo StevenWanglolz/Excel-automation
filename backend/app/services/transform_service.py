@@ -3,6 +3,7 @@ import pandas as pd
 from app.transforms.registry import get_transform
 import app.transforms
 from app.services.file_service import file_service
+import logging
 
 
 class TransformService:
@@ -139,6 +140,31 @@ class TransformService:
                 source_targets = destination_targets
             if not source_targets and not destination_targets:
                 continue
+
+            # Expand "All Sheets" batch sources
+            expanded_source_targets = []
+            for target in source_targets:
+                if target.get("sheetName") == "__all__" and target.get("fileId"):
+                    file_id = target.get("fileId")
+                    if file_id in file_paths_by_id:
+                        try:
+                            sheets = file_service.get_excel_sheets(
+                                file_paths_by_id[file_id])
+                            for sheet in sheets:
+                                new_target = target.copy()
+                                new_target["sheetName"] = sheet
+                                new_target["virtualName"] = f"{target.get('virtualName', '')} / {sheet}"
+                                expanded_source_targets.append(new_target)
+                        except Exception as e:
+                            logging.error(
+                                f"Error expanding sheets for file {file_id}: {e}")
+                            expanded_source_targets.append(target)
+                    else:
+                        expanded_source_targets.append(target)
+                else:
+                    expanded_source_targets.append(target)
+            source_targets = expanded_source_targets
+
             if not destination_targets:
                 destination_targets = source_targets
             config = data.get("config", {}) or {}

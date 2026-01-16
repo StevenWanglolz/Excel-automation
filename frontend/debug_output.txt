@@ -1,0 +1,95 @@
+
+Running 1 test using 1 worker
+
+[1A[2K[1/1] [chromium] › tests/batch_debug.spec.ts:78:3 › Debug Batch Crash › Open Properties Panel for Batch Transform
+[1A[2K[chromium] › tests/batch_debug.spec.ts:78:3 › Debug Batch Crash › Open Properties Panel for Batch Transform
+PAGE LOG: [vite] connecting...
+
+[1A[2KPAGE LOG: [vite] connected.
+
+[1A[2KPAGE LOG: %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2KPAGE LOG: [PropertiesPanel] Rendering for node: null
+
+[1A[2K  1) [chromium] › tests/batch_debug.spec.ts:78:3 › Debug Batch Crash › Open Properties Panel for Batch Transform 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: locator('.react-flow__node').filter({ hasText: 'Transform' })
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for locator('.react-flow__node').filter({ hasText: 'Transform' })[22m
+
+
+      81 |     // Find Transform Node
+      82 |     const node = page.locator('.react-flow__node').filter({ hasText: 'Transform' });
+    > 83 |     await expect(node).toBeVisible();
+         |                        ^
+      84 |     await node.click();
+      85 |     
+      86 |     // Check if Properties Panel renders correctly
+        at /Users/stevenwang/Documents/Coding/startup/Excel-automation/frontend/tests/batch_debug.spec.ts:83:24
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/batch_debug-Debug-Batch-Cr-1e399-s-Panel-for-Batch-Transform-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/batch_debug-Debug-Batch-Cr-1e399-s-Panel-for-Batch-Transform-chromium/error-context.md
+
+
+[1A[2K  1 failed
+    [chromium] › tests/batch_debug.spec.ts:78:3 › Debug Batch Crash › Open Properties Panel for Batch Transform 

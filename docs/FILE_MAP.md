@@ -54,9 +54,12 @@ This document explains the purpose of each major file and folder. It is meant fo
 
 - This file map (orientation guide)
 
-### docs/USER_MANUAL.md 🟢
+### docs/USER_MANUAL.md
+- General guide for sources and transforms.
 
-- Step-by-step usage guide for common I/O scenarios
+### docs/BATCH_OUTPUT_MANUAL.md
+- Specific guide for Output Node scenarios (Single, G2G, G2M).
+- Lists current limitations. common I/O scenarios
 - Explains file groups and output behavior
 
 ### docs/API.md 🟡

@@ -12,6 +12,7 @@ from app.transforms.base import BaseTransform
 from app.transforms.registry import register_transform
 from typing import Dict, Any
 import pandas as pd
+import re
 
 
 @register_transform("filter_rows")
@@ -56,11 +57,21 @@ class FilterRowsTransform(BaseTransform):
         if operator == "equals":
             # For strings, we do case-insensitive and whitespace-insensitive comparison
             if pd.api.types.is_string_dtype(df[column]):
-                return df[df[column].astype(str).str.strip().str.lower() == str(value).strip().lower()]
+                # Normalize whitespace: replace any sequence of whitespace (including NBSP) with single space
+                col_normalized = df[column].astype(str).str.replace(
+                    r'\s+', ' ', regex=True).str.strip().str.lower()
+
+                val_normalized = re.sub(
+                    r'\s+', ' ', str(value)).strip().lower()
+                return df[col_normalized == val_normalized]
             return df[df[column] == value]
         elif operator == "not_equals":
             if pd.api.types.is_string_dtype(df[column]):
-                return df[df[column].astype(str).str.strip().str.lower() != str(value).strip().lower()]
+                col_normalized = df[column].astype(str).str.replace(
+                    r'\s+', ' ', regex=True).str.strip().str.lower()
+                val_normalized = re.sub(
+                    r'\s+', ' ', str(value)).strip().lower()
+                return df[col_normalized != val_normalized]
             return df[df[column] != value]
         elif operator == "contains":
             # Convert to string for text search - handles numeric columns with text search

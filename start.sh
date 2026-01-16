@@ -8,6 +8,9 @@ set -e
 echo "🚀 Starting SheetPilot..."
 echo ""
 
+# Stop any local Vite dev server for this repo that could shadow Docker on localhost.
+./scripts/stop-vite.sh
+
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
     echo "❌ Error: Docker is not running. Please start Docker and try again."
@@ -77,4 +80,3 @@ else
     echo "❌ Error: Some services failed to start. Check logs with: docker-compose logs"
     exit 1
 fi
-
